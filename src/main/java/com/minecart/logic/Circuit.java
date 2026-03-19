@@ -3,6 +3,7 @@ package com.minecart.logic;
 import com.google.common.graph.*;
 import com.minecart.logic.component.CircuitNode;
 import com.minecart.logic.edge.CircuitEdge;
+import org.apache.commons.math3.geometry.spherical.twod.Edge;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Arrays;
@@ -20,6 +21,16 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     public Circuit(){
         nodes = new TreeSet<>();
         edges = new TreeSet<>();
+    }
+
+    public void tick(){
+
+        for(CircuitNode node : nodes){
+            node.tick();
+        }
+        for(CircuitEdge egde : edges){
+            egde.tick();
+        }
     }
 
     @Override

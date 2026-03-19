@@ -3,29 +3,34 @@ package com.minecart.math.function;
 import org.apache.commons.math3.util.Pair;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
+/**
+ * Could also be used to represent an equation with exp = 0
+ */
 public class Expression {
-    protected Expression[] children;
+    protected List<Expression> children;
     protected Operator<Double> operator;
     protected Variable<Double> variable;
     protected Double constant;
     protected boolean leaf;
 
-    public Expression(Operator<Double> operator, Expression... children) {
+    public Expression(Operator<Double> operator, List<Expression> children) {
         this.operator = operator;
-        this.children = children;
+        // Wrapping in ArrayList ensures the internal list is always mutable
+        this.children = new ArrayList<>(children);
         this.variable = null;
         this.constant = null;
         this.leaf = false;
 
-        if (operator.target.targetAmount.test(children.length)) {
+        if (operator.target.targetAmount.test(children.size())) {
             throw new IllegalArgumentException("Expression amount incorrect");
         }
     }
 
-    public Expression(Variable variable) {
+    public Expression(Variable<Double> variable) {
         this.operator = null;
-        this.children = new Expression[0];
+        this.children = new ArrayList<>();
         this.variable = variable;
         this.constant = null;
         this.leaf = true;
@@ -33,15 +38,12 @@ public class Expression {
 
     public Expression(double constant) {
         this.operator = null;
-        this.children = new Expression[0];
+        this.children = new ArrayList<>();
         this.variable = null;
         this.constant = constant;
         this.leaf = true;
     }
 
-    /**
-     * Recursively traverses the AST to collect all unique variables used in this expression.
-     */
     public void collectVar(Set<Variable<Double>> set) {
         if (leaf) {
             if (variable != null) {
@@ -68,7 +70,6 @@ public class Expression {
 
     protected void simplifyCurrent() {
         if (leaf) return;
-
         normalize();
         flattenAssociative();
         foldConstants();
@@ -78,46 +79,41 @@ public class Expression {
 
     private void normalize() {
         if (operator instanceof Operator.Subtraction) {
-            // A - B  ->  A + (-1.0 * B)
             this.operator = new Operator.Addition();
             Expression negOne = new Expression(-1.0);
-            this.children[1] = new Expression(new Operator.Multiplication(), negOne, this.children[1]);
-            this.children[1].simplify();
+            Expression newRight = new Expression(new Operator.Multiplication(), Arrays.asList(negOne, this.children.get(1)));
+            newRight.simplify();
+            this.children = new ArrayList<>(Arrays.asList(this.children.get(0), newRight));
 
         } else if (operator instanceof Operator.Division) {
-            // A / B  ->  A * (B ^ -1.0)
             this.operator = new Operator.Multiplication();
-            this.children[1] = new Expression(new Operator.Power(), this.children[1], new Expression(-1.0));
-            this.children[1].simplify();
+            Expression newRight = new Expression(new Operator.Power(), Arrays.asList(this.children.get(1), new Expression(-1.0)));
+            newRight.simplify();
+            this.children = new ArrayList<>(Arrays.asList(this.children.get(0), newRight));
 
         } else if (operator instanceof Operator.Negation) {
-            // -A  ->  -1.0 * A
-            // We upgrade the operator to Multiplication and insert a constant -1.0 as the left child
             this.operator = new Operator.Multiplication();
             Expression negOne = new Expression(-1.0);
-            this.children = new Expression[] { negOne, this.children[0] };
-            // No need to call simplify on the children here, as the bottom-up
-            // traversal guarantees children[0] is already simplified.
+            this.children = new ArrayList<>(Arrays.asList(negOne, this.children.get(0)));
         }
     }
 
     private void flattenAssociative() {
-        // Automatically upgrade binary operators to their MultiOperator forms
         if (operator.commutative != null) {
             this.operator = operator.commutative;
         }
 
         // Dynamically flatten children that share the same base mathematical property
         if (operator instanceof MultiOperator<?> multiOp) {
-            java.util.List<Expression> flatChildren = new java.util.ArrayList<>();
+            List<Expression> flatChildren = new ArrayList<>();
             for (Expression child : children) {
                 if (!child.leaf && (child.operator.getClass() == multiOp.base || child.operator.getClass() == multiOp.getClass())) {
-                    flatChildren.addAll(java.util.Arrays.asList(child.children));
+                    flatChildren.addAll(child.children); // Much cleaner without Arrays.asList()
                 } else {
                     flatChildren.add(child);
                 }
             }
-            this.children = flatChildren.toArray(new Expression[0]);
+            this.children = flatChildren;
         }
     }
 
@@ -130,31 +126,28 @@ public class Expression {
             else vars.add(child);
         }
 
-        // If no constants exist, or only one exists in a multi-operation, do nothing
         if (consts.isEmpty() || (consts.size() == 1 && !vars.isEmpty())) return;
 
-        // Evaluate the grouped constants abstractly
         Double[] args = consts.stream().map(c -> c.constant).toArray(Double[]::new);
         double foldedValue = 0.0;
 
         if (operator.target == Operator.Target.SINGLE) {
             foldedValue = operator.operator.apply(args[0], 0.0);
         } else if (operator instanceof MultiOperator<Double> multiOp) {
-            foldedValue = multiOp.multiOperator.apply(args); // Raw type cast for abstraction
+            foldedValue = multiOp.multiOperator.apply(args);
         } else {
             foldedValue = operator.operator.apply(args[0], args[1]);
         }
 
-        // Catch arithmetic errors natively
         if (Double.isInfinite(foldedValue) || Double.isNaN(foldedValue)) {
             throw new ArithmeticException("Mathematical error during constant folding such as Division by Zero");
         }
 
         if (vars.isEmpty()) {
-            transformToLeaf(foldedValue); // The entire branch becomes a single number
+            transformToLeaf(foldedValue);
         } else {
-            vars.add(new Expression(foldedValue)); // Append the folded number back to the variables
-            this.children = vars.toArray(new Expression[0]);
+            vars.add(new Expression(foldedValue));
+            this.children = vars;
         }
     }
 
@@ -163,32 +156,29 @@ public class Expression {
         Class<?> baseOp = (operator instanceof MultiOperator<?> m) ? m.base : operator.getClass();
 
         if (baseOp == Operator.Multiplication.class) {
-            if (hasConstant(0.0)) transformToLeaf(0.0);         // Annihilation: X * 0 = 0
-            else removeConstants(1.0);                          // Identity: X * 1 = X
+            if (hasConstant(0.0)) transformToLeaf(0.0);
+            else removeConstants(1.0);
         } else if (baseOp == Operator.Addition.class) {
-            removeConstants(0.0);                               // Identity: X + 0 = X
+            removeConstants(0.0);
         } else if (baseOp == Operator.Power.class) {
-            if (isConstant(children[1], 0.0)) transformToLeaf(1.0);      // X ^ 0 = 1
-            else if (isConstant(children[1], 1.0)) replaceWith(children[0]); // X ^ 1 = X
-            else if (isConstant(children[0], 0.0)) transformToLeaf(0.0);     // 0 ^ X = 0
+            if (isConstant(children.get(1), 0.0)) transformToLeaf(1.0);
+            else if (isConstant(children.get(1), 1.0)) replaceWith(children.get(0));
+            else if (isConstant(children.get(0), 0.0)) transformToLeaf(0.0);
         }
 
-        // Single-child cleanup: If an Addition/Multiplication only has 1 child left, dissolve the operator
-        if (!leaf && children.length == 1 && operator.target == Operator.Target.MULTIPLE) {
-            replaceWith(children[0]);
+        if (!leaf && children.size() == 1 && operator.target == Operator.Target.MULTIPLE) {
+            replaceWith(children.get(0));
         }
     }
 
     private void expandTerms() {
-        if (leaf || children.length < 2) return;
+        if (leaf || children.size() < 2) return;
         Class<?> baseOp = operator.getBase();
 
-        // Expand: A * (B + C) -> A*B + A*C
         if (baseOp == Operator.Multiplication.class) {
             Expression sumNode = null;
             List<Expression> multipliers = new ArrayList<>();
 
-            // Find the first Addition node to distribute across
             for (Expression child : children) {
                 if (sumNode == null && !child.leaf && (child.operator instanceof Operator.Addition || child.operator instanceof MultiOperator.Addition)) {
                     sumNode = child;
@@ -198,12 +188,13 @@ public class Expression {
             }
 
             if (sumNode != null) {
-                Expression currentMultipliers = new Expression(new MultiOperator.Multiplication(), multipliers.toArray(new Expression[0]));
-                Expression[] distributedTerms = new Expression[sumNode.children.length];
+                Expression currentMultipliers = new Expression(new MultiOperator.Multiplication(), multipliers);
+                List<Expression> distributedTerms = new ArrayList<>();
 
-                for (int i = 0; i < sumNode.children.length; i++) {
-                    distributedTerms[i] = new Expression(new MultiOperator.Multiplication(), currentMultipliers, sumNode.children[i]);
-                    distributedTerms[i].simplify(); // Simplify the newly created term
+                for (int i = 0; i < sumNode.children.size(); i++) {
+                    Expression newTerm = new Expression(new MultiOperator.Multiplication(), Arrays.asList(currentMultipliers, sumNode.children.get(i)));
+                    newTerm.simplify();
+                    distributedTerms.add(newTerm);
                 }
 
                 this.operator = new MultiOperator.Addition();
@@ -214,7 +205,7 @@ public class Expression {
 
     private void transformToLeaf(double val) {
         this.operator = null;
-        this.children = new Expression[0];
+        this.children = new ArrayList<>();
         this.constant = val;
         this.variable = null;
         this.leaf = true;
@@ -229,7 +220,7 @@ public class Expression {
     }
 
     private boolean hasConstant(double targetValue) {
-        return java.util.Arrays.stream(children).anyMatch(c -> isConstant(c, targetValue));
+        return children.stream().anyMatch(c -> isConstant(c, targetValue));
     }
 
     private boolean isConstant(Expression expr, double targetValue) {
@@ -237,9 +228,9 @@ public class Expression {
     }
 
     private void removeConstants(double targetValue) {
-        this.children = java.util.Arrays.stream(children)
+        this.children = children.stream()
                 .filter(c -> !isConstant(c, targetValue))
-                .toArray(Expression[]::new);
+                .collect(Collectors.toList());
     }
 
     public boolean isLinear() {
@@ -271,20 +262,21 @@ public class Expression {
 
     public Pair<List<Pair<Double, Variable<Double>>>, Double> toLinear() {
         Map<Variable<Double>, Double> termMap = new HashMap<>();
-        List<Double> intercept = List.of();
+        List<Double> intercept = new ArrayList<>(); // Fixed: Was List.of() which is immutable
 
         extractLinearTerms(termMap, intercept);
 
         List<Pair<Double, Variable<Double>>> terms = new ArrayList<>();
         for (Map.Entry<Variable<Double>, Double> entry : termMap.entrySet()) {
-            if (entry.getValue() != 0.0) { // Clean up any variables that algebraically canceled out to 0
+            if (entry.getValue() != 0.0) {
                 terms.add(new Pair<>(entry.getValue(), entry.getKey()));
             }
         }
 
         double sum = 0.0;
         for (Double t : intercept)
-            sum+=t;
+            sum += t;
+
         return new Pair<>(terms, sum);
     }
 
@@ -319,6 +311,111 @@ public class Expression {
             } else {
                 intercept.add(coeff);
             }
+        }
+    }
+
+    public static class ImmutableExpression extends Expression{
+        public ImmutableExpression(Operator<Double> operator, List<Expression> children) {
+            super(operator, children);
+            this.children = Collections.unmodifiableList(this.children);
+        }
+
+        public ImmutableExpression(Variable<Double> variable) {
+            super(variable);
+            this.children = Collections.unmodifiableList(this.children);
+        }
+
+        public ImmutableExpression(double constant) {
+            super(constant);
+            this.children = Collections.unmodifiableList(this.children);
+        }
+
+        /**
+         * Deeply clones a mutable Expression tree into a permanently locked Immutable tree.
+         */
+        public static ImmutableExpression freeze(Expression expr) {
+            if (expr instanceof ImmutableExpression) {
+                return (ImmutableExpression) expr; // Already safe
+            }
+
+            if (expr.leaf) {
+                if (expr.constant != null) {
+                    return new ImmutableExpression(expr.constant);
+                }
+                return new ImmutableExpression(expr.variable);
+            }
+
+            List<Expression> frozenChildren = expr.children.stream()
+                    .map(ImmutableExpression::freeze)
+                    .collect(Collectors.toList());
+
+            return new ImmutableExpression(expr.operator, frozenChildren);
+        }
+
+        @Override
+        public void simplify() {
+            throw new UnsupportedOperationException("Cannot simplify an ImmutableExpression.");
+        }
+
+        @Override
+        protected void simplifyCurrent() {
+            throw new UnsupportedOperationException("Cannot mutate an ImmutableExpression.");
+        }
+    }
+
+    public static final class ExpressionBuilder{
+        private ExpressionBuilder() {}
+
+        public static Expression var(Variable<Double> variable) {
+            return new Expression(variable);
+        }
+
+        public static Expression val(double constant) {
+            return new Expression(constant);
+        }
+
+        public static Expression add(Expression... children) {
+            return new Expression(new MultiOperator.Addition(), Arrays.asList(children));
+        }
+
+        public static Expression mul(Expression... children) {
+            return new Expression(new MultiOperator.Multiplication(), Arrays.asList(children));
+        }
+
+        public static Expression min(Expression... children) {
+            return new Expression(new MultiOperator.Minimum(), Arrays.asList(children));
+        }
+
+        public static Expression max(Expression... children) {
+            return new Expression(new MultiOperator.Maximum(), Arrays.asList(children));
+        }
+
+        public static Expression sub(Expression left, Expression right) {
+            return new Expression(new Operator.Subtraction(), Arrays.asList(left, right));
+        }
+
+        public static Expression div(Expression numerator, Expression denominator) {
+            return new Expression(new Operator.Division(), Arrays.asList(numerator, denominator));
+        }
+
+        public static Expression pow(Expression base, Expression exponent) {
+            return new Expression(new Operator.Power(), Arrays.asList(base, exponent));
+        }
+
+        public static Expression neg(Expression child) {
+            return new Expression(new Operator.Negation(), Arrays.asList(child));
+        }
+
+        public static Expression abs(Expression child) {
+            return new Expression(new Operator.Absolute(), Arrays.asList(child));
+        }
+
+        /**
+         * Helper to immediately build, simplify, and lock an expression.
+         */
+        public static ImmutableExpression buildLocked(Expression rawExpression) {
+            rawExpression.simplify();
+            return ImmutableExpression.freeze(rawExpression);
         }
     }
 }

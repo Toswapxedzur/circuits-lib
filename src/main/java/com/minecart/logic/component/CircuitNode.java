@@ -3,6 +3,8 @@ package com.minecart.logic.component;
 import com.minecart.logic.Component;
 import com.minecart.logic.CurrentFlow;
 import com.minecart.logic.edge.CircuitEdge;
+import com.minecart.math.function.Expression;
+import com.minecart.math.function.Variable;
 
 import java.util.List;
 import java.util.Set;
@@ -10,7 +12,21 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class CircuitNode extends Component {
-    protected float voltage;
+
+    public CircuitNode(){
+    }
+
+    @Override
+    public void collectRule(List<Expression> equations) {
+        super.collectRule(equations);
+
+        //kirchoff current rule
+        Expression expression;
+    }
+
+    public void tick(){
+
+    }
 
     //override this method for connections
     public Set<CircuitEdge> getConnection(){

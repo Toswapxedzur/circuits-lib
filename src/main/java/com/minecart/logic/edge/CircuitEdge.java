@@ -4,15 +4,21 @@ import com.google.common.graph.EndpointPair;
 import com.minecart.logic.Component;
 import com.minecart.logic.CurrentFlow;
 import com.minecart.logic.component.CircuitNode;
+import com.minecart.math.function.Variable;
 
 public class CircuitEdge extends Component {
     //positive: from first to second
-    protected float current;
+    protected Variable.DoubleVar current;
+    protected Variable.DoubleVar voltage;
 
     protected CircuitNode[] connection;
 
     public CircuitEdge(){
         connection = new CircuitNode[2];
+    }
+
+    public void tick(){
+
     }
 
     public CircuitNode[] getConnection() {
@@ -33,7 +39,7 @@ public class CircuitEdge extends Component {
     }
 
     public CurrentFlow flowDirection(CircuitNode node){
-        if(current == 0f)
+        if(current.getValue() == 0f)
             return CurrentFlow.NO;
         if(connection[sourceInx()] == node)
             return CurrentFlow.OUT;
@@ -41,11 +47,11 @@ public class CircuitEdge extends Component {
     }
 
     protected int sourceInx(){
-        return current < 0 ? 1 : 0;
+        return current.getValue() < 0 ? 1 : 0;
     }
 
     protected int targetInx(){
-        return current < 0 ? 0 : 1;
+        return current.getValue() < 0 ? 0 : 1;
     }
 
     public CircuitNode getSource(){
