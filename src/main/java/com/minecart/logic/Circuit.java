@@ -2,35 +2,59 @@ package com.minecart.logic;
 
 import com.google.common.graph.*;
 import com.minecart.logic.component.CircuitNode;
-import com.minecart.logic.edge.CircuitEdge;
-import org.apache.commons.math3.geometry.spherical.twod.Edge;
+import com.minecart.logic.component.CircuitEdge;
+import com.minecart.math.function.EquationSystem;
+import com.minecart.math.function.Expression;
+import com.minecart.misc.ElectricalVariable;
 import org.jspecify.annotations.Nullable;
 
-import java.util.Arrays;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class Circuit implements Network<CircuitNode, CircuitEdge> {
     public static ElementOrder<CircuitNode> nodeOrder = (ElementOrder<CircuitNode>) ElementOrder.sorted(CircuitNode.comparator);
     public static ElementOrder<CircuitEdge> edgeOrder = (ElementOrder<CircuitEdge>) ElementOrder.sorted(CircuitNode.comparator);
+
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
+
+    // Converted to Lists for deterministic matrix mapping
+    protected List<ElectricalVariable> electricalVariables;
+    protected List<Expression> electricalRules;
+    protected EquationSystem system;
 
     public Circuit(){
         nodes = new TreeSet<>();
         edges = new TreeSet<>();
+        electricalVariables = new ArrayList<>();
+        electricalRules = new ArrayList<>();
+        // Removed EquationSystem instantiation from here to prevent locking in an empty list
     }
 
     public void tick(){
-
         for(CircuitNode node : nodes){
             node.tick();
         }
-        for(CircuitEdge egde : edges){
-            egde.tick();
+        for(CircuitEdge edge : edges){
+            edge.tick();
         }
+    }
+
+    public void updateTopology(){
+        electricalVariables.clear();
+        electricalRules.clear();
+
+        for(CircuitNode node : nodes){
+            node.collectRule(electricalRules);
+            node.collectElectricalVariable(electricalVariables);
+        }
+        for(CircuitEdge edge : edges){
+            edge.collectRule(electricalRules);
+            edge.collectElectricalVariable(electricalVariables);
+        }
+
+        // Re-initialize the system with the newly populated and ordered list of equations
+        system = new EquationSystem(electricalRules);
     }
 
     @Override

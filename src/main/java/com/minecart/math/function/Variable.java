@@ -1,5 +1,9 @@
 package com.minecart.math.function;
 
+/**
+ * Representing anything that could change, basically a field
+ * @param <T> Type
+ */
 public class Variable<T> {
     protected int index;
     T value;
@@ -32,6 +36,7 @@ public class Variable<T> {
          * Creates a bounded double variable.
          */
         public DoubleVar(double lower, double upper) {
+            this.value = 0.0;
             this.lower = lower;
             this.upper = upper;
         }
@@ -39,7 +44,7 @@ public class Variable<T> {
         /**
          * Creates an unbounded double variable.
          */
-        public DoubleVar(int index) {
+        public DoubleVar() {
             this(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
         }
 

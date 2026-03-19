@@ -1,11 +1,9 @@
 package com.minecart.logic.component;
 
-import com.minecart.logic.Component;
 import com.minecart.logic.CurrentFlow;
-import com.minecart.logic.edge.CircuitEdge;
 import com.minecart.math.function.Expression;
-import com.minecart.math.function.Variable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -21,7 +19,14 @@ public class CircuitNode extends Component {
         super.collectRule(equations);
 
         //kirchoff current rule
-        Expression expression;
+        List<Expression> currentSum = new ArrayList<>();
+        for(CircuitEdge edge : getConnection()){
+            Expression exp = Expression.ExpressionBuilder.var(edge.getCurrent());
+            if(edge.shouldRevert(this))
+                exp = Expression.ExpressionBuilder.neg(exp);
+            currentSum.add(exp);
+        }
+        equations.add(Expression.ExpressionBuilder.add(currentSum));
     }
 
     public void tick(){

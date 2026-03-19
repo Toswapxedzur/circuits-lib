@@ -1,4 +1,4 @@
-package com.minecart.math.function;
+package com.minecart.misc;
 
 @FunctionalInterface
 public interface MultinaryOperator<T> {

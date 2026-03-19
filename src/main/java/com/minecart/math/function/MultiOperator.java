@@ -1,5 +1,7 @@
 package com.minecart.math.function;
 
+import com.minecart.misc.MultinaryOperator;
+
 public class MultiOperator<T> extends Operator<T> {
     MultinaryOperator<T> multiOperator;
     Class<? extends Operator<T>> base;

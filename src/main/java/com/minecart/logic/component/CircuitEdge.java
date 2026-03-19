@@ -1,20 +1,22 @@
-package com.minecart.logic.edge;
+package com.minecart.logic.component;
 
 import com.google.common.graph.EndpointPair;
-import com.minecart.logic.Component;
 import com.minecart.logic.CurrentFlow;
-import com.minecart.logic.component.CircuitNode;
 import com.minecart.math.function.Variable;
+import com.minecart.misc.ElectricalVariable;
 
 public class CircuitEdge extends Component {
     //positive: from first to second
-    protected Variable.DoubleVar current;
-    protected Variable.DoubleVar voltage;
+    protected ElectricalVariable current;
+
+    protected ElectricalVariable voltage;
 
     protected CircuitNode[] connection;
 
     public CircuitEdge(){
         connection = new CircuitNode[2];
+        current = new ElectricalVariable(ElectricalVariable.Type.CURRENT);
+        voltage = new ElectricalVariable(0, Double.POSITIVE_INFINITY, ElectricalVariable.Type.VOLTAGE);
     }
 
     public void tick(){
@@ -23,6 +25,14 @@ public class CircuitEdge extends Component {
 
     public CircuitNode[] getConnection() {
         return connection;
+    }
+
+    public ElectricalVariable getVoltage() {
+        return voltage;
+    }
+
+    public ElectricalVariable getCurrent() {
+        return current;
     }
 
     public boolean connect(CircuitNode fromConnect, CircuitNode toConnect){
@@ -36,6 +46,10 @@ public class CircuitEdge extends Component {
             }
         }
         return false;
+    }
+
+    public boolean shouldRevert(CircuitNode node){
+        return node.equals(getConnection()[1]);
     }
 
     public CurrentFlow flowDirection(CircuitNode node){

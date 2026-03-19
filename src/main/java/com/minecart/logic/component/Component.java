@@ -1,6 +1,7 @@
-package com.minecart.logic;
+package com.minecart.logic.component;
 
 import com.minecart.math.function.Expression;
+import com.minecart.misc.ElectricalVariable;
 
 import java.util.Comparator;
 import java.util.List;
@@ -9,20 +10,10 @@ import java.util.UUID;
 
 public abstract class Component implements Comparable<Component>{
     public static final Comparator<? extends Component> comparator = (f, s) -> f.id.compareTo(s.id);
-    protected boolean open;
     protected UUID id;
 
     public Component(){
         this.id = UUID.randomUUID();
-        this.open = false;
-    }
-
-    public boolean isOpen() {
-        return open;
-    }
-
-    public void setOpen(boolean open) {
-        this.open = open;
     }
 
     /**
@@ -31,6 +22,14 @@ public abstract class Component implements Comparable<Component>{
      * @param equations Append equation representing limitations by overriding this method
      */
     public void collectRule(List<Expression> equations){
+
+    }
+
+    /**
+     * Collect all the variables
+     * @param variables All the data that could change and impacted by Rules
+     */
+    public void collectElectricalVariable(List<ElectricalVariable> variables){
 
     }
 

@@ -32,9 +32,9 @@ public class EquationSystem {
         return true;
     }
 
-    public boolean solveLinear() {
+    public SolutionState solveLinear() {
         if(!isLinear())
-            return false;
+            return SolutionState.UNSOL;
         Set<Variable<Double>> varCollection = new TreeSet<>();
         Map<Integer, Variable<Double>> varMap = new TreeMap<>();
         for(Expression equation : system){
@@ -70,7 +70,7 @@ public class EquationSystem {
         DecompositionSolver solver = new QRDecomposition(A).getSolver();
 
         if (!solver.isNonSingular()) {
-            return false; // Matrix is singular, no unique solution exists
+            return SolutionState.NOSOL; // Matrix is singular, no unique solution exists
         }
 
         RealVector solution = solver.solve(b);
@@ -79,6 +79,10 @@ public class EquationSystem {
             Variable<Double> variable = varMap.get(i);
             variable.setValue(solution.getEntry(i));
         }
-        return true;
+        return SolutionState.SOL;
+    }
+
+    public enum SolutionState{
+        UNSOL, NOSOL, SOL
     }
 }

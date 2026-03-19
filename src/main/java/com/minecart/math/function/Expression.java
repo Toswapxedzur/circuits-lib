@@ -374,8 +374,8 @@ public class Expression {
             return new Expression(constant);
         }
 
-        public static Expression add(Expression... children) {
-            return new Expression(new MultiOperator.Addition(), Arrays.asList(children));
+        public static Expression add(List<Expression> children) {
+            return new Expression(new MultiOperator.Addition(), children);
         }
 
         public static Expression mul(Expression... children) {
