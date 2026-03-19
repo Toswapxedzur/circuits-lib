@@ -1,16 +1,20 @@
 package com.minecart.math.function;
 
 public class Variable<T> {
-    protected final String name;
-
     protected int index;
 
-    public Variable(int index, String name) {
-        this.name = name;
+    T value;
+
+    public Variable(int index) {
+        this.index = index;
     }
 
-    public String getName() {
-        return name;
+    public T getValue() {
+        return value;
+    }
+
+    public void setValue(T value) {
+        this.value = value;
     }
 
     public int getIndex() {
@@ -28,8 +32,8 @@ public class Variable<T> {
         /**
          * Creates a bounded double variable.
          */
-        public DoubleVar(int index, String name, double lower, double upper) {
-            super(index, name);
+        public DoubleVar(int index, double lower, double upper) {
+            super(index);
             this.lower = lower;
             this.upper = upper;
         }
@@ -37,8 +41,8 @@ public class Variable<T> {
         /**
          * Creates an unbounded double variable.
          */
-        public DoubleVar(int index, String name) {
-            this(index, name, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
+        public DoubleVar(int index) {
+            this(index, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
         }
 
         public double getLower() {
