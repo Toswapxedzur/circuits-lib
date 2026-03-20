@@ -40,34 +40,4 @@ public class MultiOperator<T> extends Operator<T> {
             return product;
         }
     }
-
-    public static class Minimum extends MultiOperator<Double> {
-        public Minimum() {
-            super(Operator.Minimum.class, MultiOperator.Minimum::min);
-        }
-
-        public static Double min(Double... a) {
-            if (a.length == 0) return Double.NaN;
-            double min = a[0];
-            for (int i = 1; i < a.length; i++) {
-                min = Math.min(min, a[i]);
-            }
-            return min;
-        }
-    }
-
-    public static class Maximum extends MultiOperator<Double> {
-        public Maximum() {
-            super(Operator.Maximum.class, MultiOperator.Maximum::max);
-        }
-
-        public static Double max(Double... a) {
-            if (a.length == 0) return Double.NaN;
-            double max = a[0];
-            for (int i = 1; i < a.length; i++) {
-                max = Math.max(max, a[i]);
-            }
-            return max;
-        }
-    }
 }

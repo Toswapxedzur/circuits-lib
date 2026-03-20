@@ -23,7 +23,7 @@ public class Expression {
         this.constant = null;
         this.leaf = false;
 
-        if (operator.target.targetAmount.test(children.size())) {
+        if (!operator.target.targetAmount.test(children.size())) {
             throw new IllegalArgumentException("Expression amount incorrect");
         }
     }
@@ -133,8 +133,8 @@ public class Expression {
 
         if (operator.target == Operator.Target.SINGLE) {
             foldedValue = operator.operator.apply(args[0], 0.0);
-        } else if (operator instanceof MultiOperator<Double> multiOp) {
-            foldedValue = multiOp.multiOperator.apply(args);
+        } else if (operator instanceof MultiOperator<?> multiOp) {
+            foldedValue = ((MultiOperator<Double>)multiOp).multiOperator.apply(args);
         } else {
             foldedValue = operator.operator.apply(args[0], args[1]);
         }
@@ -176,25 +176,76 @@ public class Expression {
         Class<?> baseOp = operator.getBase();
 
         if (baseOp == Operator.Multiplication.class) {
-            Expression sumNode = null;
-            List<Expression> multipliers = new ArrayList<>();
+            List<Expression> sumNodes = new ArrayList<>();
+            List<Expression> otherNodes = new ArrayList<>();
 
+            // 1. Separate Addition nodes from everything else
             for (Expression child : children) {
-                if (sumNode == null && !child.leaf && (child.operator instanceof Operator.Addition || child.operator instanceof MultiOperator.Addition)) {
-                    sumNode = child;
+                if (!child.leaf && child.operator.getBase() == Operator.Addition.class) {
+                    sumNodes.add(child);
                 } else {
-                    multipliers.add(child);
+                    otherNodes.add(child);
                 }
             }
 
-            if (sumNode != null) {
-                Expression currentMultipliers = new Expression(new MultiOperator.Multiplication(), multipliers);
+            // If no addition nodes exist, there is nothing to distribute
+            if (sumNodes.isEmpty()) return;
+
+            // 2. The User Logic: Check for the first two addition terms and FOIL them
+            if (sumNodes.size() >= 2) {
+                Expression s1 = sumNodes.get(0);
+                Expression s2 = sumNodes.get(1);
+                List<Expression> expandedTerms = new ArrayList<>();
+
+                for (Expression term1 : s1.children) {
+                    for (Expression term2 : s2.children) {
+                        // Use deepCopy to prevent memory reference corruption
+                        expandedTerms.add(new Expression(new MultiOperator.Multiplication(),
+                                Arrays.asList(term1.deepCopy(), term2.deepCopy())));
+                        // Notice: We intentionally DO NOT recursively simplify here!
+                    }
+                }
+
+                for(Expression term : expandedTerms){
+                    term.simplifyCurrent();
+                }
+
+                Expression newSum = new Expression(new MultiOperator.Addition(), expandedTerms);
+
+                // Replace s1 and s2 with the new distributed sum
+                List<Expression> newChildren = new ArrayList<>();
+                newChildren.add(newSum);
+                for (int i = 2; i < sumNodes.size(); i++) {
+                    newChildren.add(sumNodes.get(i)); // Add remaining sums
+                }
+                newChildren.addAll(otherNodes); // Add non-sums
+
+                this.children = newChildren;
+
+                // 3. Call itself again to process any remaining sums!
+                this.expandTerms();
+                return;
+            }
+
+            // 4. If there is exactly ONE addition node, distribute the non-sums into it
+            if (sumNodes.size() == 1 && !otherNodes.isEmpty()) {
+                Expression sumNode = sumNodes.get(0);
                 List<Expression> distributedTerms = new ArrayList<>();
 
-                for (int i = 0; i < sumNode.children.size(); i++) {
-                    Expression newTerm = new Expression(new MultiOperator.Multiplication(), Arrays.asList(currentMultipliers, sumNode.children.get(i)));
-                    newTerm.simplify();
-                    distributedTerms.add(newTerm);
+                for (Expression term : sumNode.children) {
+                    List<Expression> newMultipliers = new ArrayList<>();
+                    newMultipliers.add(term.deepCopy());
+
+                    for (Expression other : otherNodes) {
+                        newMultipliers.add(other.deepCopy());
+                    }
+
+                    distributedTerms.add(new Expression(new MultiOperator.Multiplication(), newMultipliers));
+                    // Notice: We intentionally DO NOT recursively simplify here!
+                }
+
+                for(Expression term : distributedTerms){
+                    term.simplifyCurrent();
                 }
 
                 this.operator = new MultiOperator.Addition();
@@ -261,6 +312,9 @@ public class Expression {
     }
 
     public Pair<List<Pair<Double, Variable<Double>>>, Double> toLinear() {
+        if (!isLinear()) {
+            throw new IllegalStateException("Expression is not linear");
+        }
         Map<Variable<Double>, Double> termMap = new HashMap<>();
         List<Double> intercept = new ArrayList<>(); // Fixed: Was List.of() which is immutable
 
@@ -312,6 +366,24 @@ public class Expression {
                 intercept.add(coeff);
             }
         }
+    }
+
+    /**
+     * Recursively creates a fresh instance of the AST branch.
+     * This is strictly required when distributing terms so mutable nodes don't share memory references.
+     */
+    public Expression deepCopy() {
+        if (leaf) {
+            if (constant != null) return new Expression(constant);
+            return new Expression(variable);
+        }
+
+        List<Expression> copiedChildren = new ArrayList<>();
+        for (Expression child : children) {
+            copiedChildren.add(child.deepCopy());
+        }
+
+        return new Expression(operator, copiedChildren);
     }
 
     public static class ImmutableExpression extends Expression{
@@ -374,20 +446,20 @@ public class Expression {
             return new Expression(constant);
         }
 
+        public static Expression add(Expression left, Expression right) {
+            return new Expression(new Operator.Addition(), Arrays.asList(left, right));
+        }
+
+        public static Expression mul(Expression left, Expression right) {
+            return new Expression(new Operator.Multiplication(), Arrays.asList(left, right));
+        }
+
         public static Expression add(List<Expression> children) {
             return new Expression(new MultiOperator.Addition(), children);
         }
 
-        public static Expression mul(Expression... children) {
-            return new Expression(new MultiOperator.Multiplication(), Arrays.asList(children));
-        }
-
-        public static Expression min(Expression... children) {
-            return new Expression(new MultiOperator.Minimum(), Arrays.asList(children));
-        }
-
-        public static Expression max(Expression... children) {
-            return new Expression(new MultiOperator.Maximum(), Arrays.asList(children));
+        public static Expression mul(List<Expression> children) {
+            return new Expression(new MultiOperator.Multiplication(), children);
         }
 
         public static Expression sub(Expression left, Expression right) {
@@ -404,10 +476,6 @@ public class Expression {
 
         public static Expression neg(Expression child) {
             return new Expression(new Operator.Negation(), Arrays.asList(child));
-        }
-
-        public static Expression abs(Expression child) {
-            return new Expression(new Operator.Absolute(), Arrays.asList(child));
         }
 
         /**

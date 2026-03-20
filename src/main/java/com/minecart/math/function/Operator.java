@@ -66,6 +66,9 @@ public class Operator<T> {
         }
     }
 
+    /**
+     * The exponent must be strictly integer
+     */
     public static class Power extends Operator<Double> {
         public Power() {
             super(Target.DOUBLE, Power::power, null);
@@ -73,16 +76,6 @@ public class Operator<T> {
 
         public static double power(double a, double b) {
             return Math.pow(a, b);
-        }
-    }
-
-    public static class Logarithm extends Operator<Double> {
-        public Logarithm() {
-            super(Target.DOUBLE, Logarithm::log, null);
-        }
-
-        public static double log(double a, double b) {
-            return Math.log(a) / Math.log(b);
         }
     }
 
@@ -94,76 +87,6 @@ public class Operator<T> {
         // For SINGLE target, the second parameter is ignored during tree evaluation
         public static double negate(double a, double b) {
             return -a;
-        }
-    }
-
-    public static class Sine extends Operator<Double> {
-        public Sine() {
-            super(Target.SINGLE, Sine::sin, null);
-        }
-
-        public static double sin(double a, double b) {
-            return Math.sin(a);
-        }
-    }
-
-    public static class Cosine extends Operator<Double> {
-        public Cosine() {
-            super(Target.SINGLE, Cosine::cos, null);
-        }
-
-        public static double cos(double a, double b) {
-            return Math.cos(a);
-        }
-    }
-
-    public static class Modulo extends Operator<Double> {
-        public Modulo() {
-            super(Target.DOUBLE, Modulo::modulo, null);
-        }
-
-        public static double modulo(double a, double b) {
-            return a % b;
-        }
-    }
-
-    public static class Minimum extends Operator<Double> {
-        public Minimum() {
-            super(Target.DOUBLE, Minimum::min, new MultiOperator.Minimum());
-        }
-
-        public static double min(double a, double b) {
-            return Math.min(a, b);
-        }
-    }
-
-    public static class Maximum extends Operator<Double> {
-        public Maximum() {
-            super(Target.DOUBLE, Maximum::max, new MultiOperator.Maximum());
-        }
-
-        public static double max(double a, double b) {
-            return Math.max(a, b);
-        }
-    }
-
-    public static class Tangent extends Operator<Double> {
-        public Tangent() {
-            super(Target.SINGLE, Tangent::tan, null);
-        }
-
-        public static double tan(double a, double b) {
-            return Math.tan(a);
-        }
-    }
-
-    public static class Absolute extends Operator<Double> {
-        public Absolute() {
-            super(Target.SINGLE, Absolute::abs, null);
-        }
-
-        public static double abs(double a, double b) {
-            return Math.abs(a);
         }
     }
 }

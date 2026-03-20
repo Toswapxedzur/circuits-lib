@@ -1,4 +1,4 @@
-package com.minecart.logic;
+package com.minecart.misc;
 
 public enum CurrentFlow {
     IN(1), NO(0), OUT(-1);

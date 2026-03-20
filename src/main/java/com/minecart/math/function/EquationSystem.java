@@ -8,11 +8,9 @@ import java.util.*;
 public class EquationSystem {
     //default assume the equation is expression = 0
     List<Expression> system;
-    Set<Pair<Variable<Double>, Double>> variables;
 
     public EquationSystem(List<Expression> system){
         this.system = system;
-        this.variables = Set.of();
     }
 
     public int size(){
@@ -35,14 +33,14 @@ public class EquationSystem {
     public SolutionState solveLinear() {
         if(!isLinear())
             return SolutionState.UNSOL;
-        Set<Variable<Double>> varCollection = new TreeSet<>();
-        Map<Integer, Variable<Double>> varMap = new TreeMap<>();
+        Set<Variable<Double>> varCollection = new LinkedHashSet<>();
+        Map<Integer, Variable<Double>> varMap = new HashMap<>();
         for(Expression equation : system){
             equation.collectVar(varCollection);
         }
         int index = 0;
         for(Variable<Double> variable : varCollection){
-            variable.index = ++index;
+            variable.index = index++;
             varMap.put(variable.index, variable);
         }
 

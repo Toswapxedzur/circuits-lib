@@ -1,8 +1,7 @@
 package com.minecart.logic.component;
 
 import com.google.common.graph.EndpointPair;
-import com.minecart.logic.CurrentFlow;
-import com.minecart.math.function.Variable;
+import com.minecart.misc.CurrentFlow;
 import com.minecart.misc.ElectricalVariable;
 
 public class CircuitEdge extends Component {

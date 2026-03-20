@@ -9,14 +9,28 @@ import com.minecart.misc.ElectricalVariable;
 import org.jspecify.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/**
+ * Represent a connected bidirectional circuit network
+ */
 public class Circuit implements Network<CircuitNode, CircuitEdge> {
-    public static ElementOrder<CircuitNode> nodeOrder = (ElementOrder<CircuitNode>) ElementOrder.sorted(CircuitNode.comparator);
-    public static ElementOrder<CircuitEdge> edgeOrder = (ElementOrder<CircuitEdge>) ElementOrder.sorted(CircuitNode.comparator);
+    public static final ElementOrder<CircuitNode> NODE_ORDER = (ElementOrder<CircuitNode>) ElementOrder.sorted(CircuitNode.comparator);
+    public static final ElementOrder<CircuitEdge> EDGE_ORDER = (ElementOrder<CircuitEdge>) ElementOrder.sorted(CircuitNode.comparator);
 
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
+
+    public World getWorld() {
+        return world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
+    }
+
+    protected World world;
 
     // Converted to Lists for deterministic matrix mapping
     protected List<ElectricalVariable> electricalVariables;
@@ -28,7 +42,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         edges = new TreeSet<>();
         electricalVariables = new ArrayList<>();
         electricalRules = new ArrayList<>();
-        // Removed EquationSystem instantiation from here to prevent locking in an empty list
+        system = new EquationSystem(electricalRules);
     }
 
     public void tick(){
@@ -38,6 +52,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         for(CircuitEdge edge : edges){
             edge.tick();
         }
+        system.solveLinear();
     }
 
     public void updateTopology(){
@@ -52,9 +67,56 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             edge.collectRule(electricalRules);
             edge.collectElectricalVariable(electricalVariables);
         }
+    }
 
-        // Re-initialize the system with the newly populated and ordered list of equations
-        system = new EquationSystem(electricalRules);
+    public void mergeInto(Circuit toMerge){
+
+    }
+
+    public boolean seperate(CircuitNode node1, CircuitNode node2){
+
+    }
+
+    public void bfs(CircuitNode startNode, Consumer<CircuitNode> nodeConsumer, Consumer<CircuitEdge> edgeConsumer) {
+        if (startNode == null || !this.nodes.contains(startNode)) return;
+
+        Set<CircuitNode> visitedNodes = new HashSet<>();
+        Set<CircuitEdge> visitedEdges = new HashSet<>();
+        Queue<CircuitNode> queue = new LinkedList<>();
+
+        queue.add(startNode);
+        visitedNodes.add(startNode);
+
+        while (!queue.isEmpty()) {
+            CircuitNode current = queue.poll();
+
+            // 1. Process the Node
+            if (nodeConsumer != null) {
+                nodeConsumer.accept(current);
+            }
+
+            // 2. Traverse outgoing connections
+            for (CircuitEdge edge : current.getConnection()) {
+
+                // Process the edge only if we haven't seen it yet
+                if (!visitedEdges.contains(edge)) {
+                    visitedEdges.add(edge);
+                    if (edgeConsumer != null) {
+                        edgeConsumer.accept(edge);
+                    }
+                }
+
+                // Find the neighbor on the other side of this wire
+                CircuitNode[] endpoints = edge.getConnection();
+                CircuitNode neighbor = (endpoints[0] == current) ? endpoints[1] : endpoints[0];
+
+                // Queue the neighbor if it hasn't been visited
+                if (neighbor != null && !visitedNodes.contains(neighbor)) {
+                    visitedNodes.add(neighbor);
+                    queue.add(neighbor);
+                }
+            }
+        }
     }
 
     @Override
@@ -84,12 +146,12 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
 
     @Override
     public ElementOrder<CircuitNode> nodeOrder() {
-        return nodeOrder;
+        return NODE_ORDER;
     }
 
     @Override
     public ElementOrder<CircuitEdge> edgeOrder() {
-        return edgeOrder;
+        return EDGE_ORDER;
     }
 
     @Override

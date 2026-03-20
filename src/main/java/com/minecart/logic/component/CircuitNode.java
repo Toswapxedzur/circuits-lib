@@ -1,6 +1,6 @@
 package com.minecart.logic.component;
 
-import com.minecart.logic.CurrentFlow;
+import com.minecart.misc.CurrentFlow;
 import com.minecart.math.function.Expression;
 
 import java.util.ArrayList;
@@ -31,6 +31,18 @@ public class CircuitNode extends Component {
 
     public void tick(){
 
+    }
+
+    public boolean connect(CircuitNode other, boolean simulate){
+        return false;
+    }
+
+    public boolean disconnect(CircuitEdge other, boolean simulate){
+        return false;
+    }
+
+    public boolean destroy(boolean simulate){
+        return true;
     }
 
     //override this method for connections

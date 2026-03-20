@@ -1,5 +1,7 @@
 package com.minecart.logic.component;
 
+import com.minecart.logic.Circuit;
+import com.minecart.logic.World;
 import com.minecart.math.function.Expression;
 import com.minecart.misc.ElectricalVariable;
 
@@ -11,6 +13,28 @@ import java.util.UUID;
 public abstract class Component implements Comparable<Component>{
     public static final Comparator<? extends Component> comparator = (f, s) -> f.id.compareTo(s.id);
     protected UUID id;
+
+    public Circuit getCircuit() {
+        return circuit;
+    }
+
+    public boolean setCircuit(Circuit circuit) {
+        if(this.world != circuit.getWorld())
+        this.circuit = circuit;
+        return true;
+    }
+
+    protected Circuit circuit;
+
+    public World getWorld() {
+        return world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
+    }
+
+    protected World world;
 
     public Component(){
         this.id = UUID.randomUUID();
