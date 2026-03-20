@@ -18,13 +18,15 @@ public abstract class Component implements Comparable<Component>{
         return circuit;
     }
 
-    public boolean setCircuit(Circuit circuit) {
-        if(this.world != circuit.getWorld())
+    public void setCircuit(Circuit circuit) {
         this.circuit = circuit;
-        return true;
     }
 
     protected Circuit circuit;
+
+    public void tick(){
+
+    }
 
     public World getWorld() {
         return world;

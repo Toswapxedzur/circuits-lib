@@ -5,6 +5,7 @@ import com.minecart.logic.component.CircuitNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class World {
     public List<Circuit> circuits;
@@ -20,46 +21,58 @@ public class World {
     }
 
     public void create(CircuitNode node){
+        node.setWorld(this);
+        Circuit circuit = createCircuit();
+        node.setCircuit(circuit);
+        circuit.nodes().add(node);
+    }
+
+    protected Circuit createCircuit(){
         Circuit circuit = new Circuit();
         circuit.setWorld(this);
         circuits.add(circuit);
-        node.setWorld(this);
-        node.setCircuit(circuit);
+        return circuit;
     }
 
-    public CircuitEdge connect(CircuitNode node1, CircuitNode node2){
+    public Optional<CircuitEdge> connect(CircuitNode node1, CircuitNode node2){
         if(node1.getWorld() != this || node2.getWorld() != this)
-            return null;
+            throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current World");
         CircuitEdge edge = new CircuitEdge();
         edge.connect(node1, node2);
-        Circuit circuit1 = node1.getCircuit(), circuit2 = node2.getCircuit();
-        if(circuit1 != circuit2)
+        if(!node1.connectEdge(edge, true) || !node2.connectEdge(edge, true))
+            return Optional.empty();
+        node1.connectEdge(edge, false);
+        node2.connectEdge(edge, false);
+        Circuit circuit1 = node1.getCircuit();
+        Circuit circuit2 = node2.getCircuit();
+        if(circuit1 != circuit2) {
             circuit2.mergeInto(circuit1);
-        circuit1.nodes.add(node1);
-        circuit1.nodes.add(node2);
-        circuit1.edges.add(edge);
-        circuit1.updateTopology();
-        return edge;
+            circuits.remove(circuit2);
+        }
+        circuit1.addEdge(edge);
+        return Optional.of(edge);
     }
 
     public boolean disconnect(CircuitEdge edge){
-        CircuitNode node1 = edge.getConnection()[0];
-        CircuitNode node2 = edge.getConnection()[1];
+        CircuitNode node1 = edge.getConnection(0);
+        CircuitNode node2 = edge.getConnection(1);
         if(node1.getCircuit() != node2.getCircuit())
             return false;
         Circuit circuit = node1.getCircuit();
         if(!node1.disconnect(edge, true) || node2.disconnect(edge, true))
             return false;
-        node1.disconnect(edge, false);
-        node2.disconnect(edge, false);
-        circuit.seperate(node1, node2);
+        Circuit newCircuit = new Circuit();
+        newCircuit.setWorld(this);
+        boolean createCircuit = circuit.seperate(node1, node2, edge, newCircuit);
+        if(createCircuit)
+            this.circuits.add(newCircuit);
         return true;
     }
 
     public boolean destroy(CircuitNode node){
-        if(!node.destroy(true))
+        if(!node.getCircuit().destroy(node, true))
             return false;
-        node.destroy(false);
+        node.getCircuit().destroy(node, false);
         return true;
     }
 }

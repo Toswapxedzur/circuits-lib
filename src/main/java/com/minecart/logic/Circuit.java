@@ -6,11 +6,13 @@ import com.minecart.logic.component.CircuitEdge;
 import com.minecart.math.function.EquationSystem;
 import com.minecart.math.function.Expression;
 import com.minecart.misc.ElectricalVariable;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.jspecify.annotations.Nullable;
 
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Represent a connected bidirectional circuit network
@@ -19,6 +21,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     public static final ElementOrder<CircuitNode> NODE_ORDER = (ElementOrder<CircuitNode>) ElementOrder.sorted(CircuitNode.comparator);
     public static final ElementOrder<CircuitEdge> EDGE_ORDER = (ElementOrder<CircuitEdge>) ElementOrder.sorted(CircuitNode.comparator);
 
+    protected World world;
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
 
@@ -29,8 +32,6 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     public void setWorld(World world) {
         this.world = world;
     }
-
-    protected World world;
 
     // Converted to Lists for deterministic matrix mapping
     protected List<ElectricalVariable> electricalVariables;
@@ -53,28 +54,6 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             edge.tick();
         }
         system.solveLinear();
-    }
-
-    public void updateTopology(){
-        electricalVariables.clear();
-        electricalRules.clear();
-
-        for(CircuitNode node : nodes){
-            node.collectRule(electricalRules);
-            node.collectElectricalVariable(electricalVariables);
-        }
-        for(CircuitEdge edge : edges){
-            edge.collectRule(electricalRules);
-            edge.collectElectricalVariable(electricalVariables);
-        }
-    }
-
-    public void mergeInto(Circuit toMerge){
-
-    }
-
-    public boolean seperate(CircuitNode node1, CircuitNode node2){
-
     }
 
     public void bfs(CircuitNode startNode, Consumer<CircuitNode> nodeConsumer, Consumer<CircuitEdge> edgeConsumer) {
@@ -106,9 +85,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
                     }
                 }
 
-                // Find the neighbor on the other side of this wire
-                CircuitNode[] endpoints = edge.getConnection();
-                CircuitNode neighbor = (endpoints[0] == current) ? endpoints[1] : endpoints[0];
+                CircuitNode neighbor = edge.getOther(current);
 
                 // Queue the neighbor if it hasn't been visited
                 if (neighbor != null && !visitedNodes.contains(neighbor)) {
@@ -117,6 +94,85 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
                 }
             }
         }
+    }
+
+    public boolean destroy(CircuitNode node, boolean simulate) {
+        if(simulate)
+            return node.destroy(new ArrayList<>(), true);
+        List<CircuitEdge> destroyEdge = new ArrayList<>();
+        node.destroy(destroyEdge, false);
+        for(CircuitEdge edge : destroyEdge){
+            edges.remove(edge);
+        }
+        nodes.remove(node);
+        return true;
+    }
+
+    /**
+     * Called everytime when the circuit structure changes, not when electrical variable changes
+     */
+    public void updateTopology(){
+        //update circuit rules and circuit variables
+        electricalVariables.clear();
+        electricalRules.clear();
+
+        for(CircuitNode node : nodes){
+            node.collectRule(electricalRules);
+            node.collectElectricalVariable(electricalVariables);
+        }
+        for(CircuitEdge edge : edges){
+            edge.collectRule(electricalRules);
+            edge.collectElectricalVariable(electricalVariables);
+        }
+    }
+
+    /**
+     * Merge all the nodes and edges to the other circuit, only handles Circuit and Component scope, doesn't care about World
+     * @param toMerge the other circuit to merge into, current circuit is discarded
+     */
+    public void mergeInto(Circuit toMerge){
+        for(CircuitNode node : nodes){
+            node.setCircuit(toMerge);
+            toMerge.nodes().add(node);
+        }
+        for(CircuitEdge edge : edges){
+            edge.setCircuit(toMerge);
+            toMerge.edges().add(edge);
+        }
+        toMerge.updateTopology();
+    }
+
+    public boolean seperate(CircuitNode node1, CircuitNode node2, CircuitEdge edge, Circuit newCircuit){
+        node1.disconnect(edge, false);
+        node2.disconnect(edge, false);
+        MutableBoolean contain2 = new MutableBoolean(false);
+        Consumer<CircuitNode> checkConsumer = node -> {
+            if(node == node2)
+                contain2.setTrue();
+        };
+        bfs(node1, checkConsumer, e -> {});
+        if(contain2.isTrue())
+            return false;
+        Consumer<CircuitNode> reassignNode = circuitNode -> {
+            circuitNode.setCircuit(newCircuit);
+        };
+        Consumer<CircuitEdge> reassignEdge = circuitEdge -> {
+            circuitEdge.setCircuit(newCircuit);
+        };
+        bfs(node2, reassignNode, reassignEdge);
+        this.updateTopology();
+        newCircuit.updateTopology();
+        return true;
+    }
+
+    public void addEdge(CircuitEdge edge) {
+        this.edges.add(edge);
+        edge.setCircuit(this);
+    }
+
+    public void addNode(CircuitNode node) {
+        this.nodes.add(node);
+        node.setCircuit(this);
     }
 
     @Override
@@ -206,9 +262,9 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
 
     @Override
     public Set<CircuitEdge> adjacentEdges(CircuitEdge edge) {
-        return Arrays.stream(edge.getConnection()).<CircuitEdge>mapMulti((p, consumer) -> {
+        return edge.getConnections().stream().<CircuitEdge>mapMulti((p, consumer) -> {
             p.getConnection().stream().forEach(t -> consumer.accept(t));
-        }).collect(Collectors.toSet());
+        }).filter(e -> e != edge).collect(Collectors.toSet());
     }
 
     @Override
@@ -220,9 +276,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     public Set<CircuitEdge> edgesConnecting(CircuitNode nodeU, CircuitNode nodeV) {
         return nodeU.getConnection().stream()
                 .filter(e -> {
-                    CircuitNode[] conn = e.getConnection();
-                    // Directed network: U must be the source [0], V must be the target [1]
-                    return conn[0] == nodeU && conn[1] == nodeV;
+                    return e.connectTo(nodeV);
                 })
                 .collect(Collectors.toSet());
     }

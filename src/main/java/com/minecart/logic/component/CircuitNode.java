@@ -1,12 +1,10 @@
 package com.minecart.logic.component;
 
+import com.minecart.logic.Circuit;
 import com.minecart.misc.CurrentFlow;
 import com.minecart.math.function.Expression;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class CircuitNode extends Component {
@@ -26,28 +24,26 @@ public class CircuitNode extends Component {
                 exp = Expression.ExpressionBuilder.neg(exp);
             currentSum.add(exp);
         }
-        equations.add(Expression.ExpressionBuilder.add(currentSum));
+        if(currentSum.size() > 0)
+            equations.add(Expression.ExpressionBuilder.add(currentSum));
     }
 
+    @Override
     public void tick(){
 
-    }
-
-    public boolean connect(CircuitNode other, boolean simulate){
-        return false;
     }
 
     public boolean disconnect(CircuitEdge other, boolean simulate){
         return false;
     }
 
-    public boolean destroy(boolean simulate){
+    public boolean destroy(List<CircuitEdge> destroyedEdge, boolean simulate){
         return true;
     }
 
     //override this method for connections
     public Set<CircuitEdge> getConnection(){
-        return Set.of();
+        return new HashSet<>();
     }
 
     public boolean connectEdge(CircuitEdge egde, boolean simulate){
@@ -77,10 +73,10 @@ public class CircuitNode extends Component {
     protected Set<CircuitNode> getConnectedNodes(Set<CircuitEdge> circuitEdges){
         Set<CircuitNode> set = new TreeSet<>();
         for(CircuitEdge iterEdge : circuitEdges){
-            for(CircuitNode iterNode : iterEdge.getConnection()){
-                if(this != iterNode)
-                    set.add(iterNode);
-            }
+            if(iterEdge.getConnection(0) == this)
+                set.add(iterEdge.getConnection(1));
+            else
+                set.add(iterEdge.getConnection(0));
         }
         return set;
     }

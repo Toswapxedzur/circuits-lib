@@ -32,8 +32,8 @@ public class Junction extends CircuitNode{
     }
 
     @Override
-    public boolean connect(CircuitNode other, boolean simulate){
-        world.connect(this, other);
+    public boolean connectEdge(CircuitEdge other, boolean simulate){
+        edges.add(other);
         return true;
     }
 
