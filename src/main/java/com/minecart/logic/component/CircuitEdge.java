@@ -57,11 +57,7 @@ public class CircuitEdge extends Component {
         if(connection[0] == null && connection[1] == null){
             connection[0] = fromConnect;
             connection[1] = toConnect;
-            if(fromConnect.connectEdge(this, true) && toConnect.connectEdge(this, true)) {
-                fromConnect.connectEdge(this, false);
-                toConnect.connectEdge(this, false);
-                return true;
-            }
+            return true;
         }
         return false;
     }

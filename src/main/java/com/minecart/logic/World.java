@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Optional;
 
 public class World {
+    public Double ELECTRICAL_EPSILON = 1e-9;
+    public Double MAXIMUN_WIRE_CURRENT = 1e6;
+
     public List<Circuit> circuits;
 
     public World(){
@@ -31,6 +34,7 @@ public class World {
         Circuit circuit = new Circuit();
         circuit.setWorld(this);
         circuits.add(circuit);
+        circuit.updateTopology();
         return circuit;
     }
 
@@ -50,6 +54,7 @@ public class World {
             circuits.remove(circuit2);
         }
         circuit1.addEdge(edge);
+        circuit1.updateTopology();
         return Optional.of(edge);
     }
 

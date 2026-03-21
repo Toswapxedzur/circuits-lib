@@ -16,7 +16,7 @@ public class CircuitNode extends Component {
     public void collectRule(List<Expression> equations) {
         super.collectRule(equations);
 
-        //kirchoff current rule
+//        kirchoff current rule
         List<Expression> currentSum = new ArrayList<>();
         for(CircuitEdge edge : getConnection()){
             Expression exp = Expression.ExpressionBuilder.var(edge.getCurrent());

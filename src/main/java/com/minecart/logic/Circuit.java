@@ -14,6 +14,8 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.minecart.math.function.Expression.ExpressionBuilder.var;
+
 /**
  * Represent a connected bidirectional circuit network
  */
@@ -33,9 +35,23 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         this.world = world;
     }
 
+    public List<ElectricalVariable> getElectricalVariables() {
+        return electricalVariables;
+    }
+
     // Converted to Lists for deterministic matrix mapping
     protected List<ElectricalVariable> electricalVariables;
+
+    public List<Expression> getElectricalRules() {
+        return electricalRules;
+    }
+
     protected List<Expression> electricalRules;
+
+    public EquationSystem getSystem() {
+        return system;
+    }
+
     protected EquationSystem system;
 
     public Circuit(){
@@ -105,6 +121,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             edges.remove(edge);
         }
         nodes.remove(node);
+        updateTopology();
         return true;
     }
 
@@ -124,6 +141,11 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             edge.collectRule(electricalRules);
             edge.collectElectricalVariable(electricalVariables);
         }
+
+        if (!edges.isEmpty()) {
+            CircuitEdge randomWire = edges.iterator().next();
+            electricalRules.add(var(randomWire.getVoltage()));
+        }
     }
 
     /**
@@ -139,7 +161,6 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             edge.setCircuit(toMerge);
             toMerge.edges().add(edge);
         }
-        toMerge.updateTopology();
     }
 
     public boolean seperate(CircuitNode node1, CircuitNode node2, CircuitEdge edge, Circuit newCircuit){

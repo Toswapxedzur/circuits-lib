@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import static com.minecart.math.function.Expression.ExpressionBuilder.*;
+
 public class Junction extends CircuitNode{
     protected List<CircuitEdge> edges;
 
@@ -21,11 +23,11 @@ public class Junction extends CircuitNode{
         //same voltage
         CircuitEdge last = null;
         for(CircuitEdge edge : getConnection()){
-            if(last == null)
+            if(last == null) {
+                last = edge;
                 continue;
-            Expression exp = Expression.ExpressionBuilder.sub(
-                    Expression.ExpressionBuilder.var(edge.voltage),
-                    Expression.ExpressionBuilder.var(last.voltage));
+            }
+            Expression exp = sub(var(edge.voltage), var(last.voltage));
             last = edge;
             equations.add(exp);
         }
@@ -33,7 +35,8 @@ public class Junction extends CircuitNode{
 
     @Override
     public boolean connectEdge(CircuitEdge other, boolean simulate){
-        edges.add(other);
+        if(!simulate)
+            edges.add(other);
         return true;
     }
 
