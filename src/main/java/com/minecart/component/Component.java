@@ -1,4 +1,4 @@
-package com.minecart.logic.component;
+package com.minecart.component;
 
 import com.minecart.logic.Circuit;
 import com.minecart.logic.World;
@@ -7,7 +7,6 @@ import com.minecart.misc.ElectricalVariable;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 public abstract class Component implements Comparable<Component>{

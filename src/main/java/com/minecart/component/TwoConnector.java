@@ -1,4 +1,4 @@
-package com.minecart.logic.component;
+package com.minecart.component;
 
 import java.util.ArrayList;
 import java.util.List;

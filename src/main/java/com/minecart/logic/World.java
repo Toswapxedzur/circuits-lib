@@ -1,7 +1,7 @@
 package com.minecart.logic;
 
-import com.minecart.logic.component.CircuitEdge;
-import com.minecart.logic.component.CircuitNode;
+import com.minecart.component.CircuitEdge;
+import com.minecart.component.CircuitNode;
 
 import java.util.ArrayList;
 import java.util.List;

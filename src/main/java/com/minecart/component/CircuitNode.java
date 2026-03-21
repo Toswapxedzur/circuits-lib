@@ -1,6 +1,6 @@
-package com.minecart.logic.component;
+package com.minecart.component;
 
-import com.minecart.logic.Circuit;
+import com.minecart.behaviour.type.ElectricalInformation;
 import com.minecart.misc.CurrentFlow;
 import com.minecart.math.function.Expression;
 
@@ -8,8 +8,10 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class CircuitNode extends Component {
-
     public CircuitNode(){
+    }
+
+    public CircuitNode(ElectricalInformation info){
     }
 
     @Override

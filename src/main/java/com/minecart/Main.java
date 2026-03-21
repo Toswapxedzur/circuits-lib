@@ -1,10 +1,10 @@
 package com.minecart;
 
 import com.minecart.logic.World;
-import com.minecart.logic.component.Battery;
-import com.minecart.logic.component.CircuitEdge;
-import com.minecart.logic.component.Junction;
-import com.minecart.logic.component.Resistor;
+import com.minecart.component.Battery;
+import com.minecart.component.CircuitEdge;
+import com.minecart.component.Junction;
+import com.minecart.component.Resistor;
 import com.minecart.math.function.Expression;
 import com.minecart.math.function.ExpressionParser;
 

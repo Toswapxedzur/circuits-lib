@@ -1,8 +1,8 @@
 package com.minecart.logic;
 
 import com.google.common.graph.*;
-import com.minecart.logic.component.CircuitNode;
-import com.minecart.logic.component.CircuitEdge;
+import com.minecart.component.CircuitNode;
+import com.minecart.component.CircuitEdge;
 import com.minecart.math.function.EquationSystem;
 import com.minecart.math.function.Expression;
 import com.minecart.misc.ElectricalVariable;
@@ -12,7 +12,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static com.minecart.math.function.Expression.ExpressionBuilder.var;
 

@@ -1,6 +1,5 @@
-package com.minecart.logic.component;
+package com.minecart.component;
 
-import com.minecart.logic.Circuit;
 import com.minecart.math.function.Expression;
 
 import java.util.ArrayList;
