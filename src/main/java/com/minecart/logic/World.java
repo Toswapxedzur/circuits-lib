@@ -44,7 +44,7 @@ public class World {
         Circuit circuit = new Circuit();
         circuit.setWorld(this);
         circuits.add(circuit);
-        circuit.updateTopology();
+        circuit.markDirty();
         return circuit;
     }
 
@@ -64,7 +64,7 @@ public class World {
             circuits.remove(circuit2);
         }
         circuit1.addEdge(edge);
-        circuit1.updateTopology();
+        circuit1.markDirty();
         return Optional.of(edge);
     }
 

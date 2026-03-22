@@ -1,15 +1,17 @@
 package com.minecart.math.function;
 
+import java.util.UUID;
+
 /**
- * Representing anything that could change, basically a field
+ * Representing a mutable reference that has an unique id
  * @param <T> Type
  */
 public class Variable<T> {
-    protected int index;
+    protected final UUID id;
     T value;
 
     public Variable() {
-        this.index = 0;
+        this.id = UUID.randomUUID();
     }
 
     public T getValue() {
@@ -20,12 +22,8 @@ public class Variable<T> {
         this.value = value;
     }
 
-    public int getIndex() {
-        return index;
-    }
-
-    public void setIndex(int index) {
-        this.index = index;
+    public UUID getUUID() {
+        return id;
     }
 
     public static class DoubleVar extends Variable<Double> {

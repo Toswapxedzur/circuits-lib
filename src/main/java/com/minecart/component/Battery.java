@@ -1,5 +1,6 @@
 package com.minecart.component;
 
+import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.math.function.Expression;
@@ -16,10 +17,12 @@ public class Battery<T extends BatteryInformation> extends TwoConnector implemen
 
     public Battery() {
         setDefault();
+        addActionHandler(ActionTypes.SET_VOLTAGE, this::handleVoltageChange);
     }
 
     protected Battery(T info) {
         this.info = info;
+        addActionHandler(ActionTypes.SET_VOLTAGE, this::handleVoltageChange);
     }
 
     public double getVoltage() {
@@ -39,19 +42,11 @@ public class Battery<T extends BatteryInformation> extends TwoConnector implemen
     }
 
     private void handleVoltageChange(Actions.SetVoltageAction action) {
-        // 1. Get the current voltage
         double currentVolt = this.getVoltage();
 
-        // 2. Apply the lambda operator (Works for both absolute values and relative math!)
         double newVolt = action.getOperator().applyAsDouble(currentVolt);
 
-        // 3. Update the state
         this.setVoltage(newVolt);
-
-        // 4. Mark the world for a matrix recalculation
-        if (this.getWorld() != null) {
-            this.getWorld().markForUpdate();
-        }
     }
 
     @Override

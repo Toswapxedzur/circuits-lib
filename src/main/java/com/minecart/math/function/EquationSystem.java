@@ -1,5 +1,7 @@
 package com.minecart.math.function;
 
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
 import org.apache.commons.math3.linear.*;
 import org.apache.commons.math3.util.Pair;
 
@@ -34,14 +36,13 @@ public class EquationSystem {
         if(!isLinear())
             return SolutionState.UNSOL;
         Set<Variable<Double>> varCollection = new LinkedHashSet<>();
-        Map<Integer, Variable<Double>> varMap = new HashMap<>();
+        BiMap<Integer, Variable<Double>> varMap = HashBiMap.create();
         for(Expression equation : system){
             equation.collectVar(varCollection);
         }
         int index = 0;
         for(Variable<Double> variable : varCollection){
-            variable.index = index++;
-            varMap.put(variable.index, variable);
+            varMap.put(index++, variable);
         }
 
         int numEquations = system.size();
@@ -59,7 +60,7 @@ public class EquationSystem {
             double intercept = linearData.getValue();
 
             for (Pair<Double, Variable<Double>> term : terms) {
-                A.setEntry(i, term.getValue().index, term.getKey());
+                A.setEntry(i, varMap.inverse().get(term.getValue()), term.getKey());
             }
 
             b.setEntry(i, -intercept);

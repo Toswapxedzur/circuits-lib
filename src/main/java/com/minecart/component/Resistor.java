@@ -1,5 +1,7 @@
 package com.minecart.component;
 
+import com.minecart.action.ActionTypes;
+import com.minecart.action.Actions;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.ResistorInformation;
 import com.minecart.math.function.Expression;
@@ -15,10 +17,20 @@ public class Resistor<T extends ResistorInformation> extends TwoConnector implem
 
     public Resistor() {
         this.setDefault();
+        addActionHandler(ActionTypes.SET_RESISTANCE, this::handleResistanceChange);
     }
 
     public Resistor(T info) {
         this.info = info;
+        addActionHandler(ActionTypes.SET_RESISTANCE, this::handleResistanceChange);
+    }
+
+    private void handleResistanceChange(Actions.SetResistanceAction action) {
+        double currentRes = this.getResistance();
+
+        double newRes = action.getOperator().applyAsDouble(currentRes);
+
+        this.setResistance(newRes);
     }
 
     public double getResistance() {
@@ -28,10 +40,6 @@ public class Resistor<T extends ResistorInformation> extends TwoConnector implem
     public void setResistance(double resistance) {
         this.info.resistance = resistance;
     }
-
-    // =========================================
-    // Variate System
-    // =========================================
 
     @Override
     public void set(T argument) {

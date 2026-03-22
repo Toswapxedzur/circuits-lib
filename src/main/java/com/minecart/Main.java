@@ -29,8 +29,8 @@ public class Main {
 
         System.out.println("=== BOOTING MNA TEST SUITE ===");
 
-//        testSeriesCircuit();
-//        testParallelCircuit();
+        testSeriesCircuit();
+        testParallelCircuit();
         testShortCircuit();
     }
 

@@ -27,7 +27,7 @@ public class Junction extends CircuitNode{
                 last = edge;
                 continue;
             }
-            Expression exp = sub(variable(edge.voltage), variable(last.voltage));
+            Expression exp = sub(variable(edge.getVoltage()), variable(last.getVoltage()));
             last = edge;
             equations.add(exp);
         }

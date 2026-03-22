@@ -27,12 +27,13 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
 
     protected boolean dirty;
 
-    public boolean isDirty() {
-        return dirty;
-    }
-
-    public void setDirty(boolean dirty) {
-        this.dirty = dirty;
+    /**
+     * Invoke this method when the electrical rules changes, few circumstances could cause this to happen:
+     * <p> 1. Nodes or edges is added or removed
+     * <p> 2. The information inside node is changed that will affect the equation collected
+     */
+    public void markDirty() {
+        this.dirty = true;
     }
 
     public World getWorld() {
@@ -72,8 +73,10 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     }
 
     public void tick(){
-        if(dirty)
+        if(dirty) {
             updateTopology();
+            dirty = false;
+        }
         for(CircuitNode node : nodes){
             node.tick();
         }
@@ -132,14 +135,14 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             edges.remove(edge);
         }
         nodes.remove(node);
-        dirty = true;
+        markDirty();
         return true;
     }
 
     /**
      * Called everytime when the circuit structure changes, not when electrical variable changes
      */
-    public void updateTopology(){
+    protected void updateTopology(){
         //update circuit rules and circuit variables
         electricalVariables.clear();
         electricalRules.clear();
@@ -192,8 +195,8 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             circuitEdge.setCircuit(newCircuit);
         };
         bfs(node2, reassignNode, reassignEdge);
-        this.updateTopology();
-        newCircuit.updateTopology();
+        this.markDirty();
+        newCircuit.markDirty();
         return true;
     }
 

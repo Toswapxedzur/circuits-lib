@@ -1,6 +1,5 @@
 package com.minecart.math.function;
 
-import com.google.gson.JsonParseException;
 import org.apache.commons.math3.util.Pair;
 
 import java.util.*;
@@ -49,14 +48,15 @@ public class Expression {
     public String toString() {
         StringBuilder builder = new StringBuilder();
         builder.append('(');
-
         if (leaf) {
             if (variable == null) {
                 builder.append('c');
                 builder.append(constant);
             } else {
                 builder.append('v');
-                builder.append("ar");
+                builder.append(variable.getUUID().toString());
+                builder.append(':');
+                builder.append(variable.getValue());
             }
         } else {
             builder.append(operator.symbol);
@@ -69,7 +69,7 @@ public class Expression {
         return builder.toString();
     }
 
-    public static Expression fromString(String string) {
+    public static Expression fromString(String string, VariableHolder<Double> holder) {
         if (string == null || string.length() < 2 || !string.startsWith("(") || !string.endsWith(")")) {
             throw new IllegalArgumentException("Invalid AST format, missing outer parentheses: " + string);
         }
@@ -84,9 +84,10 @@ public class Expression {
             double val = Double.parseDouble(inner.substring(1));
             return new Expression(val);
         } else if (type == 'v') {
-            String varName = inner.substring(1);
-
-            return new Expression(new Variable.DoubleVar());
+            String[] varInfo = inner.substring(1).split(":", 2);
+            UUID varID = UUID.fromString(varInfo[0]);
+            double varValue = Double.valueOf(varInfo[1]);
+            return new Expression(holder.computeIfAbsent(varID, varValue));
         } else {
             Operator<Double> op = Operator.parse(type);
             List<Expression> children = new ArrayList<>();
@@ -104,7 +105,7 @@ public class Expression {
                     depth--;
                     if (depth == 0) {
                         String childString = childrenStr.substring(startIndex, i + 1);
-                        children.add(Expression.fromString(childString)); // Recursive call!
+                        children.add(Expression.fromString(childString, holder)); // Recursive call!
                     }
                 }
             }
@@ -520,11 +521,11 @@ public class Expression {
             return mul(value(-1.0), child);
         }
 
-        public static Expression coef(Double coef, Variable.DoubleVar child){
+        public static Expression coef(Double coef, Variable<Double> child){
             return mul(value(coef), variable(child));
         }
 
-        public static Expression neg(Variable.DoubleVar child) {
+        public static Expression neg(Variable<Double> child) {
             return coef(-1.0, child);
         }
 
