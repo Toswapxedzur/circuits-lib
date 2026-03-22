@@ -1,4 +1,4 @@
-package com.minecart.behaviour.type;
+package com.minecart.variant.type;
 
 public class BatteryInformation extends ElectricalInformation {
     public double voltage;
@@ -10,7 +10,7 @@ public class BatteryInformation extends ElectricalInformation {
     }
 
     public BatteryInformation() {
-        this.voltage = 20.0;
+        this.voltage = 1.0;
         this.internalResistance = 1e-9;
     }
 }

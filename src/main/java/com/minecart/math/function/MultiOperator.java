@@ -2,19 +2,17 @@ package com.minecart.math.function;
 
 import com.minecart.misc.MultinaryOperator;
 
-public class MultiOperator<T> extends Operator<T> {
+public class MultiOperator<T> extends Operator<T>{
     MultinaryOperator<T> multiOperator;
-    Class<? extends Operator<T>> base;
 
-    public MultiOperator(Class<? extends Operator<T>> base, MultinaryOperator<T> multiOperator){
-        super(Target.MULTIPLE, null, null);
-        this.base = base;
+    protected MultiOperator(char symbol, MultinaryOperator<T> multiOperator){
+        super(symbol, Target.MULTIPLE);
         this.multiOperator = multiOperator;
     }
 
-    public static class Addition extends MultiOperator<Double>{
-        public Addition() {
-            super(Operator.Addition.class, MultiOperator.Addition::add);
+    public static class Addition extends MultiOperator<Double> {
+        protected Addition() {
+            super('+', MultiOperator.Addition::add);
         }
 
         public static Double add(Double... a){
@@ -27,8 +25,8 @@ public class MultiOperator<T> extends Operator<T> {
     }
 
     public static class Multiplication extends MultiOperator<Double> {
-        public Multiplication() {
-            super(Operator.Multiplication.class, MultiOperator.Multiplication::multiply);
+        protected Multiplication() {
+            super('*', MultiOperator.Multiplication::multiply);
         }
 
         public static Double multiply(Double... a) {

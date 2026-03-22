@@ -1,5 +1,6 @@
 package com.minecart.component;
 
+import com.minecart.logic.CircuitEdge;
 import com.minecart.math.function.Expression;
 
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public class Junction extends CircuitNode{
                 last = edge;
                 continue;
             }
-            Expression exp = sub(var(edge.voltage), var(last.voltage));
+            Expression exp = sub(variable(edge.voltage), variable(last.voltage));
             last = edge;
             equations.add(exp);
         }

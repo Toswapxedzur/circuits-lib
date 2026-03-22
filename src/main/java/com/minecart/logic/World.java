@@ -1,7 +1,9 @@
 package com.minecart.logic;
 
-import com.minecart.component.CircuitEdge;
+import com.minecart.variant.ElectricalVariate;
+import com.minecart.variant.type.ElectricalInformation;
 import com.minecart.component.CircuitNode;
+import com.minecart.registry.ComponentType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,11 +25,19 @@ public class World {
         }
     }
 
-    public void create(CircuitNode node){
+    public <T extends CircuitNode> T create(ComponentType<T> type){
+        T node = type.create();
         node.setWorld(this);
         Circuit circuit = createCircuit();
         node.setCircuit(circuit);
         circuit.nodes().add(node);
+        return node;
+    }
+
+    public <I extends ElectricalInformation, T extends CircuitNode & ElectricalVariate<I>> T create(ComponentType<T> type, I information){
+        T node = create(type);
+        node.set(information);
+        return node;
     }
 
     protected Circuit createCircuit(){

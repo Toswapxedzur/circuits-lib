@@ -2,7 +2,6 @@ package com.minecart.logic;
 
 import com.google.common.graph.*;
 import com.minecart.component.CircuitNode;
-import com.minecart.component.CircuitEdge;
 import com.minecart.math.function.EquationSystem;
 import com.minecart.math.function.Expression;
 import com.minecart.misc.ElectricalVariable;
@@ -13,7 +12,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.minecart.math.function.Expression.ExpressionBuilder.var;
+import static com.minecart.math.function.Expression.ExpressionBuilder.variable;
 
 /**
  * Represent a connected bidirectional circuit network
@@ -25,6 +24,16 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     protected World world;
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
+
+    protected boolean dirty;
+
+    public boolean isDirty() {
+        return dirty;
+    }
+
+    public void setDirty(boolean dirty) {
+        this.dirty = dirty;
+    }
 
     public World getWorld() {
         return world;
@@ -59,9 +68,12 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         electricalVariables = new ArrayList<>();
         electricalRules = new ArrayList<>();
         system = new EquationSystem(electricalRules);
+        dirty = false;
     }
 
     public void tick(){
+        if(dirty)
+            updateTopology();
         for(CircuitNode node : nodes){
             node.tick();
         }
@@ -120,7 +132,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             edges.remove(edge);
         }
         nodes.remove(node);
-        updateTopology();
+        dirty = true;
         return true;
     }
 
@@ -143,7 +155,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
 
         if (!edges.isEmpty()) {
             CircuitEdge randomWire = edges.iterator().next();
-            electricalRules.add(var(randomWire.getVoltage()));
+            electricalRules.add(variable(randomWire.getVoltage()));
         }
     }
 

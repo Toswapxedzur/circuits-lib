@@ -1,4 +1,4 @@
-package com.minecart.behaviour.type;
+package com.minecart.variant.type;
 
 public class ResistorInformation extends ElectricalInformation {
     public double resistance;

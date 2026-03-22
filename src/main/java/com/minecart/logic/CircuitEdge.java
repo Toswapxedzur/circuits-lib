@@ -1,7 +1,9 @@
-package com.minecart.component;
+package com.minecart.logic;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.graph.EndpointPair;
+import com.minecart.component.CircuitNode;
+import com.minecart.component.Component;
 import com.minecart.misc.CurrentFlow;
 import com.minecart.misc.ElectricalVariable;
 

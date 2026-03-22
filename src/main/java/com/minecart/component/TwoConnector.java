@@ -1,5 +1,7 @@
 package com.minecart.component;
 
+import com.minecart.logic.CircuitEdge;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -7,7 +9,7 @@ import java.util.Set;
 public class TwoConnector extends CircuitNode{
     protected List<CircuitEdge> edges;
 
-    public TwoConnector(){
+    protected TwoConnector(){
         edges = new ArrayList<>();
     }
 

@@ -1,4 +1,4 @@
-package com.minecart.behaviour.type;
+package com.minecart.variant.type;
 
 import java.io.Serializable;
 

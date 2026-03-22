@@ -1,6 +1,6 @@
-package com.minecart.behaviour;
+package com.minecart.variant;
 
-import com.minecart.behaviour.type.ElectricalInformation;
+import com.minecart.variant.type.ElectricalInformation;
 
 import java.io.Serializable;
 

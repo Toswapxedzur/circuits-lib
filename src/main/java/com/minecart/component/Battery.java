@@ -1,9 +1,11 @@
 package com.minecart.component;
 
-import com.minecart.behaviour.ElectricalVariate;
-import com.minecart.behaviour.type.BatteryInformation;
+import com.minecart.action.Actions;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.math.function.Expression;
 import com.minecart.misc.ElectricalVariable;
+import com.minecart.variant.ElectricalVariate;
+import com.minecart.variant.type.BatteryInformation;
 
 import java.util.List;
 
@@ -16,7 +18,7 @@ public class Battery<T extends BatteryInformation> extends TwoConnector implemen
         setDefault();
     }
 
-    public Battery(T info) {
+    protected Battery(T info) {
         this.info = info;
     }
 
@@ -24,7 +26,7 @@ public class Battery<T extends BatteryInformation> extends TwoConnector implemen
         return this.info.voltage;
     }
 
-    public void setVoltage(double voltage) {
+    protected void setVoltage(double voltage) {
         this.info.voltage = voltage;
     }
 
@@ -32,8 +34,24 @@ public class Battery<T extends BatteryInformation> extends TwoConnector implemen
         return this.info.internalResistance;
     }
 
-    public void setInternalResistance(double internalResistance) {
+    protected void setInternalResistance(double internalResistance) {
         this.info.internalResistance = internalResistance;
+    }
+
+    private void handleVoltageChange(Actions.SetVoltageAction action) {
+        // 1. Get the current voltage
+        double currentVolt = this.getVoltage();
+
+        // 2. Apply the lambda operator (Works for both absolute values and relative math!)
+        double newVolt = action.getOperator().applyAsDouble(currentVolt);
+
+        // 3. Update the state
+        this.setVoltage(newVolt);
+
+        // 4. Mark the world for a matrix recalculation
+        if (this.getWorld() != null) {
+            this.getWorld().markForUpdate();
+        }
     }
 
     @Override
@@ -82,15 +100,15 @@ public class Battery<T extends BatteryInformation> extends TwoConnector implemen
         Expression currentOut;
 
         if (edge1IsPositive) {
-            vDiff = sub(var(voltage1), var(voltage2));
-            currentOut = edge1.shouldRevert(this) ? neg(var(edge1.getCurrent())) : var(edge1.getCurrent());
+            vDiff = sub(variable(voltage1), variable(voltage2));
+            currentOut = edge1.shouldRevert(this) ? neg(variable(edge1.getCurrent())) : variable(edge1.getCurrent());
         } else {
-            vDiff = sub(var(voltage2), var(voltage1));
-            currentOut = edge2.shouldRevert(this) ? neg(var(edge2.getCurrent())) : var(edge2.getCurrent());
+            vDiff = sub(variable(voltage2), variable(voltage1));
+            currentOut = edge2.shouldRevert(this) ? neg(variable(edge2.getCurrent())) : variable(edge2.getCurrent());
         }
 
-        Expression internalDrop = mul(currentOut, val(getInternalResistance()));
+        Expression internalDrop = mul(currentOut, value(getInternalResistance()));
         Expression totalVoltage = add(vDiff, internalDrop);
-        equations.add(sub(totalVoltage, val(getVoltage())));
+        equations.add(sub(totalVoltage, value(getVoltage())));
     }
 }

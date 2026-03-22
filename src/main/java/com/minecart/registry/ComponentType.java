@@ -1,9 +1,7 @@
 package com.minecart.registry;
 
-import com.minecart.behaviour.type.ElectricalInformation;
 import com.minecart.component.CircuitNode;
 
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class ComponentType<T extends CircuitNode> {

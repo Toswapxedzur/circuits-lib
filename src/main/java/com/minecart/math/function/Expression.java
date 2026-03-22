@@ -1,5 +1,6 @@
 package com.minecart.math.function;
 
+import com.google.gson.JsonParseException;
 import org.apache.commons.math3.util.Pair;
 
 import java.util.*;
@@ -44,6 +45,78 @@ public class Expression {
         this.leaf = true;
     }
 
+    @Override
+    public String toString() {
+        StringBuilder builder = new StringBuilder();
+        builder.append('(');
+
+        if (leaf) {
+            if (variable == null) {
+                builder.append('c');
+                builder.append(constant);
+            } else {
+                builder.append('v');
+                builder.append("ar");
+            }
+        } else {
+            builder.append(operator.symbol);
+            for (Expression child : children) {
+                builder.append(child.toString());
+            }
+        }
+
+        builder.append(')');
+        return builder.toString();
+    }
+
+    public static Expression fromString(String string) {
+        if (string == null || string.length() < 2 || !string.startsWith("(") || !string.endsWith(")")) {
+            throw new IllegalArgumentException("Invalid AST format, missing outer parentheses: " + string);
+        }
+
+        String inner = string.substring(1, string.length() - 1);
+        if (inner.isEmpty())
+            throw new IllegalArgumentException("Empty expression node");
+
+        char type = inner.charAt(0);
+
+        if (type == 'c') {
+            double val = Double.parseDouble(inner.substring(1));
+            return new Expression(val);
+        } else if (type == 'v') {
+            String varName = inner.substring(1);
+
+            return new Expression(new Variable.DoubleVar());
+        } else {
+            Operator<Double> op = Operator.parse(type);
+            List<Expression> children = new ArrayList<>();
+
+            String childrenStr = inner.substring(1);
+            int depth = 0;
+            int startIndex = 0;
+
+            for (int i = 0; i < childrenStr.length(); i++) {
+                char c = childrenStr.charAt(i);
+                if (c == '(') {
+                    if (depth == 0) startIndex = i; // Mark the start of a new child
+                    depth++;
+                } else if (c == ')') {
+                    depth--;
+                    if (depth == 0) {
+                        String childString = childrenStr.substring(startIndex, i + 1);
+                        children.add(Expression.fromString(childString)); // Recursive call!
+                    }
+                }
+            }
+
+            if (depth != 0) {
+                throw new IllegalArgumentException("Mismatched parentheses in AST children: " + string);
+            }
+
+            return new Expression(op, children);
+        }
+    }
+
     public void collectVar(Set<Variable<Double>> set) {
         if (leaf) {
             if (variable != null) {
@@ -70,45 +143,18 @@ public class Expression {
 
     protected void simplifyCurrent() {
         if (leaf) return;
-        normalize();
         flattenAssociative();
         foldConstants();
         applyIdentities();
         expandTerms();
     }
 
-    private void normalize() {
-        if (operator instanceof Operator.Subtraction) {
-            this.operator = new Operator.Addition();
-            Expression negOne = new Expression(-1.0);
-            Expression newRight = new Expression(new Operator.Multiplication(), Arrays.asList(negOne, this.children.get(1)));
-            newRight.simplify();
-            this.children = new ArrayList<>(Arrays.asList(this.children.get(0), newRight));
-
-        } else if (operator instanceof Operator.Division) {
-            this.operator = new Operator.Multiplication();
-            Expression newRight = new Expression(new Operator.Power(), Arrays.asList(this.children.get(1), new Expression(-1.0)));
-            newRight.simplify();
-            this.children = new ArrayList<>(Arrays.asList(this.children.get(0), newRight));
-
-        } else if (operator instanceof Operator.Negation) {
-            this.operator = new Operator.Multiplication();
-            Expression negOne = new Expression(-1.0);
-            this.children = new ArrayList<>(Arrays.asList(negOne, this.children.get(0)));
-        }
-    }
-
     private void flattenAssociative() {
-        if (operator.commutative != null) {
-            this.operator = operator.commutative;
-        }
-
-        // Dynamically flatten children that share the same base mathematical property
-        if (operator instanceof MultiOperator<?> multiOp) {
+        if (operator instanceof MultiOperator<Double> multiOperator) {
             List<Expression> flatChildren = new ArrayList<>();
             for (Expression child : children) {
-                if (!child.leaf && (child.operator.getClass() == multiOp.base || child.operator.getClass() == multiOp.getClass())) {
-                    flatChildren.addAll(child.children); // Much cleaner without Arrays.asList()
+                if (!child.leaf && child.operator == multiOperator) {
+                    flatChildren.addAll(child.children);
                 } else {
                     flatChildren.add(child);
                 }
@@ -117,140 +163,22 @@ public class Expression {
         }
     }
 
-    private void foldConstants() {
-        List<Expression> consts = new ArrayList<>();
-        List<Expression> vars = new ArrayList<>();
-
-        for (Expression child : children) {
-            if (child.leaf && child.constant != null) consts.add(child);
-            else vars.add(child);
-        }
-
-        if (consts.isEmpty() || (consts.size() == 1 && !vars.isEmpty())) return;
-
-        Double[] args = consts.stream().map(c -> c.constant).toArray(Double[]::new);
-        double foldedValue = 0.0;
-
-        if (operator.target == Operator.Target.SINGLE) {
-            foldedValue = operator.operator.apply(args[0], 0.0);
-        } else if (operator instanceof MultiOperator<?> multiOp) {
-            foldedValue = ((MultiOperator<Double>)multiOp).multiOperator.apply(args);
-        } else {
-            foldedValue = operator.operator.apply(args[0], args[1]);
-        }
-
-        if (Double.isInfinite(foldedValue) || Double.isNaN(foldedValue)) {
-            throw new ArithmeticException("Mathematical error during constant folding such as Division by Zero");
-        }
-
-        if (vars.isEmpty()) {
-            transformToLeaf(foldedValue);
-        } else {
-            vars.add(new Expression(foldedValue));
-            this.children = vars;
-        }
-    }
-
     private void applyIdentities() {
         if (leaf) return;
-        Class<?> baseOp = (operator instanceof MultiOperator<?> m) ? m.base : operator.getClass();
 
-        if (baseOp == Operator.Multiplication.class) {
+        if (operator == Operator.MULTIPLICATION) {
             if (hasConstant(0.0)) transformToLeaf(0.0);
             else removeConstants(1.0);
-        } else if (baseOp == Operator.Addition.class) {
+        } else if (operator == Operator.ADDITION) {
             removeConstants(0.0);
-        } else if (baseOp == Operator.Power.class) {
+        } else if (operator == Operator.POWER) {
             if (isConstant(children.get(1), 0.0)) transformToLeaf(1.0);
             else if (isConstant(children.get(1), 1.0)) replaceWith(children.get(0));
             else if (isConstant(children.get(0), 0.0)) transformToLeaf(0.0);
         }
 
-        if (!leaf && children.size() == 1 && operator.target == Operator.Target.MULTIPLE) {
+        if (!leaf && children.size() == 1 && operator.target == DoubleOperator.Target.MULTIPLE) {
             replaceWith(children.get(0));
-        }
-    }
-
-    private void expandTerms() {
-        if (leaf || children.size() < 2) return;
-        Class<?> baseOp = operator.getBase();
-
-        if (baseOp == Operator.Multiplication.class) {
-            List<Expression> sumNodes = new ArrayList<>();
-            List<Expression> otherNodes = new ArrayList<>();
-
-            // 1. Separate Addition nodes from everything else
-            for (Expression child : children) {
-                if (!child.leaf && child.operator.getBase() == Operator.Addition.class) {
-                    sumNodes.add(child);
-                } else {
-                    otherNodes.add(child);
-                }
-            }
-
-            // If no addition nodes exist, there is nothing to distribute
-            if (sumNodes.isEmpty()) return;
-
-            // 2. The User Logic: Check for the first two addition terms and FOIL them
-            if (sumNodes.size() >= 2) {
-                Expression s1 = sumNodes.get(0);
-                Expression s2 = sumNodes.get(1);
-                List<Expression> expandedTerms = new ArrayList<>();
-
-                for (Expression term1 : s1.children) {
-                    for (Expression term2 : s2.children) {
-                        // Use deepCopy to prevent memory reference corruption
-                        expandedTerms.add(new Expression(new MultiOperator.Multiplication(),
-                                Arrays.asList(term1.deepCopy(), term2.deepCopy())));
-                        // Notice: We intentionally DO NOT recursively simplify here!
-                    }
-                }
-
-                for(Expression term : expandedTerms){
-                    term.simplifyCurrent();
-                }
-
-                Expression newSum = new Expression(new MultiOperator.Addition(), expandedTerms);
-
-                // Replace s1 and s2 with the new distributed sum
-                List<Expression> newChildren = new ArrayList<>();
-                newChildren.add(newSum);
-                for (int i = 2; i < sumNodes.size(); i++) {
-                    newChildren.add(sumNodes.get(i)); // Add remaining sums
-                }
-                newChildren.addAll(otherNodes); // Add non-sums
-
-                this.children = newChildren;
-
-                // 3. Call itself again to process any remaining sums!
-                this.expandTerms();
-                return;
-            }
-
-            // 4. If there is exactly ONE addition node, distribute the non-sums into it
-            if (sumNodes.size() == 1 && !otherNodes.isEmpty()) {
-                Expression sumNode = sumNodes.get(0);
-                List<Expression> distributedTerms = new ArrayList<>();
-
-                for (Expression term : sumNode.children) {
-                    List<Expression> newMultipliers = new ArrayList<>();
-                    newMultipliers.add(term.deepCopy());
-
-                    for (Expression other : otherNodes) {
-                        newMultipliers.add(other.deepCopy());
-                    }
-
-                    distributedTerms.add(new Expression(new MultiOperator.Multiplication(), newMultipliers));
-                    // Notice: We intentionally DO NOT recursively simplify here!
-                }
-
-                for(Expression term : distributedTerms){
-                    term.simplifyCurrent();
-                }
-
-                this.operator = new MultiOperator.Addition();
-                this.children = distributedTerms;
-            }
         }
     }
 
@@ -284,18 +212,51 @@ public class Expression {
                 .collect(Collectors.toList());
     }
 
+    private void extractLinearTerms(Map<Variable<Double>, Double> termMap, List<Double> intercept) {
+        if (leaf) {
+            if (constant != null) {
+                intercept.add(constant);
+            } else if (variable != null) {
+                termMap.merge(variable, 1.0, Double::sum);
+            }
+            return;
+        }
+
+        // Completely removed the baseOp reflection hack!
+        if (operator == Operator.ADDITION) {
+            for (Expression child : children) {
+                child.extractLinearTerms(termMap, intercept);
+            }
+        } else if (operator == Operator.MULTIPLICATION) {
+            double coeff = 1.0;
+            Variable<Double> var = null;
+
+            for (Expression child : children) {
+                if (child.leaf && child.constant != null) {
+                    coeff *= child.constant;
+                } else if (child.leaf && child.variable != null) {
+                    var = child.variable;
+                }
+            }
+
+            if (var != null) {
+                termMap.merge(var, coeff, Double::sum);
+            } else {
+                intercept.add(coeff);
+            }
+        }
+    }
+
     public boolean isLinear() {
         if (leaf) return true;
 
-        Class<?> baseOp = operator.getBase();
-
-        if (baseOp == Operator.Addition.class) {
+        if (operator == Operator.ADDITION) {
             for (Expression child : children) {
                 if (!child.isLinear())
                     return false;
             }
             return true;
-        } else if (baseOp == Operator.Multiplication.class) {
+        } else if (operator == Operator.MULTIPLICATION) {
             int varCount = 0;
             for (Expression child : children) {
                 if (child.leaf && child.constant != null) {
@@ -334,36 +295,117 @@ public class Expression {
         return new Pair<>(terms, sum);
     }
 
-    private void extractLinearTerms(Map<Variable<Double>, Double> termMap, List<Double> intercept) {
-        if (leaf) {
-            if (constant != null) {
-                intercept.add(constant);
-            } else if (variable != null) {
-                termMap.merge(variable, 1.0, Double::sum);
-            }
-            return;
+    private void foldConstants() {
+        List<Expression> consts = new ArrayList<>();
+        List<Expression> vars = new ArrayList<>();
+
+        for (Expression child : children) {
+            if (child.leaf && child.constant != null) consts.add(child);
+            else vars.add(child);
         }
 
-        Class<?> baseOp = operator.getBase();
-        if (baseOp == Operator.Addition.class) {
-            for (Expression child : children) {
-                child.extractLinearTerms(termMap, intercept);
-            }
-        } else if (baseOp == Operator.Multiplication.class) {
-            double coeff = 1.0;
-            Variable<Double> var = null;
+        if (consts.isEmpty() || (consts.size() == 1 && !vars.isEmpty())) return;
+
+        double foldedValue = 0.0;
+        if(operator instanceof DoubleOperator<Double> doubleOperator && doubleOperator.target.targetAmount.test(2)) {
+            foldedValue = doubleOperator.operator.apply(consts.get(0).constant, consts.get(1).constant);
+        }else if(operator instanceof DoubleOperator<Double> doubleOperator && doubleOperator.target.targetAmount.test(1)){
+            foldedValue = doubleOperator.operator.apply(consts.get(0).constant, null);
+        } else if(operator instanceof MultiOperator<Double> multiOperator){
+            foldedValue = multiOperator.multiOperator.apply(
+                    consts.stream().<Double>mapMulti((e, consumer) -> consumer.accept(e.constant)).toArray(Double[]::new));
+        }else{
+            throw new IllegalArgumentException("Strange Operator while folding constants");
+        }
+
+        if (Double.isInfinite(foldedValue) || Double.isNaN(foldedValue)) {
+            throw new ArithmeticException("Mathematical error during constant folding such as Division by Zero");
+        }
+
+        if (vars.isEmpty()) {
+            transformToLeaf(foldedValue);
+        } else {
+            vars.add(new Expression(foldedValue));
+            this.children = vars;
+        }
+    }
+
+    private void expandTerms() {
+        if (leaf) return;
+
+        if (operator == Operator.MULTIPLICATION) {
+            List<Expression> sumNodes = new ArrayList<>();
+            List<Expression> otherNodes = new ArrayList<>();
 
             for (Expression child : children) {
-                if (child.leaf && child.constant != null)
-                    coeff *= child.constant;
-                else if (child.leaf && child.variable != null)
-                    var = child.variable;
+                if (!child.leaf && child.operator == Operator.ADDITION) {
+                    sumNodes.add(child);
+                } else {
+                    otherNodes.add(child);
+                }
             }
 
-            if (var != null) {
-                termMap.merge(var, coeff, Double::sum);
-            } else {
-                intercept.add(coeff);
+            if (sumNodes.isEmpty()) return;
+
+            if (sumNodes.size() >= 2) {
+                Expression s1 = sumNodes.get(0);
+                Expression s2 = sumNodes.get(1);
+                List<Expression> expandedTerms = new ArrayList<>();
+
+                for (Expression term1 : s1.children) {
+                    for (Expression term2 : s2.children) {
+                        // Directly assign native Operator.MULTIPLICATION
+                        expandedTerms.add(new Expression(Operator.MULTIPLICATION,
+                                Arrays.asList(term1.deepCopy(), term2.deepCopy())));
+                    }
+                }
+
+                for(Expression term : expandedTerms){
+                    term.simplifyCurrent();
+                }
+
+                // Directly assign native Operator.ADDITION
+                Expression newSum = new Expression(Operator.ADDITION, expandedTerms);
+
+                List<Expression> newChildren = new ArrayList<>();
+                newChildren.add(newSum);
+                for (int i = 2; i < sumNodes.size(); i++) {
+                    newChildren.add(sumNodes.get(i));
+                }
+                newChildren.addAll(otherNodes);
+
+                if (newChildren.size() == 1) {
+                    this.replaceWith(newChildren.get(0));
+                } else {
+                    this.children = newChildren;
+                    this.expandTerms();
+                }
+                return;
+            }
+
+            else if (sumNodes.size() == 1 && !otherNodes.isEmpty()) {
+                Expression sumNode = sumNodes.get(0);
+                List<Expression> distributedTerms = new ArrayList<>();
+
+                for (Expression term : sumNode.children) {
+                    List<Expression> newMultipliers = new ArrayList<>();
+                    newMultipliers.add(term.deepCopy());
+
+                    for (Expression other : otherNodes) {
+                        newMultipliers.add(other.deepCopy());
+                    }
+
+                    // Directly assign native Operator.MULTIPLICATION
+                    distributedTerms.add(new Expression(Operator.MULTIPLICATION, newMultipliers));
+                }
+
+                for(Expression term : distributedTerms){
+                    term.simplifyCurrent();
+                }
+
+                // Directly assign native Operator.ADDITION
+                this.operator = Operator.ADDITION;
+                this.children = distributedTerms;
             }
         }
     }
@@ -438,44 +480,52 @@ public class Expression {
     public static final class ExpressionBuilder{
         private ExpressionBuilder() {}
 
-        public static Expression var(Variable<Double> variable) {
+        public static Expression variable(Variable<Double> variable) {
             return new Expression(variable);
         }
 
-        public static Expression val(double constant) {
+        public static Expression value(double constant) {
             return new Expression(constant);
         }
 
-        public static Expression add(Expression left, Expression right) {
-            return new Expression(new Operator.Addition(), Arrays.asList(left, right));
-        }
-
-        public static Expression mul(Expression left, Expression right) {
-            return new Expression(new Operator.Multiplication(), Arrays.asList(left, right));
+        public static Expression add(Expression... children) {
+            return add(Arrays.asList(children));
         }
 
         public static Expression add(List<Expression> children) {
-            return new Expression(new MultiOperator.Addition(), children);
+            return new Expression(Operator.ADDITION, children);
+        }
+
+        public static Expression sub(Expression left, Expression right){
+            return add(left, mul(value(-1.0), right));
+        }
+
+        public static Expression mul(Expression... children) {
+            return mul(Arrays.asList(children));
         }
 
         public static Expression mul(List<Expression> children) {
-            return new Expression(new MultiOperator.Multiplication(), children);
-        }
-
-        public static Expression sub(Expression left, Expression right) {
-            return new Expression(new Operator.Subtraction(), Arrays.asList(left, right));
+            return new Expression(Operator.MULTIPLICATION, children);
         }
 
         public static Expression div(Expression numerator, Expression denominator) {
-            return new Expression(new Operator.Division(), Arrays.asList(numerator, denominator));
+            return new Expression(Operator.DIVISION, Arrays.asList(numerator, denominator));
         }
 
         public static Expression pow(Expression base, Expression exponent) {
-            return new Expression(new Operator.Power(), Arrays.asList(base, exponent));
+            return new Expression(Operator.POWER, Arrays.asList(base, exponent));
         }
 
         public static Expression neg(Expression child) {
-            return new Expression(new Operator.Negation(), Arrays.asList(child));
+            return mul(value(-1.0), child);
+        }
+
+        public static Expression coef(Double coef, Variable.DoubleVar child){
+            return mul(value(coef), variable(child));
+        }
+
+        public static Expression neg(Variable.DoubleVar child) {
+            return coef(-1.0, child);
         }
 
         /**

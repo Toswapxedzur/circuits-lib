@@ -1,27 +1,46 @@
 package com.minecart.component;
 
-import com.minecart.behaviour.type.ElectricalInformation;
-import com.minecart.misc.CurrentFlow;
+import com.minecart.action.ActionType;
+import com.minecart.action.ElectricalAction;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.math.function.Expression;
+import com.minecart.misc.CurrentFlow;
+import com.minecart.variant.type.ElectricalInformation;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class CircuitNode extends Component {
-    public CircuitNode(){
+    protected CircuitNode(){
     }
 
-    public CircuitNode(ElectricalInformation info){
+    protected CircuitNode(ElectricalInformation info){
+    }
+
+    protected final Map<ActionType<?>, Consumer<? extends ElectricalAction>> actionHandlers = new HashMap<>();
+
+    protected <A extends ElectricalAction> void addActionHandler(ActionType<A> type, Consumer<A> handler) {
+        actionHandlers.put(type, handler);
+    }
+
+    public <A extends ElectricalAction> boolean perform(ActionType<A> type, A action) {
+        Consumer<A> handler = (Consumer<A>) actionHandlers.get(type);
+        if (handler != null) {
+            handler.accept(action);
+            return true;
+        }
+        return false;
     }
 
     @Override
     public void collectRule(List<Expression> equations) {
         super.collectRule(equations);
 
-//        kirchoff current rule
+        //kirchoff current rule
         List<Expression> currentSum = new ArrayList<>();
         for(CircuitEdge edge : getConnection()){
-            Expression exp = Expression.ExpressionBuilder.var(edge.getCurrent());
+            Expression exp = Expression.ExpressionBuilder.variable(edge.getCurrent());
             if(edge.shouldRevert(this))
                 exp = Expression.ExpressionBuilder.neg(exp);
             currentSum.add(exp);

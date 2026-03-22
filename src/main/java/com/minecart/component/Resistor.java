@@ -1,7 +1,7 @@
 package com.minecart.component;
 
-import com.minecart.behaviour.ElectricalVariate;
-import com.minecart.behaviour.type.ResistorInformation;
+import com.minecart.variant.ElectricalVariate;
+import com.minecart.variant.type.ResistorInformation;
 import com.minecart.math.function.Expression;
 import com.minecart.misc.ElectricalVariable;
 
@@ -69,8 +69,8 @@ public class Resistor<T extends ResistorInformation> extends TwoConnector implem
         ElectricalVariable current = edges.get(0).getCurrent();
         ElectricalVariable voltage1 = edges.get(0).getVoltage();
         ElectricalVariable voltage2 = edges.get(1).getVoltage();
-        Expression toCurrent = edges.get(0).shouldRevert(this) ? var(current) : neg(var(current));
-        Expression expression = sub(mul(toCurrent, val(getResistance())), sub(var(voltage1), var(voltage2)));
+        Expression toCurrent = edges.get(0).shouldRevert(this) ? variable(current) : neg(variable(current));
+        Expression expression = sub(mul(toCurrent, value(getResistance())), sub(variable(voltage1), variable(voltage2)));
         equations.add(expression);
     }
 }
