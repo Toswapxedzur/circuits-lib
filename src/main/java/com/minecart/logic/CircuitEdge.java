@@ -4,21 +4,22 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.graph.EndpointPair;
 import com.minecart.component.CircuitNode;
 import com.minecart.component.Component;
+import com.minecart.math.function.ContinuousVariable;
 import com.minecart.misc.CurrentFlow;
-import com.minecart.misc.ElectricalVariable;
 
 public class CircuitEdge extends Component {
     //positive: from first to second
-    protected ElectricalVariable current;
+    protected ContinuousVariable<Double> current;
 
-    protected ElectricalVariable voltage;
+    protected ContinuousVariable<Double> voltage;
 
     protected CircuitNode[] connection;
 
-    public CircuitEdge(){
+    public CircuitEdge(World world){
         connection = new CircuitNode[2];
-        current = new ElectricalVariable(ElectricalVariable.Type.CURRENT);
-        voltage = new ElectricalVariable(0, Double.POSITIVE_INFINITY, ElectricalVariable.Type.VOLTAGE);
+        setWorld(world);
+        current = getWorld().createDoubleVar();
+        voltage = getWorld().createDoubleVar();
     }
 
     @Override
@@ -46,11 +47,11 @@ public class CircuitEdge extends Component {
         return getConnection(0) == node || getConnection(1) == node;
     }
 
-    public ElectricalVariable getVoltage() {
+    public ContinuousVariable<Double> getVoltage() {
         return voltage;
     }
 
-    public ElectricalVariable getCurrent() {
+    public ContinuousVariable<Double> getCurrent() {
         return current;
     }
 

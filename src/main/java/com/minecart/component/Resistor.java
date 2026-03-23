@@ -2,10 +2,10 @@ package com.minecart.component;
 
 import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
+import com.minecart.math.function.ContinuousVariable;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.ResistorInformation;
 import com.minecart.math.function.Expression;
-import com.minecart.misc.ElectricalVariable;
 
 import static com.minecart.math.function.Expression.ExpressionBuilder.*;
 
@@ -74,9 +74,9 @@ public class Resistor<T extends ResistorInformation> extends TwoConnector implem
 
         if(edges.size() != 2)
             return;
-        ElectricalVariable current = edges.get(0).getCurrent();
-        ElectricalVariable voltage1 = edges.get(0).getVoltage();
-        ElectricalVariable voltage2 = edges.get(1).getVoltage();
+        ContinuousVariable<Double> current = edges.get(0).getCurrent();
+        ContinuousVariable<Double> voltage1 = edges.get(0).getVoltage();
+        ContinuousVariable<Double> voltage2 = edges.get(1).getVoltage();
         Expression toCurrent = edges.get(0).shouldRevert(this) ? variable(current) : neg(variable(current));
         Expression expression = sub(mul(toCurrent, value(getResistance())), sub(variable(voltage1), variable(voltage2)));
         equations.add(expression);

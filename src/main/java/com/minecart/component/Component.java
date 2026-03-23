@@ -2,8 +2,8 @@ package com.minecart.component;
 
 import com.minecart.logic.Circuit;
 import com.minecart.logic.World;
+import com.minecart.math.function.ContinuousVariable;
 import com.minecart.math.function.Expression;
-import com.minecart.misc.ElectricalVariable;
 
 import java.util.Comparator;
 import java.util.List;
@@ -54,7 +54,7 @@ public abstract class Component implements Comparable<Component>{
      * Collect all the variables
      * @param variables All the data that could change and impacted by Rules
      */
-    public void collectElectricalVariable(List<ElectricalVariable> variables){
+    public void collectElectricalVariable(List<ContinuousVariable<Double>> variables){
 
     }
 

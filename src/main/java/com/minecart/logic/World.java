@@ -1,21 +1,20 @@
 package com.minecart.logic;
 
+import com.minecart.math.function.ContinuousVariable;
+import com.minecart.math.function.VariableHolder;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.ElectricalInformation;
 import com.minecart.component.CircuitNode;
 import com.minecart.registry.ComponentType;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
-public class World {
-    public Double ELECTRICAL_EPSILON = 1e-9;
-    public Double MAXIMUN_WIRE_CURRENT = 1e6;
-
+public class World implements VariableHolder<Double> {
+    protected Map<UUID, ContinuousVariable<Double>> eVarMap;
     public List<Circuit> circuits;
 
     public World(){
+        eVarMap = new HashMap<>();
         circuits = new ArrayList<>();
     }
 
@@ -51,7 +50,7 @@ public class World {
     public Optional<CircuitEdge> connect(CircuitNode node1, CircuitNode node2){
         if(node1.getWorld() != this || node2.getWorld() != this)
             throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current World");
-        CircuitEdge edge = new CircuitEdge();
+        CircuitEdge edge = new CircuitEdge(this);
         edge.connect(node1, node2);
         if(!node1.connectEdge(edge, true) || !node2.connectEdge(edge, true))
             return Optional.empty();
@@ -89,5 +88,16 @@ public class World {
             return false;
         node.getCircuit().destroy(node, false);
         return true;
+    }
+
+    @Override
+    public ContinuousVariable<Double> computeIfAbsent(UUID id, Double value) {
+        return eVarMap.computeIfAbsent(id, i -> new ContinuousVariable<Double>(i, value));
+    }
+
+    public ContinuousVariable<Double> createDoubleVar(){
+        ContinuousVariable<Double> variable = new ContinuousVariable<Double>();
+        eVarMap.put(variable.getUUID(), variable);
+        return variable;
     }
 }

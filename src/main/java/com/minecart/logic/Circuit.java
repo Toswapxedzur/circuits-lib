@@ -4,7 +4,7 @@ import com.google.common.graph.*;
 import com.minecart.component.CircuitNode;
 import com.minecart.math.function.EquationSystem;
 import com.minecart.math.function.Expression;
-import com.minecart.misc.ElectricalVariable;
+import com.minecart.math.function.ContinuousVariable;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.jspecify.annotations.Nullable;
 
@@ -44,12 +44,12 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         this.world = world;
     }
 
-    public List<ElectricalVariable> getElectricalVariables() {
+    public List<ContinuousVariable<Double>> getElectricalVariables() {
         return electricalVariables;
     }
 
     // Converted to Lists for deterministic matrix mapping
-    protected List<ElectricalVariable> electricalVariables;
+    protected List<ContinuousVariable<Double>> electricalVariables;
 
     public List<Expression> getElectricalRules() {
         return electricalRules;
@@ -77,13 +77,13 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
             updateTopology();
             dirty = false;
         }
+        system.solveLinear();
         for(CircuitNode node : nodes){
             node.tick();
         }
         for(CircuitEdge edge : edges){
             edge.tick();
         }
-        system.solveLinear();
     }
 
     public void bfs(CircuitNode startNode, Consumer<CircuitNode> nodeConsumer, Consumer<CircuitEdge> edgeConsumer) {

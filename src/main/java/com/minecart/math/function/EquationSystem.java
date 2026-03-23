@@ -35,13 +35,13 @@ public class EquationSystem {
     public SolutionState solveLinear() {
         if(!isLinear())
             return SolutionState.UNSOL;
-        Set<Variable<Double>> varCollection = new LinkedHashSet<>();
-        BiMap<Integer, Variable<Double>> varMap = HashBiMap.create();
+        Set<ContinuousVariable<Double>> varCollection = new LinkedHashSet<>();
+        BiMap<Integer, ContinuousVariable<Double>> varMap = HashBiMap.create();
         for(Expression equation : system){
             equation.collectVar(varCollection);
         }
         int index = 0;
-        for(Variable<Double> variable : varCollection){
+        for(ContinuousVariable<Double> variable : varCollection){
             varMap.put(index++, variable);
         }
 
@@ -55,11 +55,11 @@ public class EquationSystem {
         for (int i = 0; i < numEquations; i++) {
             Expression equation = system.get(i);
 
-            Pair<List<org.apache.commons.math3.util.Pair<Double, Variable<Double>>>, Double> linearData = equation.toLinear();
-            List<Pair<Double, Variable<Double>>> terms = linearData.getKey();
+            Pair<List<org.apache.commons.math3.util.Pair<Double, ContinuousVariable<Double>>>, Double> linearData = equation.toLinear();
+            List<Pair<Double, ContinuousVariable<Double>>> terms = linearData.getKey();
             double intercept = linearData.getValue();
 
-            for (Pair<Double, Variable<Double>> term : terms) {
+            for (Pair<Double, ContinuousVariable<Double>> term : terms) {
                 A.setEntry(i, varMap.inverse().get(term.getValue()), term.getKey());
             }
 
@@ -75,7 +75,7 @@ public class EquationSystem {
         RealVector solution = solver.solve(b);
 
         for (int i = 0; i < numVariables; i++) {
-            Variable<Double> variable = varMap.get(i);
+            ContinuousVariable<Double> variable = varMap.get(i);
             variable.setValue(solution.getEntry(i));
         }
         return SolutionState.SOL;

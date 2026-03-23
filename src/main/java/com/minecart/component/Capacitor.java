@@ -1,4 +1,4 @@
 package com.minecart.component;
 
-public class Capacitor {
+public class Capacitor extends TwoConnector{
 }

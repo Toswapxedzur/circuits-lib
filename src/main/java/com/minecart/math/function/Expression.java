@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 public class Expression {
     protected List<Expression> children;
     protected Operator<Double> operator;
-    protected Variable<Double> variable;
+    protected ContinuousVariable<Double> variable;
     protected Double constant;
     protected boolean leaf;
 
@@ -28,7 +28,7 @@ public class Expression {
         }
     }
 
-    public Expression(Variable<Double> variable) {
+    public Expression(ContinuousVariable<Double> variable) {
         this.operator = null;
         this.children = new ArrayList<>();
         this.variable = variable;
@@ -118,7 +118,7 @@ public class Expression {
         }
     }
 
-    public void collectVar(Set<Variable<Double>> set) {
+    public void collectVar(Set<ContinuousVariable<Double>> set) {
         if (leaf) {
             if (variable != null) {
                 set.add(variable);
@@ -213,7 +213,7 @@ public class Expression {
                 .collect(Collectors.toList());
     }
 
-    private void extractLinearTerms(Map<Variable<Double>, Double> termMap, List<Double> intercept) {
+    private void extractLinearTerms(Map<ContinuousVariable<Double>, Double> termMap, List<Double> intercept) {
         if (leaf) {
             if (constant != null) {
                 intercept.add(constant);
@@ -230,7 +230,7 @@ public class Expression {
             }
         } else if (operator == Operator.MULTIPLICATION) {
             double coeff = 1.0;
-            Variable<Double> var = null;
+            ContinuousVariable<Double> var = null;
 
             for (Expression child : children) {
                 if (child.leaf && child.constant != null) {
@@ -273,17 +273,17 @@ public class Expression {
         return false;
     }
 
-    public Pair<List<Pair<Double, Variable<Double>>>, Double> toLinear() {
+    public Pair<List<Pair<Double, ContinuousVariable<Double>>>, Double> toLinear() {
         if (!isLinear()) {
             throw new IllegalStateException("Expression is not linear");
         }
-        Map<Variable<Double>, Double> termMap = new HashMap<>();
+        Map<ContinuousVariable<Double>, Double> termMap = new HashMap<>();
         List<Double> intercept = new ArrayList<>(); // Fixed: Was List.of() which is immutable
 
         extractLinearTerms(termMap, intercept);
 
-        List<Pair<Double, Variable<Double>>> terms = new ArrayList<>();
-        for (Map.Entry<Variable<Double>, Double> entry : termMap.entrySet()) {
+        List<Pair<Double, ContinuousVariable<Double>>> terms = new ArrayList<>();
+        for (Map.Entry<ContinuousVariable<Double>, Double> entry : termMap.entrySet()) {
             if (entry.getValue() != 0.0) {
                 terms.add(new Pair<>(entry.getValue(), entry.getKey()));
             }
@@ -435,7 +435,7 @@ public class Expression {
             this.children = Collections.unmodifiableList(this.children);
         }
 
-        public ImmutableExpression(Variable<Double> variable) {
+        public ImmutableExpression(ContinuousVariable<Double> variable) {
             super(variable);
             this.children = Collections.unmodifiableList(this.children);
         }
@@ -481,7 +481,7 @@ public class Expression {
     public static final class ExpressionBuilder{
         private ExpressionBuilder() {}
 
-        public static Expression variable(Variable<Double> variable) {
+        public static Expression variable(ContinuousVariable<Double> variable) {
             return new Expression(variable);
         }
 
@@ -521,11 +521,11 @@ public class Expression {
             return mul(value(-1.0), child);
         }
 
-        public static Expression coef(Double coef, Variable<Double> child){
+        public static Expression coef(Double coef, ContinuousVariable<Double> child){
             return mul(value(coef), variable(child));
         }
 
-        public static Expression neg(Variable<Double> child) {
+        public static Expression neg(ContinuousVariable<Double> child) {
             return coef(-1.0, child);
         }
 

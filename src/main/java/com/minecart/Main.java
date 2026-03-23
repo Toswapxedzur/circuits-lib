@@ -1,5 +1,6 @@
 package com.minecart;
 
+import com.minecart.math.function.ContinuousVariable;
 import com.minecart.variant.type.BatteryInformation;
 import com.minecart.variant.type.ResistorInformation;
 import com.minecart.component.Battery;
@@ -8,7 +9,6 @@ import com.minecart.component.Junction;
 import com.minecart.component.Resistor;
 import com.minecart.logic.World;
 import com.minecart.math.function.Expression;
-import com.minecart.math.function.Variable;
 import com.minecart.registry.AllComponents;
 import org.apache.commons.math3.util.Pair;
 
@@ -20,8 +20,8 @@ public class Main {
     public static void main(String[] args) {
         // Assuming your registry initialization goes here
 
-//        Variable.DoubleVar v1 = new Variable.DoubleVar();
-//        Variable.DoubleVar v2 = new Variable.DoubleVar();
+//        ContinuousVariable.DoubleVar v1 = new ContinuousVariable.DoubleVar();
+//        ContinuousVariable.DoubleVar v2 = new ContinuousVariable.DoubleVar();
 //
 //        testSimplification(v1, v2);
 //        testExpansion(v1, v2);
@@ -34,7 +34,7 @@ public class Main {
         testShortCircuit();
     }
 
-    public static void testSimplification(Variable.DoubleVar v1, Variable.DoubleVar v2) {
+    public static void testSimplification(ContinuousVariable<Double> v1, ContinuousVariable<Double> v2) {
         System.out.println("--- Test 1: Simplification ---");
 
         Expression expr = add(
@@ -54,7 +54,7 @@ public class Main {
      * Simulates: (v1 + 2.0) * (v2 + 3.0)
      * Expected Output after simplify(): (+ (* (v$variable$) (v$variable$)) (* (c3.0) (v$variable$)) (* (c2.0) (v$variable$)) (c6.0))
      */
-    public static void testExpansion(Variable.DoubleVar v1, Variable.DoubleVar v2) {
+    public static void testExpansion(ContinuousVariable<Double> v1, ContinuousVariable<Double> v2) {
         System.out.println("--- Test 2: Term Expansion ---");
 
         Expression s1 = add(variable(v1), value(2.0));
@@ -72,7 +72,7 @@ public class Main {
      * Simulates: 4(v1) + (-2)(v2) - 10.0
      * Expected Output: Map with {v1=4.0, v2=-2.0} and Intercept = -10.0
      */
-    public static void testLinearExtraction(Variable.DoubleVar v1, Variable.DoubleVar v2) {
+    public static void testLinearExtraction(ContinuousVariable<Double> v1, ContinuousVariable<Double> v2) {
         System.out.println("--- Test 3: Linear Extraction ---");
 
         Expression expr = add(
@@ -84,11 +84,11 @@ public class Main {
         System.out.println("Expression: " + expr.toString());
         System.out.println("Is Linear?  " + expr.isLinear() + " (Expected: true)");
 
-        Pair<List<Pair<Double, Variable<Double>>>, Double> linearData = expr.toLinear();
+        Pair<List<Pair<Double, ContinuousVariable<Double>>>, Double> linearData = expr.toLinear();
 
         System.out.println("Intercept:  " + linearData.getSecond() + " (Expected: -10.0)");
         System.out.println("Variables Extracted:");
-        for (Pair<Double, Variable<Double>> term : linearData.getFirst()) {
+        for (Pair<Double, ContinuousVariable<Double>> term : linearData.getFirst()) {
             System.out.println(" -> Coefficient: " + term.getFirst());
         }
     }
