@@ -1,29 +1,29 @@
 package com.minecart.registry;
 
-import com.minecart.component.CircuitNode;
+import com.minecart.logic.CircuitElement;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
-public class ComponentRegistry {
-    protected static final Map<String, ComponentType> REGISTRY = new HashMap<>();
+public class CircuitElementRegistry {
+    protected static final Map<String, CircuitElementType> REGISTRY = new HashMap<>();
     protected static boolean isFrozen = false;
 
-    public static <T extends CircuitNode> ComponentType<T> register(String id, Supplier<T> factory) {
+    public static <T extends CircuitElement> CircuitElementType<T> register(String id, Supplier<T> factory) {
         if(isFrozen){
             throw new UnsupportedOperationException("The registry is already frozen and no further component can be registered");
         }
         if (REGISTRY.containsKey(id)) {
-            throw new IllegalArgumentException("Component ID already registered: " + id);
+            throw new IllegalArgumentException("CircuitElement ID already registered: " + id);
         }
-        ComponentType<T> type = new ComponentType<>(id, factory);
+        CircuitElementType<T> type = new CircuitElementType<>(id, factory);
         REGISTRY.put(id, type);
         return type;
     }
 
-    public static ComponentType<?> getType(String id) {
-        ComponentType<?> type = REGISTRY.get(id);
+    public static CircuitElementType<?> getType(String id) {
+        CircuitElementType<?> type = REGISTRY.get(id);
         if (type == null) {
             throw new IllegalArgumentException("Unknown component ID: " + id);
         }

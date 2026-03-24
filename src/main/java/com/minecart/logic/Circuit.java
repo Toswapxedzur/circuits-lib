@@ -1,29 +1,24 @@
 package com.minecart.logic;
 
-import com.google.common.graph.*;
-import com.minecart.component.CircuitNode;
-import com.minecart.math.function.DoubleVariable;
-import com.minecart.math.function.EquationSystem;
-import com.minecart.math.function.Expression;
+import com.minecart.math.function.DoubleVar;
+import com.minecart.math.function.LinearSystem;
 import org.apache.commons.lang3.mutable.MutableBoolean;
-import org.jspecify.annotations.Nullable;
 
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.minecart.math.function.Expression.ExpressionBuilder.variable;
-
 /**
  * Represent a connected bidirectional circuit network
  */
-public class Circuit implements Network<CircuitNode, CircuitEdge> {
-    public static final ElementOrder<CircuitNode> NODE_ORDER = (ElementOrder<CircuitNode>) ElementOrder.sorted(CircuitNode.comparator);
-    public static final ElementOrder<CircuitEdge> EDGE_ORDER = (ElementOrder<CircuitEdge>) ElementOrder.sorted(CircuitNode.comparator);
-
+public class Circuit{
     protected World world;
+
+    protected final UUID id;
+
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
+    protected Set<CircuitComponent> components;
 
     protected boolean dirty;
 
@@ -44,40 +39,23 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         this.world = world;
     }
 
-    public List<DoubleVariable> getElectricalVariables() {
-        return electricalVariables;
-    }
-
-    // Converted to Lists for deterministic matrix mapping
-    protected List<DoubleVariable> electricalVariables;
-
-    public List<Expression> getElectricalRules() {
-        return electricalRules;
-    }
-
-    protected List<Expression> electricalRules;
-
-    public EquationSystem getSystem() {
-        return system;
-    }
-
-    protected EquationSystem system;
+    protected LinearSystem system;
 
     public Circuit(){
-        nodes = new TreeSet<>();
-        edges = new TreeSet<>();
-        electricalVariables = new ArrayList<>();
-        electricalRules = new ArrayList<>();
-        system = new EquationSystem(electricalRules);
+        id = UUID.randomUUID();
+        nodes = new LinkedHashSet<>();
+        edges = new LinkedHashSet<>();
+        system = new LinearSystem();
         dirty = false;
     }
 
     public void tick(){
         if(dirty) {
-            updateTopology();
+            update();
+            system.solve();
             dirty = false;
         }
-        system.solveLinear();
+
         for(CircuitNode node : nodes){
             node.tick();
         }
@@ -127,43 +105,49 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     }
 
     public boolean destroy(CircuitNode node, boolean simulate) {
-        if(simulate)
-            return node.destroy(new ArrayList<>(), true);
-        List<CircuitEdge> destroyEdge = new ArrayList<>();
-        node.destroy(destroyEdge, false);
-        for(CircuitEdge edge : destroyEdge){
-            edges.remove(edge);
+        if (simulate) {
+            return this.nodes.contains(node);
         }
-        nodes.remove(node);
-        markDirty();
+
+        List<CircuitEdge> connectedEdges = new ArrayList<>(node.getConnection());
+        for (CircuitEdge edge : connectedEdges) {
+            this.world.disconnect(edge);
+        }
+
+        this.nodes.remove(node);
+        this.markDirty();
         return true;
     }
 
     /**
      * Called everytime when the circuit structure changes, not when electrical variable changes
      */
-    protected void updateTopology(){
-        //update circuit rules and circuit variables
-        electricalVariables.clear();
-        electricalRules.clear();
+    protected void update(){
+        system.collectVar(this::collectVariable);
+        system.init();
+        system.stampRelation(this::collectRelation);
+    }
 
+    public void collectRelation(LinearSystem.RelationProvider provider){
         for(CircuitNode node : nodes){
-            node.collectRule(electricalRules);
-            node.collectElectricalVariable(electricalVariables);
+            node.collectRule(provider);
         }
         for(CircuitEdge edge : edges){
-            edge.collectRule(electricalRules);
-            edge.collectElectricalVariable(electricalVariables);
+            edge.collectRule(provider);
         }
+    }
 
-        if (!edges.isEmpty()) {
-            CircuitEdge randomWire = edges.iterator().next();
-            electricalRules.add(variable(randomWire.getVoltage()));
+    public void collectVariable(Set<DoubleVar> collector){
+        for(CircuitNode node : nodes){
+            node.collectVariable(collector);
+        }
+        for(CircuitEdge edge : edges){
+            edge.collectVariable(collector);
         }
     }
 
     /**
-     * Merge all the nodes and edges to the other circuit, only handles Circuit and Component scope, doesn't care about World
+     * Merge all the nodes and edges to the other circuit, only handles Circuit scope, doesn't care about World
      * @param toMerge the other circuit to merge into, current circuit is discarded
      */
     public void mergeInto(Circuit toMerge){
@@ -177,23 +161,40 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         }
     }
 
+    /**
+     * Disconnect the edge and seperate the two node
+     * @return Whether the two node is still connected
+     */
     public boolean seperate(CircuitNode node1, CircuitNode node2, CircuitEdge edge, Circuit newCircuit){
         node1.disconnect(edge, false);
         node2.disconnect(edge, false);
+
+        // ADDED: The edge is broken, remove it from this circuit completely
+        this.edges.remove(edge);
+
         MutableBoolean contain2 = new MutableBoolean(false);
         Consumer<CircuitNode> checkConsumer = node -> {
             if(node == node2)
                 contain2.setTrue();
         };
         bfs(node1, checkConsumer, e -> {});
-        if(contain2.isTrue())
+
+        if(contain2.isTrue()) {
+            this.markDirty();
             return false;
+        }
+
         Consumer<CircuitNode> reassignNode = circuitNode -> {
             circuitNode.setCircuit(newCircuit);
+            newCircuit.addNode(circuitNode);
+            this.nodes.remove(circuitNode);
         };
         Consumer<CircuitEdge> reassignEdge = circuitEdge -> {
             circuitEdge.setCircuit(newCircuit);
+            newCircuit.addEdge(circuitEdge);
+            this.edges.remove(circuitEdge);
         };
+
         bfs(node2, reassignNode, reassignEdge);
         this.markDirty();
         newCircuit.markDirty();
@@ -210,104 +211,29 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         node.setCircuit(this);
     }
 
-    @Override
     public Set<CircuitNode> nodes() {
         return nodes;
     }
 
-    @Override
     public Set<CircuitEdge> edges() {
         return edges;
     }
 
-    @Override
-    public boolean isDirected() {
-        return true;
-    }
-
-    @Override
-    public boolean allowsParallelEdges() {
-        return true;
-    }
-
-    @Override
-    public boolean allowsSelfLoops() {
-        return true;
-    }
-
-    @Override
-    public ElementOrder<CircuitNode> nodeOrder() {
-        return NODE_ORDER;
-    }
-
-    @Override
-    public ElementOrder<CircuitEdge> edgeOrder() {
-        return EDGE_ORDER;
-    }
-
-    @Override
     public Set<CircuitNode> adjacentNodes(CircuitNode node) {
-        return node.adjacentNode().stream().collect(Collectors.toSet());
+        return node.getAdjacent().stream().collect(Collectors.toSet());
     }
 
-    @Override
-    public Set<CircuitNode> predecessors(CircuitNode node) {
-        return node.adjacentInNode().stream().collect(Collectors.toSet());
-    }
-
-    @Override
-    public Set<CircuitNode> successors(CircuitNode node) {
-        return node.adjacentOutNode().stream().collect(Collectors.toSet());
-    }
-
-    @Override
     public Set<CircuitEdge> incidentEdges(CircuitNode node) {
-        return node.getConnection().stream().collect(Collectors.toSet());
+        return node.getConnection();
     }
 
-    @Override
-    public Set<CircuitEdge> inEdges(CircuitNode node) {
-        return node.getInConnection().stream().collect(Collectors.toSet());
-    }
-
-    @Override
-    public Set<CircuitEdge> outEdges(CircuitNode node) {
-        return node.getOutConnection().stream().collect(Collectors.toSet());
-    }
-
-    @Override
-    public int degree(CircuitNode node) {
-        return node.getAmountConnected();
-    }
-
-    @Override
-    public int inDegree(CircuitNode node) {
-        return node.getInAmountConnected();
-    }
-
-    @Override
-    public int outDegree(CircuitNode node) {
-        return node.getOutAmountConnected();
-    }
-
-    @Override
-    public EndpointPair<CircuitNode> incidentNodes(CircuitEdge edge) {
-        return edge.incidentNodes();
-    }
-
-    @Override
     public Set<CircuitEdge> adjacentEdges(CircuitEdge edge) {
-        return edge.getConnections().stream().<CircuitEdge>mapMulti((p, consumer) -> {
-            p.getConnection().stream().forEach(t -> consumer.accept(t));
-        }).filter(e -> e != edge).collect(Collectors.toSet());
+        Set<CircuitEdge> set = new LinkedHashSet<>();
+        edge.getStart().getConnection().forEach(e -> set.add(e));
+        edge.getEnd().getConnection().forEach(e -> set.add(e));
+        return set;
     }
 
-    @Override
-    public Graph<CircuitNode> asGraph() {
-        return Graphs.copyOf(this).asGraph();
-    }
-
-    @Override
     public Set<CircuitEdge> edgesConnecting(CircuitNode nodeU, CircuitNode nodeV) {
         return nodeU.getConnection().stream()
                 .filter(e -> {
@@ -317,37 +243,7 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
     }
 
     @Override
-    public Set<CircuitEdge> edgesConnecting(EndpointPair<CircuitNode> endpoints) {
-        return edgesConnecting(endpoints.nodeU(), endpoints.nodeV());
-    }
-
-    @Override
-    public Optional<CircuitEdge> edgeConnecting(CircuitNode nodeU, CircuitNode nodeV) {
-        return edgesConnecting(nodeU, nodeV).stream().findFirst();
-    }
-
-    @Override
-    public Optional<CircuitEdge> edgeConnecting(EndpointPair<CircuitNode> endpoints) {
-        return edgeConnecting(endpoints.nodeU(), endpoints.nodeV());
-    }
-
-    @Override
-    public @Nullable CircuitEdge edgeConnectingOrNull(CircuitNode nodeU, CircuitNode nodeV) {
-        return edgeConnecting(nodeU, nodeV).orElse(null);
-    }
-
-    @Override
-    public @Nullable CircuitEdge edgeConnectingOrNull(EndpointPair<CircuitNode> endpoints) {
-        return edgeConnectingOrNull(endpoints.nodeU(), endpoints.nodeV());
-    }
-
-    @Override
-    public boolean hasEdgeConnecting(CircuitNode nodeU, CircuitNode nodeV) {
-        return !edgesConnecting(nodeU, nodeV).isEmpty();
-    }
-
-    @Override
-    public boolean hasEdgeConnecting(EndpointPair<CircuitNode> endpoints) {
-        return hasEdgeConnecting(endpoints.nodeU(), endpoints.nodeV());
+    public int hashCode() {
+        return id.hashCode();
     }
 }

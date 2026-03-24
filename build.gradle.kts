@@ -16,8 +16,8 @@ dependencies {
     implementation("com.google.guava:guava:33.5.0-jre")
     // Source: https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
     implementation("org.apache.commons:commons-lang3:3.20.0")
-    // Source: https://mvnrepository.com/artifact/org.apache.commons/commons-math3
-    implementation("org.apache.commons:commons-math3:3.6.1")
+    // Source: https://mvnrepository.com/artifact/org.ejml/ejml-dsparse
+    implementation("org.ejml:ejml-dsparse:0.44.0")
 }
 
 tasks.test {

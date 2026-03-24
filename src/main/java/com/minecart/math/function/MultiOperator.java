@@ -2,6 +2,7 @@ package com.minecart.math.function;
 
 import com.minecart.misc.MultiDoubleOperator;
 
+@Deprecated
 public class MultiOperator extends Operator{
     MultiDoubleOperator multiOperator;
 

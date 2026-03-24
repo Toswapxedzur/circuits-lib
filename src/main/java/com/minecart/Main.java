@@ -1,6 +1,6 @@
 package com.minecart;
 
-import com.minecart.math.function.DoubleVariable;
+import com.minecart.math.function.DoubleVar;
 import com.minecart.variant.type.BatteryInformation;
 import com.minecart.variant.type.ResistorInformation;
 import com.minecart.component.Battery;
@@ -26,7 +26,7 @@ public class Main {
         testShortCircuit();
     }
 
-    public static void testSimplification(DoubleVariable v1, DoubleVariable v2) {
+    public static void testSimplification(DoubleVar v1, DoubleVar v2) {
         System.out.println("--- Test 1: Simplification ---");
 
         Expression expr = add(
@@ -46,7 +46,7 @@ public class Main {
      * Simulates: (v1 + 2.0) * (v2 + 3.0)
      * Expected Output after simplify(): (+ (* (v$variable$) (v$variable$)) (* (c3.0) (v$variable$)) (* (c2.0) (v$variable$)) (c6.0))
      */
-    public static void testExpansion(DoubleVariable v1, DoubleVariable v2) {
+    public static void testExpansion(DoubleVar v1, DoubleVar v2) {
         System.out.println("--- Test 2: Term Expansion ---");
 
         Expression s1 = add(variable(v1), value(2.0));
@@ -64,7 +64,7 @@ public class Main {
      * Simulates: 4(v1) + (-2)(v2) - 10.0
      * Expected Output: Map with {v1=4.0, v2=-2.0} and Intercept = -10.0
      */
-    public static void testLinearExtraction(DoubleVariable v1, DoubleVariable v2) {
+    public static void testLinearExtraction(DoubleVar v1, DoubleVar v2) {
         System.out.println("--- Test 3: Linear Extraction ---");
 
         Expression expr = add(
@@ -76,11 +76,11 @@ public class Main {
         System.out.println("Expression: " + expr.toString());
         System.out.println("Is Linear?  " + expr.isLinear() + " (Expected: true)");
 
-        Pair<List<Pair<Double, DoubleVariable>>, Double> linearData = expr.toLinear();
+        Pair<List<Pair<Double, DoubleVar>>, Double> linearData = expr.toLinear();
 
         System.out.println("Intercept:  " + linearData.getSecond() + " (Expected: -10.0)");
         System.out.println("Variables Extracted:");
-        for (Pair<Double, DoubleVariable> term : linearData.getFirst()) {
+        for (Pair<Double, DoubleVar> term : linearData.getFirst()) {
             System.out.println(" -> Coefficient: " + term.getFirst());
         }
     }
@@ -94,8 +94,8 @@ public class Main {
         System.out.println("\n--- Running Test 1: Series Circuit ---");
         World world = new World();
 
-        Battery battery = world.create(AllComponents.BATTERY, new BatteryInformation(10.0, 2.0));
-        Resistor resistor = world.create(AllComponents.RESISTOR, new ResistorInformation(8.0));
+        Battery battery = world.createNode(AllComponents.BATTERY, new BatteryInformation(10.0, 2.0));
+        Resistor resistor = world.createNode(AllComponents.RESISTOR, new ResistorInformation(8.0));
 
         // Connect them and unwrap the Optional. If it fails to connect, the test crashes here.
         CircuitEdge outWire = world.connect(battery, resistor).orElseThrow();
@@ -119,11 +119,11 @@ public class Main {
         System.out.println("\n--- Running Test 2: Parallel Circuit ---");
         World world = new World();
 
-        Battery battery = world.create(AllComponents.BATTERY, new BatteryInformation(12.0, 1.0));
-        Resistor r1 = world.create(AllComponents.RESISTOR, new ResistorInformation(10.0));
-        Resistor r2 = world.create(AllComponents.RESISTOR, new ResistorInformation(10.0));
-        Junction topJunction = world.create(AllComponents.JUNCTION);
-        Junction bottomJunction = world.create(AllComponents.JUNCTION);
+        Battery battery = world.createNode(AllComponents.BATTERY, new BatteryInformation(12.0, 1.0));
+        Resistor r1 = world.createNode(AllComponents.RESISTOR, new ResistorInformation(10.0));
+        Resistor r2 = world.createNode(AllComponents.RESISTOR, new ResistorInformation(10.0));
+        Junction topJunction = world.createNode(AllComponents.JUNCTION);
+        Junction bottomJunction = world.createNode(AllComponents.JUNCTION);
 
         // Wire Battery to Junctions
         CircuitEdge batPos = world.connect(battery, topJunction).orElseThrow();
@@ -154,7 +154,7 @@ public class Main {
         System.out.println("\n--- Running Test 3: Short Circuit ---");
         World world = new World();
 
-        Battery battery = world.create(AllComponents.BATTERY, new BatteryInformation(10.0, 0.1));
+        Battery battery = world.createNode(AllComponents.BATTERY, new BatteryInformation(10.0, 0.1));
 
         // Connect the battery directly to itself
         CircuitEdge shortWire = world.connect(battery, battery).orElseThrow();

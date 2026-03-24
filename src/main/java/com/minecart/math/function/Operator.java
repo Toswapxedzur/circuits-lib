@@ -3,6 +3,7 @@ package com.minecart.math.function;
 import java.util.List;
 import java.util.function.Predicate;
 
+@Deprecated
 public class Operator {
     public static final MultiOperator.Addition ADDITION = new MultiOperator.Addition();
     public static final MultiOperator.Multiplication MULTIPLICATION = new MultiOperator.Multiplication();

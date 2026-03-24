@@ -1,21 +1,16 @@
 package com.minecart.logic;
 
-import com.minecart.math.function.DoubleVariable;
-import com.minecart.math.function.DoubleVariableHolder;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.ElectricalInformation;
-import com.minecart.component.CircuitNode;
-import com.minecart.registry.ComponentType;
+import com.minecart.registry.CircuitElementType;
 
 import java.util.*;
 
-public class World implements DoubleVariableHolder {
-    protected Map<UUID, DoubleVariable> eVarMap;
-    public List<Circuit> circuits;
+public class World {
+    public Set<Circuit> circuits;
 
     public World(){
-        eVarMap = new HashMap<>();
-        circuits = new ArrayList<>();
+        circuits = new LinkedHashSet<>();
     }
 
     public void tick(){
@@ -24,7 +19,7 @@ public class World implements DoubleVariableHolder {
         }
     }
 
-    public <T extends CircuitNode> T create(ComponentType<T> type){
+    public <T extends CircuitNode> T createNode(CircuitElementType<T> type){
         T node = type.create();
         node.setWorld(this);
         Circuit circuit = createCircuit();
@@ -33,8 +28,8 @@ public class World implements DoubleVariableHolder {
         return node;
     }
 
-    public <I extends ElectricalInformation, T extends CircuitNode & ElectricalVariate<I>> T create(ComponentType<T> type, I information){
-        T node = create(type);
+    public <I extends ElectricalInformation, T extends CircuitNode & ElectricalVariate<I>> T createNode(CircuitElementType<T> type, I information){
+        T node = createNode(type);
         node.set(information);
         return node;
     }
@@ -47,13 +42,16 @@ public class World implements DoubleVariableHolder {
         return circuit;
     }
 
-    public Optional<CircuitEdge> connect(CircuitNode node1, CircuitNode node2){
+    public <T extends CircuitEdge> T connect(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2){
         if(node1.getWorld() != this || node2.getWorld() != this)
             throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current World");
-        CircuitEdge edge = new CircuitEdge(this);
-        edge.connect(node1, node2);
+        T edge = type.create();
+        edge.setWorld(this);
+        if(!edge.connect(node1, node2, true))
+            return null;
+        edge.connect(node1, node2, false);
         if(!node1.connectEdge(edge, true) || !node2.connectEdge(edge, true))
-            return Optional.empty();
+            return null;
         node1.connectEdge(edge, false);
         node2.connectEdge(edge, false);
         Circuit circuit1 = node1.getCircuit();
@@ -64,7 +62,7 @@ public class World implements DoubleVariableHolder {
         }
         circuit1.addEdge(edge);
         circuit1.markDirty();
-        return Optional.of(edge);
+        return edge;
     }
 
     public boolean disconnect(CircuitEdge edge){
@@ -84,20 +82,20 @@ public class World implements DoubleVariableHolder {
     }
 
     public boolean destroy(CircuitNode node){
-        if(!node.getCircuit().destroy(node, true))
+        if(node.getWorld() != this)
+            throw new IllegalArgumentException("Can't connect node that doesn't belong to the current World");
+
+        Circuit circuit = node.getCircuit();
+
+        if(!circuit.destroy(node, true))
             return false;
-        node.getCircuit().destroy(node, false);
+
+        circuit.destroy(node, false);
+
+        if (circuit.nodes().isEmpty()) {
+            this.circuits.remove(circuit);
+        }
+
         return true;
-    }
-
-    @Override
-    public DoubleVariable computeIfAbsent(UUID id, double value) {
-        return eVarMap.computeIfAbsent(id, i -> new DoubleVariable(i, value));
-    }
-
-    public DoubleVariable createDoubleVar(){
-        DoubleVariable variable = new DoubleVariable();
-        eVarMap.put(variable.getUUID(), variable);
-        return variable;
     }
 }

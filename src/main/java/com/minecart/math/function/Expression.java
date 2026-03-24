@@ -1,17 +1,16 @@
 package com.minecart.math.function;
 
-import org.apache.commons.math3.util.Pair;
-
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * Could also be used to represent an equation with exp = 0
  */
+@Deprecated
 public class Expression {
     protected List<Expression> children;
     protected Operator operator;
-    protected DoubleVariable variable;
+    protected DoubleVar variable;
     protected double constant;
     protected boolean leaf;
 
@@ -28,7 +27,7 @@ public class Expression {
         }
     }
 
-    public Expression(DoubleVariable variable) {
+    public Expression(DoubleVar variable) {
         this.operator = null;
         this.children = new ArrayList<>();
         this.variable = variable;
@@ -118,7 +117,7 @@ public class Expression {
         }
     }
 
-    public void collectVar(Set<DoubleVariable> set) {
+    public void collectVar(Set<DoubleVar> set) {
         if (leaf) {
             if (variable != null) {
                 set.add(variable);
@@ -221,7 +220,7 @@ public class Expression {
                 .collect(Collectors.toList());
     }
 
-    private void extractLinearTerms(Map<DoubleVariable, Double> termMap, List intercept) {
+    private void extractLinearTerms(Map<DoubleVar, Double> termMap, List intercept) {
         if (leaf) {
             if (isConstant()) {
                 intercept.add(constant);
@@ -238,7 +237,7 @@ public class Expression {
             }
         } else if (operator == Operator.MULTIPLICATION) {
             double coeff = 1.0;
-            DoubleVariable var = null;
+            DoubleVar var = null;
 
             for (Expression child : children) {
                 if (child.leaf && child.isConstant()) {
@@ -279,29 +278,6 @@ public class Expression {
             return varCount <= 1;
         }
         return false;
-    }
-
-    public Pair<List<Pair<Double, DoubleVariable>>, Double> toLinear() {
-        if (!isLinear()) {
-            throw new IllegalStateException("Expression is not linear");
-        }
-        Map<DoubleVariable, Double> termMap = new HashMap<>();
-        List<Double> intercept = new ArrayList<>(); // Fixed: Was List.of() which is immutable
-
-        extractLinearTerms(termMap, intercept);
-
-        List<Pair<Double, DoubleVariable>> terms = new ArrayList<>();
-        for (Map.Entry<DoubleVariable, Double> entry : termMap.entrySet()) {
-            if (entry.getValue() != 0.0) {
-                terms.add(new Pair<>(entry.getValue(), entry.getKey()));
-            }
-        }
-
-        double sum = 0.0;
-        for (double t : intercept)
-            sum += t;
-
-        return new Pair<>(terms, sum);
     }
 
     private void foldConstants() {
@@ -443,7 +419,7 @@ public class Expression {
             this.children = Collections.unmodifiableList(this.children);
         }
 
-        public ImmutableExpression(DoubleVariable variable) {
+        public ImmutableExpression(DoubleVar variable) {
             super(variable);
             this.children = Collections.unmodifiableList(this.children);
         }
@@ -489,7 +465,7 @@ public class Expression {
     public static final class ExpressionBuilder{
         private ExpressionBuilder() {}
 
-        public static Expression variable(DoubleVariable variable) {
+        public static Expression variable(DoubleVar variable) {
             return new Expression(variable);
         }
 
@@ -529,11 +505,11 @@ public class Expression {
             return mul(value(-1.0), child);
         }
 
-        public static Expression coef(Double coef, DoubleVariable child){
+        public static Expression coef(Double coef, DoubleVar child){
             return mul(value(coef), variable(child));
         }
 
-        public static Expression neg(DoubleVariable child) {
+        public static Expression neg(DoubleVar child) {
             return coef(-1.0, child);
         }
 

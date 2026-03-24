@@ -1,25 +1,22 @@
 package com.minecart.logic;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.graph.EndpointPair;
-import com.minecart.component.CircuitNode;
-import com.minecart.component.Component;
-import com.minecart.math.function.DoubleVariable;
+import com.minecart.math.function.DoubleVar;
 import com.minecart.misc.CurrentFlow;
 
-public class CircuitEdge extends Component {
+public class CircuitEdge extends CircuitElement {
+
     //positive: from first to second
-    protected DoubleVariable current;
+    protected DoubleVar current;
 
-    protected DoubleVariable voltage;
+    protected CircuitNode start;
+    protected CircuitNode end;
 
-    protected CircuitNode[] connection;
+    protected CircuitComponent component;
 
     public CircuitEdge(World world){
-        connection = new CircuitNode[2];
         setWorld(world);
-        current = getWorld().createDoubleVar();
-        voltage = getWorld().createDoubleVar();
+        current = DoubleVar.create();
     }
 
     @Override
@@ -27,8 +24,48 @@ public class CircuitEdge extends Component {
 
     }
 
+    public boolean connect(CircuitNode fromConnect, CircuitNode toConnect, boolean simulate){
+        if(hasComponent())
+            return false;
+        if(!simulate) {
+            start = fromConnect;
+            end = toConnect;
+        }
+        return true;
+    }
+
+    public boolean disconnect(boolean simulate){
+        if(hasComponent())
+            return false;
+        if(!simulate) {
+            start = null;
+            end = null;
+        }
+        return true;
+    }
+
+    public CircuitNode getStart() {
+        return start;
+    }
+
+    public CircuitNode getEnd() {
+        return end;
+    }
+
+    public CircuitComponent getComponent() {
+        return component;
+    }
+
+    public boolean hasComponent() {
+        return component != null;
+    }
+
+    public void setComponent(CircuitComponent component) {
+        this.component = component;
+    }
+
     public CircuitNode getConnection(int index) {
-        return connection[index];
+        return index == 0 ? start : end;
     }
 
     public int getIndex(CircuitNode node){
@@ -39,29 +76,12 @@ public class CircuitEdge extends Component {
         return getIndex(node) == 0 ? getConnection(1) : getConnection(0);
     }
 
-    public ImmutableList<CircuitNode> getConnections(){
-        return ImmutableList.copyOf(connection);
-    }
-
     public boolean connectTo(CircuitNode node){
         return getConnection(0) == node || getConnection(1) == node;
     }
 
-    public DoubleVariable getVoltage() {
-        return voltage;
-    }
-
-    public DoubleVariable getCurrent() {
+    public DoubleVar getCurrent() {
         return current;
-    }
-
-    public boolean connect(CircuitNode fromConnect, CircuitNode toConnect){
-        if(connection[0] == null && connection[1] == null){
-            connection[0] = fromConnect;
-            connection[1] = toConnect;
-            return true;
-        }
-        return false;
     }
 
     public boolean shouldRevert(CircuitNode node){
@@ -71,7 +91,7 @@ public class CircuitEdge extends Component {
     public CurrentFlow flowDirection(CircuitNode node){
         if(current.getValue() == 0f)
             return CurrentFlow.NO;
-        if(connection[sourceInx()] == node)
+        if(getConnection(sourceInx()) == node)
             return CurrentFlow.OUT;
         return CurrentFlow.IN;
     }
@@ -85,15 +105,11 @@ public class CircuitEdge extends Component {
     }
 
     public CircuitNode getSource(){
-        return connection[sourceInx()];
+        return getConnection(sourceInx());
     }
 
     public CircuitNode getTarget(){
-        return connection[targetInx()];
-    }
-
-    public boolean selfLoop(){
-        return connection[0].equals(connection[1]);
+        return getConnection(targetInx());
     }
 
     public EndpointPair<CircuitNode> incidentNodes(){
