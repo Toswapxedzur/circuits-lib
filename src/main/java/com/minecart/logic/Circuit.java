@@ -2,9 +2,9 @@ package com.minecart.logic;
 
 import com.google.common.graph.*;
 import com.minecart.component.CircuitNode;
+import com.minecart.math.function.DoubleVariable;
 import com.minecart.math.function.EquationSystem;
 import com.minecart.math.function.Expression;
-import com.minecart.math.function.ContinuousVariable;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.jspecify.annotations.Nullable;
 
@@ -44,12 +44,12 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
         this.world = world;
     }
 
-    public List<ContinuousVariable<Double>> getElectricalVariables() {
+    public List<DoubleVariable> getElectricalVariables() {
         return electricalVariables;
     }
 
     // Converted to Lists for deterministic matrix mapping
-    protected List<ContinuousVariable<Double>> electricalVariables;
+    protected List<DoubleVariable> electricalVariables;
 
     public List<Expression> getElectricalRules() {
         return electricalRules;
@@ -247,32 +247,32 @@ public class Circuit implements Network<CircuitNode, CircuitEdge> {
 
     @Override
     public Set<CircuitNode> adjacentNodes(CircuitNode node) {
-        return node.adjacentNode();
+        return node.adjacentNode().stream().collect(Collectors.toSet());
     }
 
     @Override
     public Set<CircuitNode> predecessors(CircuitNode node) {
-        return node.adjacentInNode();
+        return node.adjacentInNode().stream().collect(Collectors.toSet());
     }
 
     @Override
     public Set<CircuitNode> successors(CircuitNode node) {
-        return node.adjacentOutNode();
+        return node.adjacentOutNode().stream().collect(Collectors.toSet());
     }
 
     @Override
     public Set<CircuitEdge> incidentEdges(CircuitNode node) {
-        return node.getConnection();
+        return node.getConnection().stream().collect(Collectors.toSet());
     }
 
     @Override
     public Set<CircuitEdge> inEdges(CircuitNode node) {
-        return node.getInConnection();
+        return node.getInConnection().stream().collect(Collectors.toSet());
     }
 
     @Override
     public Set<CircuitEdge> outEdges(CircuitNode node) {
-        return node.getOutConnection();
+        return node.getOutConnection().stream().collect(Collectors.toSet());
     }
 
     @Override

@@ -4,14 +4,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.graph.EndpointPair;
 import com.minecart.component.CircuitNode;
 import com.minecart.component.Component;
-import com.minecart.math.function.ContinuousVariable;
+import com.minecart.math.function.DoubleVariable;
 import com.minecart.misc.CurrentFlow;
 
 public class CircuitEdge extends Component {
     //positive: from first to second
-    protected ContinuousVariable<Double> current;
+    protected DoubleVariable current;
 
-    protected ContinuousVariable<Double> voltage;
+    protected DoubleVariable voltage;
 
     protected CircuitNode[] connection;
 
@@ -47,11 +47,11 @@ public class CircuitEdge extends Component {
         return getConnection(0) == node || getConnection(1) == node;
     }
 
-    public ContinuousVariable<Double> getVoltage() {
+    public DoubleVariable getVoltage() {
         return voltage;
     }
 
-    public ContinuousVariable<Double> getCurrent() {
+    public DoubleVariable getCurrent() {
         return current;
     }
 
@@ -90,6 +90,10 @@ public class CircuitEdge extends Component {
 
     public CircuitNode getTarget(){
         return connection[targetInx()];
+    }
+
+    public boolean selfLoop(){
+        return connection[0].equals(connection[1]);
     }
 
     public EndpointPair<CircuitNode> incidentNodes(){

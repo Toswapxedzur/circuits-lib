@@ -1,16 +1,16 @@
 package com.minecart.math.function;
 
-import java.util.function.BinaryOperator;
+import java.util.function.DoubleBinaryOperator;
 
-public class DoubleOperator<T> extends Operator<T>{
-    BinaryOperator<T> operator;
+public class DoubleOperator extends Operator{
+    DoubleBinaryOperator operator;
 
-    protected DoubleOperator(char symbol, BinaryOperator<T> operator){
+    protected DoubleOperator(char symbol, DoubleBinaryOperator operator){
         super(symbol, Target.DOUBLE);
         this.operator = operator;
     }
 
-    public static class Division extends DoubleOperator<Double> {
+    public static class Division extends DoubleOperator {
         protected Division() {
             super('/', Division::divide);
         }
@@ -20,7 +20,7 @@ public class DoubleOperator<T> extends Operator<T>{
         }
     }
 
-    public static class Power extends DoubleOperator<Double> {
+    public static class Power extends DoubleOperator {
         protected Power() {
             super('^', Power::power);
         }

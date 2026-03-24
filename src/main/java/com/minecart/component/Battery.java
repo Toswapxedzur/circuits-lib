@@ -3,7 +3,7 @@ package com.minecart.component;
 import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.math.function.ContinuousVariable;
+import com.minecart.math.function.DoubleVariable;
 import com.minecart.math.function.Expression;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.BatteryInformation;
@@ -86,8 +86,8 @@ public class Battery<T extends BatteryInformation> extends TwoConnector implemen
         CircuitEdge edge1 = edges.get(0);
         CircuitEdge edge2 = edges.get(1);
 
-        ContinuousVariable<Double> voltage1 = edge1.getVoltage();
-        ContinuousVariable<Double> voltage2 = edge2.getVoltage();
+        DoubleVariable voltage1 = edge1.getVoltage();
+        DoubleVariable voltage2 = edge2.getVoltage();
 
         boolean edge1IsPositive = !edge1.shouldRevert(this);
 

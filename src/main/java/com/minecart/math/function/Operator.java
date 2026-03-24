@@ -3,14 +3,14 @@ package com.minecart.math.function;
 import java.util.List;
 import java.util.function.Predicate;
 
-public class Operator<T> {
+public class Operator {
     public static final MultiOperator.Addition ADDITION = new MultiOperator.Addition();
     public static final MultiOperator.Multiplication MULTIPLICATION = new MultiOperator.Multiplication();
     public static final DoubleOperator.Division DIVISION = new DoubleOperator.Division();
     public static final DoubleOperator.Power POWER = new DoubleOperator.Power();
-    public static final List<Operator<Double>> OPERATORS = List.of(ADDITION, MULTIPLICATION, DIVISION, POWER);
-    public static final List<MultiOperator<Double>> MULTI_OPERATORS = List.of(ADDITION, MULTIPLICATION);
-    public static final List<DoubleOperator<Double>> DOUBLE_OPERATORS = List.of(DIVISION, POWER);
+    public static final List<Operator> OPERATORS = List.of(ADDITION, MULTIPLICATION, DIVISION, POWER);
+    public static final List<MultiOperator> MULTI_OPERATORS = List.of(ADDITION, MULTIPLICATION);
+    public static final List<DoubleOperator> DOUBLE_OPERATORS = List.of(DIVISION, POWER);
 
     public char symbol;
     public Target target;
@@ -20,7 +20,7 @@ public class Operator<T> {
         this.target = target;
     }
 
-    public static Operator<Double> parse(char symbol) {
+    public static Operator parse(char symbol) {
         return OPERATORS.stream().filter(o -> symbol == o.symbol).findAny().orElse(null);
     }
 

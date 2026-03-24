@@ -48,11 +48,11 @@ public class Junction extends CircuitNode{
     }
 
     @Override
-    public Set<CircuitEdge> getConnection() {
-        Set<CircuitEdge> circuitEdges = super.getConnection();
+    public void getConnectionGroup(List<List<CircuitEdge>> groups) {
+        List<CircuitEdge> circuitEdge = new ArrayList<>();
         for(CircuitEdge edge : edges){
-            circuitEdges.add(edge);
+            circuitEdge.add(edge);
         }
-        return circuitEdges;
+        groups.add(circuitEdge);
     }
 }

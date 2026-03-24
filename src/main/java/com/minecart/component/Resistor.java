@@ -2,7 +2,7 @@ package com.minecart.component;
 
 import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
-import com.minecart.math.function.ContinuousVariable;
+import com.minecart.math.function.DoubleVariable;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.ResistorInformation;
 import com.minecart.math.function.Expression;
@@ -74,9 +74,9 @@ public class Resistor<T extends ResistorInformation> extends TwoConnector implem
 
         if(edges.size() != 2)
             return;
-        ContinuousVariable<Double> current = edges.get(0).getCurrent();
-        ContinuousVariable<Double> voltage1 = edges.get(0).getVoltage();
-        ContinuousVariable<Double> voltage2 = edges.get(1).getVoltage();
+        DoubleVariable current = edges.get(0).getCurrent();
+        DoubleVariable voltage1 = edges.get(0).getVoltage();
+        DoubleVariable voltage2 = edges.get(1).getVoltage();
         Expression toCurrent = edges.get(0).shouldRevert(this) ? variable(current) : neg(variable(current));
         Expression expression = sub(mul(toCurrent, value(getResistance())), sub(variable(voltage1), variable(voltage2)));
         equations.add(expression);

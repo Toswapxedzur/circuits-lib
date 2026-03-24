@@ -1,7 +1,7 @@
 package com.minecart.logic;
 
-import com.minecart.math.function.ContinuousVariable;
-import com.minecart.math.function.VariableHolder;
+import com.minecart.math.function.DoubleVariable;
+import com.minecart.math.function.DoubleVariableHolder;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.ElectricalInformation;
 import com.minecart.component.CircuitNode;
@@ -9,8 +9,8 @@ import com.minecart.registry.ComponentType;
 
 import java.util.*;
 
-public class World implements VariableHolder<Double> {
-    protected Map<UUID, ContinuousVariable<Double>> eVarMap;
+public class World implements DoubleVariableHolder {
+    protected Map<UUID, DoubleVariable> eVarMap;
     public List<Circuit> circuits;
 
     public World(){
@@ -91,12 +91,12 @@ public class World implements VariableHolder<Double> {
     }
 
     @Override
-    public ContinuousVariable<Double> computeIfAbsent(UUID id, Double value) {
-        return eVarMap.computeIfAbsent(id, i -> new ContinuousVariable<Double>(i, value));
+    public DoubleVariable computeIfAbsent(UUID id, double value) {
+        return eVarMap.computeIfAbsent(id, i -> new DoubleVariable(i, value));
     }
 
-    public ContinuousVariable<Double> createDoubleVar(){
-        ContinuousVariable<Double> variable = new ContinuousVariable<Double>();
+    public DoubleVariable createDoubleVar(){
+        DoubleVariable variable = new DoubleVariable();
         eVarMap.put(variable.getUUID(), variable);
         return variable;
     }

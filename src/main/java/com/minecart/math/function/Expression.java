@@ -10,17 +10,17 @@ import java.util.stream.Collectors;
  */
 public class Expression {
     protected List<Expression> children;
-    protected Operator<Double> operator;
-    protected ContinuousVariable<Double> variable;
-    protected Double constant;
+    protected Operator operator;
+    protected DoubleVariable variable;
+    protected double constant;
     protected boolean leaf;
 
-    public Expression(Operator<Double> operator, List<Expression> children) {
+    public Expression(Operator operator, List<Expression> children) {
         this.operator = operator;
         // Wrapping in ArrayList ensures the internal list is always mutable
         this.children = new ArrayList<>(children);
         this.variable = null;
-        this.constant = null;
+        this.constant = 0.0;
         this.leaf = false;
 
         if (!operator.target.targetAmount.test(children.size())) {
@@ -28,11 +28,11 @@ public class Expression {
         }
     }
 
-    public Expression(ContinuousVariable<Double> variable) {
+    public Expression(DoubleVariable variable) {
         this.operator = null;
         this.children = new ArrayList<>();
         this.variable = variable;
-        this.constant = null;
+        this.constant = 0.0;
         this.leaf = true;
     }
 
@@ -69,7 +69,7 @@ public class Expression {
         return builder.toString();
     }
 
-    public static Expression fromString(String string, VariableHolder<Double> holder) {
+    public static Expression fromString(String string, DoubleVariableHolder holder) {
         if (string == null || string.length() < 2 || !string.startsWith("(") || !string.endsWith(")")) {
             throw new IllegalArgumentException("Invalid AST format, missing outer parentheses: " + string);
         }
@@ -89,7 +89,7 @@ public class Expression {
             double varValue = Double.valueOf(varInfo[1]);
             return new Expression(holder.computeIfAbsent(varID, varValue));
         } else {
-            Operator<Double> op = Operator.parse(type);
+            Operator op = Operator.parse(type);
             List<Expression> children = new ArrayList<>();
 
             String childrenStr = inner.substring(1);
@@ -118,7 +118,7 @@ public class Expression {
         }
     }
 
-    public void collectVar(Set<ContinuousVariable<Double>> set) {
+    public void collectVar(Set<DoubleVariable> set) {
         if (leaf) {
             if (variable != null) {
                 set.add(variable);
@@ -151,7 +151,7 @@ public class Expression {
     }
 
     private void flattenAssociative() {
-        if (operator instanceof MultiOperator<Double> multiOperator) {
+        if (operator instanceof MultiOperator multiOperator) {
             List<Expression> flatChildren = new ArrayList<>();
             for (Expression child : children) {
                 if (!child.leaf && child.operator == multiOperator) {
@@ -204,7 +204,15 @@ public class Expression {
     }
 
     private boolean isConstant(Expression expr, double targetValue) {
-        return expr.leaf && expr.constant != null && expr.constant == targetValue;
+        return expr.leaf && expr.variable == null && expr.constant == targetValue;
+    }
+
+    private boolean isVariable() {
+        return this.leaf && this.variable != null;
+    }
+
+    private boolean isConstant() {
+        return this.leaf && !isVariable();
     }
 
     private void removeConstants(double targetValue) {
@@ -213,9 +221,9 @@ public class Expression {
                 .collect(Collectors.toList());
     }
 
-    private void extractLinearTerms(Map<ContinuousVariable<Double>, Double> termMap, List<Double> intercept) {
+    private void extractLinearTerms(Map<DoubleVariable, Double> termMap, List intercept) {
         if (leaf) {
-            if (constant != null) {
+            if (isConstant()) {
                 intercept.add(constant);
             } else if (variable != null) {
                 termMap.merge(variable, 1.0, Double::sum);
@@ -230,10 +238,10 @@ public class Expression {
             }
         } else if (operator == Operator.MULTIPLICATION) {
             double coeff = 1.0;
-            ContinuousVariable<Double> var = null;
+            DoubleVariable var = null;
 
             for (Expression child : children) {
-                if (child.leaf && child.constant != null) {
+                if (child.leaf && child.isConstant()) {
                     coeff *= child.constant;
                 } else if (child.leaf && child.variable != null) {
                     var = child.variable;
@@ -260,7 +268,7 @@ public class Expression {
         } else if (operator == Operator.MULTIPLICATION) {
             int varCount = 0;
             for (Expression child : children) {
-                if (child.leaf && child.constant != null) {
+                if (child.leaf && child.isConstant()) {
                     continue;
                 } else if (child.leaf && child.variable != null) {
                     varCount++;
@@ -273,24 +281,24 @@ public class Expression {
         return false;
     }
 
-    public Pair<List<Pair<Double, ContinuousVariable<Double>>>, Double> toLinear() {
+    public Pair<List<Pair<Double, DoubleVariable>>, Double> toLinear() {
         if (!isLinear()) {
             throw new IllegalStateException("Expression is not linear");
         }
-        Map<ContinuousVariable<Double>, Double> termMap = new HashMap<>();
+        Map<DoubleVariable, Double> termMap = new HashMap<>();
         List<Double> intercept = new ArrayList<>(); // Fixed: Was List.of() which is immutable
 
         extractLinearTerms(termMap, intercept);
 
-        List<Pair<Double, ContinuousVariable<Double>>> terms = new ArrayList<>();
-        for (Map.Entry<ContinuousVariable<Double>, Double> entry : termMap.entrySet()) {
+        List<Pair<Double, DoubleVariable>> terms = new ArrayList<>();
+        for (Map.Entry<DoubleVariable, Double> entry : termMap.entrySet()) {
             if (entry.getValue() != 0.0) {
                 terms.add(new Pair<>(entry.getValue(), entry.getKey()));
             }
         }
 
         double sum = 0.0;
-        for (Double t : intercept)
+        for (double t : intercept)
             sum += t;
 
         return new Pair<>(terms, sum);
@@ -301,20 +309,20 @@ public class Expression {
         List<Expression> vars = new ArrayList<>();
 
         for (Expression child : children) {
-            if (child.leaf && child.constant != null) consts.add(child);
+            if (child.leaf && child.isConstant()) consts.add(child);
             else vars.add(child);
         }
 
         if (consts.isEmpty() || (consts.size() == 1 && !vars.isEmpty())) return;
 
         double foldedValue = 0.0;
-        if(operator instanceof DoubleOperator<Double> doubleOperator && doubleOperator.target.targetAmount.test(2)) {
-            foldedValue = doubleOperator.operator.apply(consts.get(0).constant, consts.get(1).constant);
-        }else if(operator instanceof DoubleOperator<Double> doubleOperator && doubleOperator.target.targetAmount.test(1)){
-            foldedValue = doubleOperator.operator.apply(consts.get(0).constant, null);
-        } else if(operator instanceof MultiOperator<Double> multiOperator){
+        if(operator instanceof DoubleOperator doubleOperator && doubleOperator.target.targetAmount.test(2)) {
+            foldedValue = doubleOperator.operator.applyAsDouble(consts.get(0).constant, consts.get(1).constant);
+        }else if(operator instanceof DoubleOperator doubleOperator && doubleOperator.target.targetAmount.test(1)){
+            foldedValue = doubleOperator.operator.applyAsDouble(consts.get(0).constant, 0.0);
+        } else if(operator instanceof MultiOperator multiOperator){
             foldedValue = multiOperator.multiOperator.apply(
-                    consts.stream().<Double>mapMulti((e, consumer) -> consumer.accept(e.constant)).toArray(Double[]::new));
+                    consts.stream().mapMultiToDouble((e, consumer) -> consumer.accept(e.constant)).toArray());
         }else{
             throw new IllegalArgumentException("Strange Operator while folding constants");
         }
@@ -417,7 +425,7 @@ public class Expression {
      */
     public Expression deepCopy() {
         if (leaf) {
-            if (constant != null) return new Expression(constant);
+            if (isConstant()) return new Expression(constant);
             return new Expression(variable);
         }
 
@@ -430,12 +438,12 @@ public class Expression {
     }
 
     public static class ImmutableExpression extends Expression{
-        public ImmutableExpression(Operator<Double> operator, List<Expression> children) {
+        public ImmutableExpression(Operator operator, List<Expression> children) {
             super(operator, children);
             this.children = Collections.unmodifiableList(this.children);
         }
 
-        public ImmutableExpression(ContinuousVariable<Double> variable) {
+        public ImmutableExpression(DoubleVariable variable) {
             super(variable);
             this.children = Collections.unmodifiableList(this.children);
         }
@@ -454,7 +462,7 @@ public class Expression {
             }
 
             if (expr.leaf) {
-                if (expr.constant != null) {
+                if (expr.isConstant()) {
                     return new ImmutableExpression(expr.constant);
                 }
                 return new ImmutableExpression(expr.variable);
@@ -481,7 +489,7 @@ public class Expression {
     public static final class ExpressionBuilder{
         private ExpressionBuilder() {}
 
-        public static Expression variable(ContinuousVariable<Double> variable) {
+        public static Expression variable(DoubleVariable variable) {
             return new Expression(variable);
         }
 
@@ -521,11 +529,11 @@ public class Expression {
             return mul(value(-1.0), child);
         }
 
-        public static Expression coef(Double coef, ContinuousVariable<Double> child){
+        public static Expression coef(Double coef, DoubleVariable child){
             return mul(value(coef), variable(child));
         }
 
-        public static Expression neg(ContinuousVariable<Double> child) {
+        public static Expression neg(DoubleVariable child) {
             return coef(-1.0, child);
         }
 

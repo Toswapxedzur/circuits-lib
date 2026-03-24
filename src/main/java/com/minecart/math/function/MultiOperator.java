@@ -1,21 +1,21 @@
 package com.minecart.math.function;
 
-import com.minecart.misc.MultinaryOperator;
+import com.minecart.misc.MultiDoubleOperator;
 
-public class MultiOperator<T> extends Operator<T>{
-    MultinaryOperator<T> multiOperator;
+public class MultiOperator extends Operator{
+    MultiDoubleOperator multiOperator;
 
-    protected MultiOperator(char symbol, MultinaryOperator<T> multiOperator){
+    protected MultiOperator(char symbol, MultiDoubleOperator multiOperator){
         super(symbol, Target.MULTIPLE);
         this.multiOperator = multiOperator;
     }
 
-    public static class Addition extends MultiOperator<Double> {
+    public static class Addition extends MultiOperator {
         protected Addition() {
             super('+', MultiOperator.Addition::add);
         }
 
-        public static Double add(Double... a){
+        public static double add(double... a){
             double sum = 0.0;
             for(double element : a){
                 sum += element;
@@ -24,12 +24,12 @@ public class MultiOperator<T> extends Operator<T>{
         }
     }
 
-    public static class Multiplication extends MultiOperator<Double> {
+    public static class Multiplication extends MultiOperator {
         protected Multiplication() {
             super('*', MultiOperator.Multiplication::multiply);
         }
 
-        public static Double multiply(Double... a) {
+        public static double multiply(double... a) {
             if (a.length == 0) return 1.0;
             double product = 1.0;
             for (double element : a) {

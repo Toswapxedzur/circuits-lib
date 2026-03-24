@@ -1,5 +1,6 @@
 package com.minecart.component;
 
+import com.google.common.cache.Cache;
 import com.minecart.action.ActionType;
 import com.minecart.action.ElectricalAction;
 import com.minecart.logic.CircuitEdge;
@@ -12,6 +13,9 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class CircuitNode extends Component {
+    protected boolean dirty;
+    List<List<CircuitEdge>> cachedEdge;
+
     protected CircuitNode(){
     }
 
@@ -37,13 +41,14 @@ public class CircuitNode extends Component {
     public void collectRule(List<Expression> equations) {
         super.collectRule(equations);
 
-        //kirchoff current rule
+        //default kirchoff current rule
         List<Expression> currentSum = new ArrayList<>();
         for(CircuitEdge edge : getConnection()){
             Expression exp = Expression.ExpressionBuilder.variable(edge.getCurrent());
             if(edge.shouldRevert(this))
                 exp = Expression.ExpressionBuilder.neg(exp);
-            currentSum.add(exp);
+            if(!edge.selfLoop())
+                currentSum.add(exp);
         }
         if(currentSum.size() > 0)
             equations.add(Expression.ExpressionBuilder.add(currentSum));
@@ -63,20 +68,37 @@ public class CircuitNode extends Component {
     }
 
     //override this method for connections
-    public Set<CircuitEdge> getConnection(){
-        return new HashSet<>();
+    public List<CircuitEdge> getConnection(){
+        List<List<CircuitEdge>> groups = new ArrayList<>();
+        getConnectionGroup(groups);
+
+        int totalEdges = 0;
+        for (int i = 0; i < groups.size(); i++) {
+            totalEdges += groups.get(i).size();
+        }
+
+        List<CircuitEdge> flattened = new ArrayList<>(totalEdges);
+
+        for (int i = 0; i < groups.size(); i++) {
+            flattened.addAll(groups.get(i));
+        }
+
+        return flattened;
+    }
+
+    public void getConnectionGroup(List<List<CircuitEdge>> groups){
     }
 
     public boolean connectEdge(CircuitEdge egde, boolean simulate){
         return false;
     }
 
-    public Set<CircuitEdge> getInConnection(){
-        return getConnection().stream().filter(e -> e.flowDirection(this).equals(CurrentFlow.IN)).collect(Collectors.toSet());
+    public List<CircuitEdge> getInConnection(){
+        return getConnection().stream().filter(e -> e.flowDirection(this).equals(CurrentFlow.IN)).collect(Collectors.toList());
     }
 
-    public Set<CircuitEdge> getOutConnection(){
-        return getConnection().stream().filter(e -> e.flowDirection(this).equals(CurrentFlow.OUT)).collect(Collectors.toSet());
+    public List<CircuitEdge> getOutConnection(){
+        return getConnection().stream().filter(e -> e.flowDirection(this).equals(CurrentFlow.OUT)).collect(Collectors.toList());
     }
 
     public int getAmountConnected(){
@@ -91,26 +113,26 @@ public class CircuitNode extends Component {
         return getOutConnection().size();
     }
 
-    protected Set<CircuitNode> getConnectedNodes(Set<CircuitEdge> circuitEdges){
-        Set<CircuitNode> set = new TreeSet<>();
+    protected List<CircuitNode> getConnectedNodes(List<CircuitEdge> circuitEdges){
+        List<CircuitNode> list = new ArrayList<>();
         for(CircuitEdge iterEdge : circuitEdges){
             if(iterEdge.getConnection(0) == this)
-                set.add(iterEdge.getConnection(1));
+                list.add(iterEdge.getConnection(1));
             else
-                set.add(iterEdge.getConnection(0));
+                list.add(iterEdge.getConnection(0));
         }
-        return set;
+        return list;
     }
 
-    public Set<CircuitNode> adjacentNode(){
+    public List<CircuitNode> adjacentNode(){
         return getConnectedNodes(getConnection());
     }
 
-    public Set<CircuitNode> adjacentInNode(){
+    public List<CircuitNode> adjacentInNode(){
         return getConnectedNodes(getInConnection());
     }
 
-    public Set<CircuitNode> adjacentOutNode(){
+    public List<CircuitNode> adjacentOutNode(){
         return getConnectedNodes(getOutConnection());
     }
 }

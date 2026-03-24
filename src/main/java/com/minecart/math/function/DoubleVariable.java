@@ -6,15 +6,15 @@ import java.util.UUID;
  * Representing a mutable reference that has an unique id
  * @param <T> Type
  */
-public class ContinuousVariable {
+public class DoubleVariable {
     protected final UUID id;
     double value;
 
-    public ContinuousVariable() {
+    public DoubleVariable() {
         this.id = UUID.randomUUID();
     }
 
-    public ContinuousVariable(UUID id, double value) {
+    public DoubleVariable(UUID id, double value) {
         this.id = id;
         this.value = value;
     }

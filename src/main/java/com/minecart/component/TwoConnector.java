@@ -23,8 +23,8 @@ public class TwoConnector extends CircuitNode{
     }
 
     @Override
-    public Set<CircuitEdge> getConnection() {
-        Set<CircuitEdge> circuitEdges = super.getConnection();
+    public List<CircuitEdge> getConnection() {
+        List<CircuitEdge> circuitEdges = super.getConnection();
         for(CircuitEdge edge : edges){
             circuitEdges.add(edge);
         }

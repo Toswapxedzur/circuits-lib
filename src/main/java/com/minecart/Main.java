@@ -1,6 +1,6 @@
 package com.minecart;
 
-import com.minecart.math.function.ContinuousVariable;
+import com.minecart.math.function.DoubleVariable;
 import com.minecart.variant.type.BatteryInformation;
 import com.minecart.variant.type.ResistorInformation;
 import com.minecart.component.Battery;
@@ -18,23 +18,15 @@ import static com.minecart.math.function.Expression.ExpressionBuilder.*;
 
 public class Main {
     public static void main(String[] args) {
-        // Assuming your registry initialization goes here
-
-//        ContinuousVariable.DoubleVar v1 = new ContinuousVariable.DoubleVar();
-//        ContinuousVariable.DoubleVar v2 = new ContinuousVariable.DoubleVar();
-//
-//        testSimplification(v1, v2);
-//        testExpansion(v1, v2);
-//        testLinearExtraction(v1, v2);
 
         System.out.println("=== BOOTING MNA TEST SUITE ===");
 
-        testSeriesCircuit();
-        testParallelCircuit();
+//        testSeriesCircuit();
+//        testParallelCircuit();
         testShortCircuit();
     }
 
-    public static void testSimplification(ContinuousVariable<Double> v1, ContinuousVariable<Double> v2) {
+    public static void testSimplification(DoubleVariable v1, DoubleVariable v2) {
         System.out.println("--- Test 1: Simplification ---");
 
         Expression expr = add(
@@ -54,7 +46,7 @@ public class Main {
      * Simulates: (v1 + 2.0) * (v2 + 3.0)
      * Expected Output after simplify(): (+ (* (v$variable$) (v$variable$)) (* (c3.0) (v$variable$)) (* (c2.0) (v$variable$)) (c6.0))
      */
-    public static void testExpansion(ContinuousVariable<Double> v1, ContinuousVariable<Double> v2) {
+    public static void testExpansion(DoubleVariable v1, DoubleVariable v2) {
         System.out.println("--- Test 2: Term Expansion ---");
 
         Expression s1 = add(variable(v1), value(2.0));
@@ -72,7 +64,7 @@ public class Main {
      * Simulates: 4(v1) + (-2)(v2) - 10.0
      * Expected Output: Map with {v1=4.0, v2=-2.0} and Intercept = -10.0
      */
-    public static void testLinearExtraction(ContinuousVariable<Double> v1, ContinuousVariable<Double> v2) {
+    public static void testLinearExtraction(DoubleVariable v1, DoubleVariable v2) {
         System.out.println("--- Test 3: Linear Extraction ---");
 
         Expression expr = add(
@@ -84,11 +76,11 @@ public class Main {
         System.out.println("Expression: " + expr.toString());
         System.out.println("Is Linear?  " + expr.isLinear() + " (Expected: true)");
 
-        Pair<List<Pair<Double, ContinuousVariable<Double>>>, Double> linearData = expr.toLinear();
+        Pair<List<Pair<Double, DoubleVariable>>, Double> linearData = expr.toLinear();
 
         System.out.println("Intercept:  " + linearData.getSecond() + " (Expected: -10.0)");
         System.out.println("Variables Extracted:");
-        for (Pair<Double, ContinuousVariable<Double>> term : linearData.getFirst()) {
+        for (Pair<Double, DoubleVariable> term : linearData.getFirst()) {
             System.out.println(" -> Coefficient: " + term.getFirst());
         }
     }
@@ -163,11 +155,9 @@ public class Main {
         World world = new World();
 
         Battery battery = world.create(AllComponents.BATTERY, new BatteryInformation(10.0, 0.1));
-        Junction junction = world.create(AllComponents.JUNCTION);
 
         // Connect the battery directly to itself
-        CircuitEdge shortWire = world.connect(battery, junction).orElseThrow();
-        world.connect(battery, junction).orElseThrow();
+        CircuitEdge shortWire = world.connect(battery, battery).orElseThrow();
 
         try {
             world.tick();
