@@ -1,16 +1,18 @@
 package com.minecart.registry;
 
 import com.minecart.logic.CircuitElement;
+import com.minecart.logic.World;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class CircuitElementRegistry {
     protected static final Map<String, CircuitElementType> REGISTRY = new HashMap<>();
     protected static boolean isFrozen = false;
 
-    public static <T extends CircuitElement> CircuitElementType<T> register(String id, Supplier<T> factory) {
+    public static <T extends CircuitElement> CircuitElementType<T> register(String id, Function<World, T> factory) {
         if(isFrozen){
             throw new UnsupportedOperationException("The registry is already frozen and no further component can be registered");
         }

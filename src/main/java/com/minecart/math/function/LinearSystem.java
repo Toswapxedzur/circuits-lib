@@ -22,21 +22,21 @@ public class LinearSystem {
 
     protected Set<DoubleVar> variables;
 
-    public void collectVar(Consumer<Set<DoubleVar>> operator){
+    public void collectVar(Consumer<Set<DoubleVar>> operator) {
         variables = new LinkedHashSet<>();
         operator.accept(variables);
     }
 
-    public void init(){
+    public void init() {
         int index = 0;
-        for(DoubleVar variable : variables){
+        for (DoubleVar variable : variables) {
             variable.setIndex(index++);
         }
 
         int size = variables.size();
         if (size == 0) return;
 
-        int estimatedNonZeros = size * 4;
+        int estimatedNonZeros = size * 3;
 
         matrix = new DMatrixSparseTriplet(size, size, estimatedNonZeros);
         column = new DMatrixSparseCSC(size, size, estimatedNonZeros);
@@ -46,17 +46,17 @@ public class LinearSystem {
         solver = LinearSolverFactory_DSCC.lu(FillReducing.NONE);
     }
 
-    public void stampRelation(Consumer<RelationProvider> provider){
+    public void stampRelation(Consumer<RelationProvider> provider) {
         if (variables == null || variables.isEmpty()) return;
 
-        matrix.reset();
+        matrix.nz_length = 0;
         vectorB.zero();
 
         RelationProvider relationProvider = new LinearReceiver(this);
         provider.accept(relationProvider);
     }
 
-    public boolean solve(){
+    public boolean solve() {
         if (variables == null || variables.isEmpty()) return true;
 
         DConvertMatrixStruct.convert(matrix, column);
@@ -68,7 +68,7 @@ public class LinearSystem {
         solver.solve(vectorB, solutionX);
 
         // 5. UPDATE: Read the raw primitive double answers back into the Variable objects
-        for(DoubleVar var : variables){
+        for (DoubleVar var : variables) {
             var.setValue(solutionX.get(var.getIndex(), 0));
         }
 
@@ -87,7 +87,7 @@ public class LinearSystem {
         protected LinearSystem system;
         protected int currentRow = 0;
 
-        public LinearReceiver(LinearSystem system){
+        public LinearReceiver(LinearSystem system) {
             this.system = system;
         }
 

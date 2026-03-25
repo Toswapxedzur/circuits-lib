@@ -23,9 +23,9 @@ public class Circuit{
     protected boolean dirty;
 
     /**
-     * Invoke this method when the electrical rules changes, few circumstances could cause this to happen:
+     * Invoke this method when the electrical variable changes, few circumstances could cause this to happen:
      * <p> 1. Nodes or edges is added or removed
-     * <p> 2. The information inside node is changed that will affect the equation collected
+     * <p> 2. Nodes or edges state changes so that it provide different variables
      */
     public void markDirty() {
         this.dirty = true;
@@ -52,9 +52,11 @@ public class Circuit{
     public void tick(){
         if(dirty) {
             update();
-            system.solve();
             dirty = false;
         }
+
+        system.stampRelation(this::collectRelation);
+        system.solve();
 
         for(CircuitNode node : nodes){
             node.tick();
@@ -123,9 +125,14 @@ public class Circuit{
      * Called everytime when the circuit structure changes, not when electrical variable changes
      */
     protected void update(){
+        for (CircuitNode node : nodes) {
+            node.setGround(false);
+        }
+        if (!nodes.isEmpty()) {
+            nodes.iterator().next().setGround(true);
+        }
         system.collectVar(this::collectVariable);
         system.init();
-        system.stampRelation(this::collectRelation);
     }
 
     public void collectRelation(LinearSystem.RelationProvider provider){

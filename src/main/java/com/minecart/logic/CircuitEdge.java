@@ -4,6 +4,8 @@ import com.google.common.graph.EndpointPair;
 import com.minecart.math.function.DoubleVar;
 import com.minecart.misc.CurrentFlow;
 
+import java.util.Set;
+
 public class CircuitEdge extends CircuitElement {
 
     //positive: from first to second
@@ -17,6 +19,12 @@ public class CircuitEdge extends CircuitElement {
     public CircuitEdge(World world){
         setWorld(world);
         current = DoubleVar.create();
+    }
+
+    @Override
+    public void collectVariable(Set<DoubleVar> variables) {
+        super.collectVariable(variables);
+        variables.add(current);
     }
 
     @Override
@@ -62,6 +70,10 @@ public class CircuitEdge extends CircuitElement {
 
     public void setComponent(CircuitComponent component) {
         this.component = component;
+    }
+
+    public boolean isConnected(){
+        return start != null && end != null;
     }
 
     public CircuitNode getConnection(int index) {

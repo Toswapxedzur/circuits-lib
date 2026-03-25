@@ -8,10 +8,10 @@ import java.util.*;
 public class CircuitNode extends CircuitElement {
     protected DoubleVar voltage;
     protected Set<CircuitEdge> connection;
-
     protected CircuitComponent component;
+    protected boolean ground;
 
-    protected CircuitNode(World world){
+    public CircuitNode(World world){
         setWorld(world);
         voltage = DoubleVar.create();
         connection = new LinkedHashSet<>();
@@ -27,21 +27,35 @@ public class CircuitNode extends CircuitElement {
     public void collectRule(LinearSystem.RelationProvider equations) {
         super.collectRule(equations);
 
+        //Ground node don't provide kirchoff current rule, but its voltage is always zero
+        if(isGrounded()){
+            equations.stampCoefficient(this.voltage, 1);
+            equations.stampConstant(0.0);
+            equations.endRelation();
+            return;
+        }
+
         //implementation of default kirchoff current rule
         if (connection.isEmpty()) return;
         for (CircuitEdge edge : connection) {
             double coef = edge.shouldRevert(this) ? -1.0 : 1.0;
             equations.stampCoefficient(edge.getCurrent(), coef);
         }
-
         equations.stampConstant(0.0);
-
         equations.endRelation();
     }
 
     @Override
     public void tick(){
 
+    }
+
+    public boolean isGrounded() {
+        return ground;
+    }
+
+    protected void setGround(boolean ground) {
+        this.ground = ground;
     }
 
     /**

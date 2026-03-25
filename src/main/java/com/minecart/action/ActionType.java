@@ -1,6 +1,6 @@
 package com.minecart.action;
 
-public class ActionType<T extends ElectricalAction> {
+public class ActionType<T extends Action> {
     protected final String name;
 
     public ActionType(String id){

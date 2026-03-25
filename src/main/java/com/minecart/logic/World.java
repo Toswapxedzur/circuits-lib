@@ -1,7 +1,7 @@
 package com.minecart.logic;
 
 import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.ElectricalInformation;
+import com.minecart.variant.type.ElectricalInfo;
 import com.minecart.registry.CircuitElementType;
 
 import java.util.*;
@@ -20,7 +20,7 @@ public class World {
     }
 
     public <T extends CircuitNode> T createNode(CircuitElementType<T> type){
-        T node = type.create();
+        T node = type.create(this);
         node.setWorld(this);
         Circuit circuit = createCircuit();
         node.setCircuit(circuit);
@@ -28,7 +28,7 @@ public class World {
         return node;
     }
 
-    public <I extends ElectricalInformation, T extends CircuitNode & ElectricalVariate<I>> T createNode(CircuitElementType<T> type, I information){
+    public <I extends ElectricalInfo, T extends CircuitNode & ElectricalVariate<I>> T createNode(CircuitElementType<T> type, I information){
         T node = createNode(type);
         node.set(information);
         return node;
@@ -45,7 +45,7 @@ public class World {
     public <T extends CircuitEdge> T connect(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2){
         if(node1.getWorld() != this || node2.getWorld() != this)
             throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current World");
-        T edge = type.create();
+        T edge = type.create(this);
         edge.setWorld(this);
         if(!edge.connect(node1, node2, true))
             return null;
@@ -65,13 +65,20 @@ public class World {
         return edge;
     }
 
+    public <I extends ElectricalInfo, T extends CircuitEdge & ElectricalVariate<I>> T connect(CircuitElementType<T> type, I info, CircuitNode node1, CircuitNode node2){
+        T edge = connect(type, node1, node2);
+        edge.set(info);
+        return edge;
+    }
+
+
     public boolean disconnect(CircuitEdge edge){
         CircuitNode node1 = edge.getConnection(0);
         CircuitNode node2 = edge.getConnection(1);
         if(node1.getCircuit() != node2.getCircuit())
             return false;
         Circuit circuit = node1.getCircuit();
-        if(!node1.disconnect(edge, true) || node2.disconnect(edge, true))
+        if(!node1.disconnect(edge, true) || node2.disconnect(edge, true) || !edge.disconnect(true))
             return false;
         Circuit newCircuit = new Circuit();
         newCircuit.setWorld(this);

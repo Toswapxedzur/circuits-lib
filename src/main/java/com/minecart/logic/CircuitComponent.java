@@ -2,7 +2,7 @@ package com.minecart.logic;
 
 import com.minecart.registry.CircuitElementType;
 import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.ElectricalInformation;
+import com.minecart.variant.type.ElectricalInfo;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -36,7 +36,7 @@ public class CircuitComponent extends CircuitElement {
     }
 
     // 2. Variate Node Creation (Data attached)
-    protected <I extends ElectricalInformation, T extends CircuitNode & ElectricalVariate<I>> T newNode(CircuitElementType<T> type, I info){
+    protected <I extends ElectricalInfo, T extends CircuitNode & ElectricalVariate<I>> T newNode(CircuitElementType<T> type, I info){
         T node = newNode(type);
         node.set(info);
         return node;
@@ -51,7 +51,7 @@ public class CircuitComponent extends CircuitElement {
     }
 
     // 4. BONUS: Variate Edge Creation (e.g., A Resistor Edge that needs an Ohms value)
-    protected <I extends ElectricalInformation, T extends CircuitEdge & ElectricalVariate<I>> T newEdge(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, I info){
+    protected <I extends ElectricalInfo, T extends CircuitEdge & ElectricalVariate<I>> T newEdge(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, I info){
         T edge = newEdge(type, node1, node2);
         edge.set(info);
         return edge;

@@ -1,9 +1,10 @@
 package com.minecart.action;
 
 import java.util.function.DoubleUnaryOperator;
+import java.util.function.IntUnaryOperator;
 
 public class Actions {
-    public static abstract class SetOneDoubleAction implements ElectricalAction{
+    public static abstract class SetOneDoubleAction implements Action {
         protected final DoubleUnaryOperator operator;
 
         public SetOneDoubleAction(DoubleUnaryOperator operator){
@@ -15,6 +16,22 @@ public class Actions {
         }
 
         public DoubleUnaryOperator getOperator() {
+            return operator;
+        }
+    }
+
+    public static abstract class SetOneIntAction implements Action {
+        protected final IntUnaryOperator operator;
+
+        public SetOneIntAction(IntUnaryOperator operator){
+            this.operator = operator;
+        }
+
+        public SetOneIntAction(int value){
+            this.operator = x -> value;
+        }
+
+        public IntUnaryOperator getOperator() {
             return operator;
         }
     }
@@ -35,6 +52,16 @@ public class Actions {
         }
 
         public SetResistanceAction(double value) {
+            super(value);
+        }
+    }
+
+    public static class SetConnectionAction extends SetOneIntAction{
+        public SetConnectionAction(IntUnaryOperator operator) {
+            super(operator);
+        }
+
+        public SetConnectionAction(int value) {
             super(value);
         }
     }
