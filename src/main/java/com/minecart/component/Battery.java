@@ -1,8 +1,10 @@
 package com.minecart.component;
 
+import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.logic.World;
+import com.minecart.logic.ServerWorld;
+import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.Informations.BatteryInfo;
 import com.minecart.math.function.LinearSystem.RelationProvider;
@@ -14,7 +16,7 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
 
     protected BatteryInfo info;
 
-    public Battery(World world) {
+    public Battery(ServerWorld world) {
         super(world);
         this.info = getDefault();
     }
@@ -35,13 +37,6 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
         equations.stampConstant(info.getVoltage());
 
         equations.endRelation();
-    }
-
-    @Override
-    public void set(BatteryInfo argument) {
-        if (argument != null) {
-            this.info = argument;
-        }
     }
 
     @Override
@@ -70,11 +65,16 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
         return null;
     }
 
-    public void handleResistance(Actions.SetResistanceAction action) {
+    protected void handleResistance(Actions.SetResistanceAction action) {
         info.setResistance(action.getOperator().applyAsDouble(info.getResistance()));
     }
 
-    public void handleVoltage(Actions.SetVoltageAction action) {
+    protected void handleVoltage(Actions.SetVoltageAction action) {
         info.setVoltage(action.getOperator().applyAsDouble(info.getVoltage()));
+    }
+
+    static {
+        AllComponents.BATTERY.addActionHandler(ActionTypes.SET_RESISTANCE, (battery, action) -> battery.handleResistance(action));
+        AllComponents.BATTERY.addActionHandler(ActionTypes.SET_VOLTAGE, (battery, action) -> battery.handleVoltage(action));
     }
 }

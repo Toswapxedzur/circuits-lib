@@ -1,20 +1,19 @@
 package com.minecart.logic;
 
-import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.ElectricalInfo;
 import com.minecart.registry.CircuitElementType;
 
 import java.util.*;
 
-public class World {
-    public Set<Circuit> circuits;
+public class ServerWorld {
+    protected double tickRate = 0.05;
+    public Set<ServerCircuit> circuits;
 
-    public World(){
+    public ServerWorld(){
         circuits = new LinkedHashSet<>();
     }
 
     public void tick(){
-        for(Circuit circuit : circuits){
+        for(ServerCircuit circuit : circuits){
             circuit.tick();
         }
     }
@@ -22,20 +21,14 @@ public class World {
     public <T extends CircuitNode> T createNode(CircuitElementType<T> type){
         T node = type.create(this);
         node.setWorld(this);
-        Circuit circuit = createCircuit();
+        ServerCircuit circuit = createCircuit();
         node.setCircuit(circuit);
         circuit.nodes().add(node);
         return node;
     }
 
-    public <I extends ElectricalInfo, T extends CircuitNode & ElectricalVariate<I>> T createNode(CircuitElementType<T> type, I information){
-        T node = createNode(type);
-        node.set(information);
-        return node;
-    }
-
-    protected Circuit createCircuit(){
-        Circuit circuit = new Circuit();
+    protected ServerCircuit createCircuit(){
+        ServerCircuit circuit = new ServerCircuit();
         circuit.setWorld(this);
         circuits.add(circuit);
         circuit.markDirty();
@@ -44,7 +37,7 @@ public class World {
 
     public <T extends CircuitEdge> T connect(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2){
         if(node1.getWorld() != this || node2.getWorld() != this)
-            throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current World");
+            throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current ServerWorld");
         T edge = type.create(this);
         edge.setWorld(this);
         if(!edge.connect(node1, node2, true))
@@ -54,8 +47,8 @@ public class World {
             return null;
         node1.connectEdge(edge, false);
         node2.connectEdge(edge, false);
-        Circuit circuit1 = node1.getCircuit();
-        Circuit circuit2 = node2.getCircuit();
+        ServerCircuit circuit1 = node1.getCircuit();
+        ServerCircuit circuit2 = node2.getCircuit();
         if(circuit1 != circuit2) {
             circuit2.mergeInto(circuit1);
             circuits.remove(circuit2);
@@ -65,22 +58,16 @@ public class World {
         return edge;
     }
 
-    public <I extends ElectricalInfo, T extends CircuitEdge & ElectricalVariate<I>> T connect(CircuitElementType<T> type, I info, CircuitNode node1, CircuitNode node2){
-        T edge = connect(type, node1, node2);
-        edge.set(info);
-        return edge;
-    }
-
 
     public boolean disconnect(CircuitEdge edge){
         CircuitNode node1 = edge.getConnection(0);
         CircuitNode node2 = edge.getConnection(1);
         if(node1.getCircuit() != node2.getCircuit())
             return false;
-        Circuit circuit = node1.getCircuit();
+        ServerCircuit circuit = node1.getCircuit();
         if(!node1.disconnect(edge, true) || node2.disconnect(edge, true) || !edge.disconnect(true))
             return false;
-        Circuit newCircuit = new Circuit();
+        ServerCircuit newCircuit = new ServerCircuit();
         newCircuit.setWorld(this);
         boolean createCircuit = circuit.seperate(node1, node2, edge, newCircuit);
         if(createCircuit)
@@ -90,9 +77,9 @@ public class World {
 
     public boolean destroy(CircuitNode node){
         if(node.getWorld() != this)
-            throw new IllegalArgumentException("Can't connect node that doesn't belong to the current World");
+            throw new IllegalArgumentException("Can't connect node that doesn't belong to the current ServerWorld");
 
-        Circuit circuit = node.getCircuit();
+        ServerCircuit circuit = node.getCircuit();
 
         if(!circuit.destroy(node, true))
             return false;
@@ -104,5 +91,13 @@ public class World {
         }
 
         return true;
+    }
+
+    public double getTickRate() {
+        return tickRate;
+    }
+
+    public void setTickRate(double tickRate) {
+        this.tickRate = tickRate;
     }
 }

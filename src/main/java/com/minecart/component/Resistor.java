@@ -1,8 +1,10 @@
 package com.minecart.component;
 
+import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.logic.World;
+import com.minecart.logic.ServerWorld;
+import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.Informations.ResistorInfo;
 import com.minecart.math.function.LinearSystem.RelationProvider;
@@ -14,7 +16,7 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
 
     protected ResistorInfo info;
 
-    public Resistor(World world) {
+    public Resistor(ServerWorld world) {
         super(world);
         this.info = getDefault();
     }
@@ -36,13 +38,6 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
         equations.stampConstant(0.0);
 
         equations.endRelation();
-    }
-
-    @Override
-    public void set(ResistorInfo argument) {
-        if (argument != null) {
-            this.info = argument;
-        }
     }
 
     @Override
@@ -70,7 +65,11 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
         return null;
     }
 
-    public void handleResistance(Actions.SetResistanceAction action) {
+    protected void handleResistance(Actions.SetResistanceAction action) {
         info.setResistance(action.getOperator().applyAsDouble(info.getResistance()));
+    }
+
+    static {
+        AllComponents.RESISTOR.addActionHandler(ActionTypes.SET_RESISTANCE, (resistor, action) -> resistor.handleResistance(action));
     }
 }

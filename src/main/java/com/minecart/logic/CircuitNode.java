@@ -11,7 +11,7 @@ public class CircuitNode extends CircuitElement {
     protected CircuitComponent component;
     protected boolean ground;
 
-    public CircuitNode(World world){
+    public CircuitNode(ServerWorld world){
         setWorld(world);
         voltage = DoubleVar.create();
         connection = new LinkedHashSet<>();

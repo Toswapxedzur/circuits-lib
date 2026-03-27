@@ -4,7 +4,8 @@ import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
-import com.minecart.logic.World;
+import com.minecart.logic.ServerWorld;
+import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.Informations;
 
@@ -14,7 +15,7 @@ import com.minecart.variant.type.Informations;
 public class Junction extends CircuitNode implements ElectricalVariate<Informations.JunctionInfo> {
     Informations.JunctionInfo info;
 
-    public Junction(World world) {
+    public Junction(ServerWorld world) {
         super(world);
         this.info = getDefault();
     }
@@ -27,18 +28,13 @@ public class Junction extends CircuitNode implements ElectricalVariate<Informati
     }
 
     @Override
-    public void set(Informations.JunctionInfo argument) {
-
-    }
-
-    @Override
     public Informations.JunctionInfo get() {
-        return null;
+        return info;
     }
 
     @Override
     public Informations.JunctionInfo getDefault() {
-        return null;
+        return new Informations.JunctionInfo(0);
     }
 
     @Override
@@ -51,7 +47,11 @@ public class Junction extends CircuitNode implements ElectricalVariate<Informati
         return null;
     }
 
-    public void handleConnection(Actions.SetConnectionAction action){
+    protected void handleConnection(Actions.SetConnectionAction action){
         info.setConnection(action.getOperator().applyAsInt(info.getConnection()));
+    }
+
+    static {
+        AllComponents.JUNCTION.addActionHandler(ActionTypes.SET_CONNECTION, (circuitNode, action) -> circuitNode.handleConnection(action));
     }
 }

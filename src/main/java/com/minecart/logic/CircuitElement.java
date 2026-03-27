@@ -11,22 +11,22 @@ public abstract class CircuitElement implements Comparable<CircuitElement> {
     public static final Comparator<? extends CircuitElement> comparator = (f, s) -> f.id.compareTo(s.id);
 
     protected UUID id;
-    protected World world;
-    protected Circuit circuit;
+    protected ServerWorld world;
+    protected ServerCircuit circuit;
 
-    public Circuit getCircuit() {
+    public ServerCircuit getCircuit() {
         return circuit;
     }
 
-    public void setCircuit(Circuit circuit) {
+    public void setCircuit(ServerCircuit circuit) {
         this.circuit = circuit;
     }
 
-    public World getWorld() {
+    public ServerWorld getWorld() {
         return world;
     }
 
-    public void setWorld(World world) {
+    public void setWorld(ServerWorld world) {
         this.world = world;
     }
 

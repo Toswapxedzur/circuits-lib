@@ -16,7 +16,7 @@ public class CircuitEdge extends CircuitElement {
 
     protected CircuitComponent component;
 
-    public CircuitEdge(World world){
+    public CircuitEdge(ServerWorld world){
         setWorld(world);
         current = DoubleVar.create();
     }

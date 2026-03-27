@@ -9,12 +9,6 @@ import java.io.Serializable;
  * @param <O> Type of electrical information
  */
 public interface ElectricalVariate<O extends ElectricalInfo> extends Serializable {
-    void set(O argument);
-
-    default void setDefault(){
-        set(getDefault());
-    }
-
     O get();
 
     O getDefault();

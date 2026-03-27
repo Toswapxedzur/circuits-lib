@@ -65,4 +65,14 @@ public class Actions {
             super(value);
         }
     }
+
+    public static class SetCapacitanceAction extends SetOneDoubleAction {
+        public SetCapacitanceAction(DoubleUnaryOperator operator) {
+            super(operator);
+        }
+
+        public SetCapacitanceAction(double value) {
+            super(value);
+        }
+    }
 }

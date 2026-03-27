@@ -1,8 +1,6 @@
 package com.minecart.logic;
 
 import com.minecart.registry.CircuitElementType;
-import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.ElectricalInfo;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -35,25 +33,11 @@ public class CircuitComponent extends CircuitElement {
         return node;
     }
 
-    // 2. Variate Node Creation (Data attached)
-    protected <I extends ElectricalInfo, T extends CircuitNode & ElectricalVariate<I>> T newNode(CircuitElementType<T> type, I info){
-        T node = newNode(type);
-        node.set(info);
-        return node;
-    }
-
     // 3. Basic Edge Creation
     protected <T extends CircuitEdge> T newEdge(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2){
         // Instantiate the custom edge (e.g., ResistorEdge, WireEdge)
         T edge = world.connect(type, node1, node2);
         edges.add(edge);
-        return edge;
-    }
-
-    // 4. BONUS: Variate Edge Creation (e.g., A Resistor Edge that needs an Ohms value)
-    protected <I extends ElectricalInfo, T extends CircuitEdge & ElectricalVariate<I>> T newEdge(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, I info){
-        T edge = newEdge(type, node1, node2);
-        edge.set(info);
         return edge;
     }
 
@@ -91,7 +75,7 @@ public class CircuitComponent extends CircuitElement {
     /**
      * Safely cleans up the component, breaking it into its base elements for the CircuitManager.
      */
-    public void destroy(Circuit masterCircuit) {
+    public void destroy(ServerCircuit masterCircuit) {
         for (CircuitNode node : nodes) {
             masterCircuit.destroy(node, false);
         }
