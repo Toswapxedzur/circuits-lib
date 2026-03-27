@@ -5,10 +5,11 @@ import com.minecart.registry.CircuitElementType;
 import java.util.*;
 
 public class ServerWorld {
-    protected double tickRate = 0.05;
+    ServerLevel level;
     public Set<ServerCircuit> circuits;
 
-    public ServerWorld(){
+    public ServerWorld(ServerLevel level){
+        this.level = level;
         circuits = new LinkedHashSet<>();
     }
 
@@ -94,10 +95,6 @@ public class ServerWorld {
     }
 
     public double getTickRate() {
-        return tickRate;
-    }
-
-    public void setTickRate(double tickRate) {
-        this.tickRate = tickRate;
+        return level.getTickRate();
     }
 }

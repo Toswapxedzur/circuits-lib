@@ -11,16 +11,10 @@ import java.util.stream.Collectors;
 /**
  * Represent a connected bidirectional circuit network
  */
-public class ServerCircuit {
+public class ServerCircuit extends Circuit{
     protected ServerWorld world;
-
-    protected final UUID id;
-
-    protected Set<CircuitNode> nodes;
-    protected Set<CircuitEdge> edges;
-    protected Set<CircuitComponent> components;
-
     protected boolean dirty;
+    protected LinearSystem system;
 
     /**
      * Invoke this method when the electrical variable changes, few circumstances could cause this to happen:
@@ -39,12 +33,8 @@ public class ServerCircuit {
         this.world = world;
     }
 
-    protected LinearSystem system;
-
     public ServerCircuit(){
-        id = UUID.randomUUID();
-        nodes = new LinkedHashSet<>();
-        edges = new LinkedHashSet<>();
+        super(UUID.randomUUID());
         system = new LinearSystem();
         dirty = false;
     }
