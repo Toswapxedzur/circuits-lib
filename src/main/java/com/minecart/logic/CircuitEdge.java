@@ -7,6 +7,7 @@ import com.minecart.misc.CurrentFlow;
 import java.util.Set;
 
 public class CircuitEdge extends CircuitElement {
+    public static final double MAX_CURRENT = 1e15;
 
     //positive: from first to second
     protected DoubleVar current;
@@ -16,9 +17,12 @@ public class CircuitEdge extends CircuitElement {
 
     protected CircuitComponent component;
 
+    protected boolean overpowered;
+
     public CircuitEdge(ServerWorld world){
         setWorld(world);
         current = DoubleVar.create();
+        overpowered = false;
     }
 
     @Override
@@ -29,7 +33,14 @@ public class CircuitEdge extends CircuitElement {
 
     @Override
     public void tick(){
+        if(!overpowered && shortCircuit()){
+            getWorld().setOverpowered(this);
+        }
+        overpowered = shortCircuit();
+    }
 
+    public boolean shortCircuit(){
+        return Math.abs(current.getValue()) > MAX_CURRENT;
     }
 
     public boolean connect(CircuitNode fromConnect, CircuitNode toConnect, boolean simulate){

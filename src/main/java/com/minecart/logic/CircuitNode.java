@@ -77,7 +77,7 @@ public class CircuitNode extends CircuitElement {
     }
 
     public Set<CircuitEdge> getConnection(){
-        return this.connection;
+        return Collections.unmodifiableSet(this.connection);
     }
 
     public boolean hasComponent() {

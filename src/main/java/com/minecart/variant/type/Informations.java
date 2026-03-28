@@ -1,6 +1,9 @@
 package com.minecart.variant.type;
 
 public class Informations {
+    public static final double DELTA = 1e-18;
+    public static final double LARGE = 1e18;
+
     public static class BatteryInfo extends ElectricalInfo {
         protected double voltage;
 
@@ -40,7 +43,7 @@ public class Informations {
         }
 
         public void setResistance(double resistance) {
-            this.resistance = Math.max(resistance, 1e-9);
+            this.resistance = Math.max(resistance, DELTA);
         }
 
         public double getConductance() {

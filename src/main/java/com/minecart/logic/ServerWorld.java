@@ -1,12 +1,21 @@
 package com.minecart.logic;
 
+import com.minecart.event.events.Event;
+import com.minecart.event.events.ServerTickEvent;
+import com.minecart.event.events.ShortCircuitEvent;
 import com.minecart.registry.CircuitElementType;
 
 import java.util.*;
 
 public class ServerWorld {
-    ServerLevel level;
-    public Set<ServerCircuit> circuits;
+    protected ServerLevel level;
+
+    protected Set<ServerCircuit> circuits;
+
+    protected final ServerTickEvent.World preTick = new ServerTickEvent.World(ServerTickEvent.Phase.PRE, this);
+    protected final ServerTickEvent.World postTick = new ServerTickEvent.World(ServerTickEvent.Phase.POST, this);
+    protected final List<CircuitEdge> overpowered = new ArrayList<>();
+    protected final ShortCircuitEvent shortCircuitEvent = new ShortCircuitEvent(this, overpowered);
 
     public ServerWorld(ServerLevel level){
         this.level = level;
@@ -14,9 +23,14 @@ public class ServerWorld {
     }
 
     public void tick(){
+        post(preTick);
         for(ServerCircuit circuit : circuits){
             circuit.tick();
         }
+        if(!overpowered.isEmpty())
+            post(shortCircuitEvent);
+        overpowered.clear();
+        post(postTick);
     }
 
     public <T extends CircuitNode> T createNode(CircuitElementType<T> type){
@@ -66,7 +80,7 @@ public class ServerWorld {
         if(node1.getCircuit() != node2.getCircuit())
             return false;
         ServerCircuit circuit = node1.getCircuit();
-        if(!node1.disconnect(edge, true) || node2.disconnect(edge, true) || !edge.disconnect(true))
+        if(!node1.disconnect(edge, true) || !node2.disconnect(edge, true) || !edge.disconnect(true))
             return false;
         ServerCircuit newCircuit = new ServerCircuit();
         newCircuit.setWorld(this);
@@ -96,5 +110,23 @@ public class ServerWorld {
 
     public double getTickRate() {
         return level.getTickRate();
+    }
+
+    public Set<ServerCircuit> getCircuits() {
+        return circuits;
+    }
+
+    public boolean post(Event event) {
+        return level.post(event);
+    }
+
+    public ServerLevel getLevel() {
+        return level;
+    }
+
+    public void setOverpowered(CircuitEdge edge){
+        if(edge.getWorld() != this)
+            throw new IllegalArgumentException("Short circuited in another world");
+        overpowered.add(edge);
     }
 }

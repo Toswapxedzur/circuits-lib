@@ -2,72 +2,55 @@ package com.minecart;
 
 import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
-import com.minecart.logic.CircuitNode;
-import com.minecart.logic.ServerWorld;
-import com.minecart.registry.AllComponents;
 import com.minecart.component.Battery;
 import com.minecart.component.Resistor;
-import com.minecart.component.Capacitor;
+import com.minecart.event.events.ServerTickEvent;
+import com.minecart.event.events.ShortCircuitEvent;
+import com.minecart.logic.CircuitEdge;
+import com.minecart.logic.CircuitNode;
+import com.minecart.logic.ServerLevel;
+import com.minecart.logic.ServerWorld;
+import com.minecart.registry.AllComponents;
 
+//prevent concurrent modification (deletion, addition)
 public class Main {
+    public static final ServerLevel ENGINE = new ServerLevel();
+
     public static void main(String[] args) {
-        System.out.println("--- Booting Action System Physics Tests ---\n");
-        testDynamicCapacitanceChange();
-    }
+        // 1. Boot up the engine
+        ServerLevel engine = new ServerLevel();
 
-    private static void testDynamicCapacitanceChange() {
-        System.out.println("Test 8: Dynamic Capacitance Change (Charge Conservation)");
-        ServerWorld world = new ServerWorld();
+        // 2. Register our listener to catch the explosion
+        engine.register(ShortCircuitEvent.class, event -> {
+            System.err.println("\n[EVENT BUS] ⚠️ SHORT CIRCUIT DETECTED! ⚠️");
+            System.err.println("Dimension World ID: " + event.getWorld().hashCode());
+            System.err.println("Wires melted:");
+            for (CircuitEdge edge : event.getEdges()) {
+                System.err.println(" - " + edge.toString() + " (Resistance too low!)");
+            }
+        });
 
-        // 1. Create the nodes
-        CircuitNode nodePos = world.createNode(AllComponents.CONNECTION);
-        CircuitNode nodeMid = world.createNode(AllComponents.CONNECTION);
-        CircuitNode nodeNeg = world.createNode(AllComponents.CONNECTION);
+        // 3. Create the physical world scenario
+        System.out.println("Building the circuit...");
+        ServerWorld overworld = engine.createWorld();
 
-        // 2. Setup components strictly using the Action System
-        Battery battery = world.connect(AllComponents.BATTERY, nodePos, nodeNeg);
-        // Assuming you have a SetVoltageAction for the battery
-        AllComponents.BATTERY.perform(battery, ActionTypes.SET_VOLTAGE, new Actions.SetVoltageAction(10.0));
+        // (Assuming you have these mock components defined in your registry)
+        CircuitNode batteryPositive = overworld.createNode(AllComponents.CONNECTION); // 12 Volts
+        CircuitNode batteryNegative = overworld.createNode(AllComponents.CONNECTION);  // 0 Volts
 
-        Resistor resistor = world.connect(AllComponents.RESISTOR, nodePos, nodeMid);
-        AllComponents.RESISTOR.perform(resistor, ActionTypes.SET_RESISTANCE, new Actions.SetResistanceAction(9.9)); // 10 Ohms total
+        // We connect them directly with standard copper wires (No Resistor!)
+        Resistor wire1 = overworld.connect(AllComponents.RESISTOR, batteryPositive, batteryNegative);
+        AllComponents.RESISTOR.perform(wire1, ActionTypes.SET_RESISTANCE, new Actions.SetResistanceAction(1e-18));
 
-        Capacitor capacitor = world.connect(AllComponents.CAPACITOR, nodeMid, nodeNeg);
-        AllComponents.CAPACITOR.perform(capacitor, ActionTypes.SET_CAPACITANCE, new Actions.SetCapacitanceAction(0.1));
+        Battery bat1 = overworld.connect(AllComponents.BATTERY, batteryNegative, batteryPositive);
+        AllComponents.BATTERY.perform(bat1, ActionTypes.SET_VOLTAGE, new Actions.SetVoltageAction(2));
+        AllComponents.BATTERY.perform(bat1, ActionTypes.SET_RESISTANCE, new Actions.SetResistanceAction(1e-18));
 
-        System.out.println("PHASE 1: Charging a 0.1F Capacitor with 10V for 20 ticks...");
-        System.out.println("Tick | Cap Voltage | Cap Charge  | ServerCircuit Current");
-        System.out.println("--------------------------------------------------");
+        // 4. Tick the engine
+        System.out.println("Starting Simulation Tick...");
 
-        // Phase 1: Charge to ~6.32V
-        for (int tick = 1; tick <= 20; tick++) {
-            world.tick();
-            printCapacitorState(tick, capacitor);
-        }
+        engine.tick();
 
-        System.out.println("\n>>> ACTION DISPATCHED: CAPACITANCE HALVED TO 0.05F <<<\n");
-
-        // The Disruption: The player uses a wrench or GUI to change the component.
-        // This fires an Action. The Capacitor's internal handler updates 'C', but leaves 'Q' untouched.
-        AllComponents.CAPACITOR.perform(capacitor, ActionTypes.SET_CAPACITANCE, new Actions.SetCapacitanceAction(0.05));
-
-        System.out.println("PHASE 2: Voltage spikes, causing capacitor to discharge BACKWARDS into the battery...");
-        System.out.println("Tick | Cap Voltage | Cap Charge  | ServerCircuit Current");
-        System.out.println("--------------------------------------------------");
-
-        // Phase 2: Watch the physics engine react
-        for (int tick = 21; tick <= 40; tick++) {
-            world.tick();
-            printCapacitorState(tick, capacitor);
-        }
-    }
-
-    private static void printCapacitorState(int tick, Capacitor cap) {
-        double capacitance = cap.get().getCapacitance();
-        double charge = cap.get().getCharge();
-        double capVoltage = charge / capacitance;
-        double current = cap.getCurrent().getValue();
-
-        System.out.printf(" %2d  | %9.4f V | %9.4f C | %13.4f A\n", tick, capVoltage, charge, current);
+        System.out.println(bat1.getCurrent().getValue());
     }
 }

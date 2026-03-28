@@ -1,5 +1,7 @@
 package com.minecart.logic;
 
+import com.minecart.event.events.Event;
+import com.minecart.event.events.ServerTickEvent;
 import com.minecart.math.function.DoubleVar;
 import com.minecart.math.function.LinearSystem;
 import org.apache.commons.lang3.mutable.MutableBoolean;
@@ -15,6 +17,9 @@ public class ServerCircuit extends Circuit{
     protected ServerWorld world;
     protected boolean dirty;
     protected LinearSystem system;
+
+    protected final ServerTickEvent.Circuit preTick = new ServerTickEvent.Circuit(ServerTickEvent.Phase.PRE, this);
+    protected final ServerTickEvent.Circuit postTick = new ServerTickEvent.Circuit(ServerTickEvent.Phase.POST, this);
 
     /**
      * Invoke this method when the electrical variable changes, few circumstances could cause this to happen:
@@ -40,6 +45,7 @@ public class ServerCircuit extends Circuit{
     }
 
     public void tick(){
+        post(preTick);
         if(dirty) {
             update();
             dirty = false;
@@ -54,6 +60,7 @@ public class ServerCircuit extends Circuit{
         for(CircuitEdge edge : edges){
             edge.tick();
         }
+        post(postTick);
     }
 
     public void bfs(CircuitNode startNode, Consumer<CircuitNode> nodeConsumer, Consumer<CircuitEdge> edgeConsumer) {
@@ -144,7 +151,7 @@ public class ServerCircuit extends Circuit{
     }
 
     /**
-     * Merge all the nodes and edges to the other circuit, only handles ServerCircuit scope, doesn't care about ServerWorld
+     * Merge all the nodes and edges to the other circuit, only handles Circuit scope, doesn't care about ServerWorld
      * @param toMerge the other circuit to merge into, current circuit is discarded
      */
     public void mergeInto(ServerCircuit toMerge){
@@ -237,6 +244,10 @@ public class ServerCircuit extends Circuit{
                     return e.connectTo(nodeV);
                 })
                 .collect(Collectors.toSet());
+    }
+
+    public boolean post(Event event) {
+        return world.post(event);
     }
 
     @Override

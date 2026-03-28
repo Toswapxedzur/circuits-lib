@@ -31,7 +31,7 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
         equations.stampCoefficient(getEnd().getVoltage(), -1.0);
 
         // Internal resistance causes a voltage drop proportional to the current
-        equations.stampCoefficient(getCurrent(), get().getResistance());
+        equations.stampCoefficient(getCurrent(), -get().getResistance());
 
         // The target constant is the battery's rated electromotive force (EMF)
         equations.stampConstant(info.getVoltage());
