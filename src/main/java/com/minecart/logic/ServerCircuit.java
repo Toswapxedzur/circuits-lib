@@ -2,8 +2,8 @@ package com.minecart.logic;
 
 import com.minecart.event.events.Event;
 import com.minecart.event.events.ServerTickEvent;
-import com.minecart.math.function.DoubleVar;
-import com.minecart.math.function.LinearSystem;
+import com.minecart.math.DoubleVar;
+import com.minecart.math.LinearSystem;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 
 import java.util.*;

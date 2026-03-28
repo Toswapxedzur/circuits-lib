@@ -1,7 +1,8 @@
-package com.minecart.math.function;
+package com.minecart.math;
 
 import java.util.function.DoubleBinaryOperator;
 
+@Deprecated
 public class DoubleOperator extends Operator{
     DoubleBinaryOperator operator;
 

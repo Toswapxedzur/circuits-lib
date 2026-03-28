@@ -1,4 +1,4 @@
-package com.minecart.math.function;
+package com.minecart.math;
 
 import java.util.*;
 import java.util.stream.Collectors;

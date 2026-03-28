@@ -1,4 +1,4 @@
-package com.minecart.math.function;
+package com.minecart.math;
 
 import java.util.List;
 import java.util.function.Predicate;

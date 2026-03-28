@@ -1,7 +1,7 @@
 package com.minecart.logic;
 
 import com.google.common.graph.EndpointPair;
-import com.minecart.math.function.DoubleVar;
+import com.minecart.math.DoubleVar;
 import com.minecart.misc.CurrentFlow;
 
 import java.util.Set;

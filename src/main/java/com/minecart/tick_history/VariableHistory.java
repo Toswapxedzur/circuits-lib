@@ -1,7 +1,6 @@
 package com.minecart.tick_history;
 
-import com.minecart.math.function.DoubleVar;
-import org.apache.commons.lang3.mutable.MutableBoolean;
+import com.minecart.math.DoubleVar;
 
 public class VariableHistory {
 

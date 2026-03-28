@@ -1,4 +1,4 @@
-package com.minecart.math.function;
+package com.minecart.math;
 
 import org.ejml.data.DMatrixRMaj;
 import org.ejml.data.DMatrixSparseCSC;

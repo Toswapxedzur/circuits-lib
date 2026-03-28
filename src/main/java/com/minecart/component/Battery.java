@@ -7,7 +7,7 @@ import com.minecart.logic.ServerWorld;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.Informations.BatteryInfo;
-import com.minecart.math.function.LinearSystem.RelationProvider;
+import com.minecart.math.LinearSystem.RelationProvider;
 
 /**
  * A non-fully-ideal battery, use extreme small internal resistance for near ideal performance

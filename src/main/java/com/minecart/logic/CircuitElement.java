@@ -1,7 +1,7 @@
 package com.minecart.logic;
 
-import com.minecart.math.function.DoubleVar;
-import com.minecart.math.function.LinearSystem;
+import com.minecart.math.DoubleVar;
+import com.minecart.math.LinearSystem;
 
 import java.util.Comparator;
 import java.util.Set;
