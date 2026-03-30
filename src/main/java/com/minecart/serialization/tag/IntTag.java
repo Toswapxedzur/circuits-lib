@@ -7,6 +7,9 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
+/**
+ * Will not be present after deserialization from a json, all number will be converted to double
+ */
 public class IntTag extends Tag {
     public static final byte ID = 3;
     private int data;
@@ -21,6 +24,11 @@ public class IntTag extends Tag {
 
     @Override public void readJson(JsonElement element) { this.data = element.getAsInt(); }
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
+
+    @Override
+    public boolean matchesJson(JsonElement element) {
+        return false;
+    }
 
     public int getAsInt() { return data; }
 }

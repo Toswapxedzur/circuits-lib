@@ -19,8 +19,15 @@ public class DoubleTag extends Tag {
     @Override public void readData(DataInput input) throws IOException { this.data = input.readDouble(); }
     @Override public void writeData(DataOutput output) throws IOException { output.writeDouble(this.data); }
 
-    @Override public void readJson(JsonElement element) { this.data = element.getAsDouble(); }
+    @Override public void readJson(JsonElement element) {
+        this.data = element.getAsNumber().doubleValue();
+    }
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
+
+    @Override
+    public boolean matchesJson(JsonElement element) {
+        return element instanceof JsonPrimitive prim && prim.isNumber();
+    }
 
     public double getAsDouble() { return data; }
 }

@@ -24,5 +24,10 @@ public class BoolTag extends Tag{
 
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
 
+    @Override
+    public boolean matchesJson(JsonElement element) {
+        return element instanceof JsonPrimitive prim && prim.isBoolean();
+    }
+
     public boolean getAsBoolean() { return data; }
 }

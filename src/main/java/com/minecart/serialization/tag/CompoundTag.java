@@ -92,11 +92,13 @@ public class CompoundTag extends Tag {
             for (Map.Entry<String, JsonElement> entry : jsonObject.entrySet()) {
                 JsonElement val = entry.getValue();
                 Tag tag = TagRegistry.parseJson(val);
-                if (tag != null) {
-                    tag.readJson(val);
-                    entries.put(entry.getKey(), tag);
-                }
+                entries.put(entry.getKey(), tag);
             }
         }
+    }
+
+    @Override
+    public boolean matchesJson(JsonElement element) {
+        return element.isJsonObject();
     }
 }

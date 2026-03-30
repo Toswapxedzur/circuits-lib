@@ -22,5 +22,10 @@ public class StringTag extends Tag {
     @Override public void readJson(JsonElement element) { this.data = element.getAsString(); }
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
 
+    @Override
+    public boolean matchesJson(JsonElement element) {
+        return element instanceof JsonPrimitive prim && prim.isString();
+    }
+
     public String getAsString() { return data; }
 }

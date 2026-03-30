@@ -1,25 +1,26 @@
 package com.minecart.serialization.tag;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonPrimitive;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class TagRegistry {
     protected static final Map<Byte, Supplier<Tag>> REGISTRY = new HashMap<>();
-    protected static final Map<Byte, Predicate<JsonElement>> JSON = new HashMap<>();
+    /** Order matches {@link #register} calls — first {@link Tag#matchesJson} wins in {@link #parseJson}. */
+    protected static final List<Supplier<Tag>> JSON_TAG_ORDER = new ArrayList<>();
 
     static {
-        register(BoolTag.ID, ()->new BoolTag(), json -> json instanceof JsonPrimitive prim && prim.isBoolean());
-        register(IntTag.ID, ()->new IntTag(), json -> false);
-        register(DoubleTag.ID, ()->new DoubleTag(), json -> json instanceof JsonPrimitive prim && prim.isNumber());
-        register(StringTag.ID, ()->new StringTag(), json -> json instanceof JsonPrimitive prim && prim.isString());
-        register(CompoundTag.ID, ()->new CompoundTag(), JsonElement::isJsonObject);
-        register(ListTag.ID, ()->new ListTag(), JsonElement::isJsonArray);
+        register(BoolTag.ID, BoolTag::new);
+        register(IntTag.ID, IntTag::new);
+        register(DoubleTag.ID, DoubleTag::new);
+        register(StringTag.ID, StringTag::new);
+        register(CompoundTag.ID, CompoundTag::new);
+        register(ListTag.ID, ListTag::new);
     }
 
     public static Tag createInstance(byte id) {
@@ -30,18 +31,20 @@ public class TagRegistry {
         return supplier.get();
     }
 
-    public static void register(byte id, Supplier<Tag> factory, Predicate<JsonElement> predicate) {
-        if (REGISTRY.containsKey(id) || JSON.containsKey(id)) {
+    public static void register(byte id, Supplier<Tag> factory) {
+        if (REGISTRY.containsKey(id)) {
             throw new IllegalArgumentException("Tag ID " + id + " is already registered!");
         }
         REGISTRY.put(id, factory);
-        JSON.put(id, predicate);
+        JSON_TAG_ORDER.add(factory);
     }
 
     public static Tag parseJson(JsonElement element) throws IOException {
-        for(Map.Entry<Byte, Predicate<JsonElement>> entry : JSON.entrySet()){
-            if(entry.getValue().test(element)){
-                return createInstance(entry.getKey());
+        for (Supplier<Tag> factory : JSON_TAG_ORDER) {
+            Tag tag = factory.get();
+            if (tag.matchesJson(element)) {
+                tag.readJson(element);
+                return tag;
             }
         }
         throw new IOException("Failed to identify json");

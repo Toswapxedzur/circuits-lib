@@ -1,13 +1,24 @@
 package com.minecart.serialization;
 
-import com.minecart.serialization.tag.CompoundTag;
-import com.minecart.serialization.tag.IntTag;
-import com.minecart.serialization.tag.ListTag;
-import com.minecart.serialization.tag.Tag;
+import com.minecart.serialization.tag.*;
 
 import java.util.UUID;
 
 public class TagUtil {
+    public static int getInt(Tag numberTag) {
+        if(numberTag instanceof IntTag tag)
+            return tag.getAsInt();
+        if(numberTag instanceof DoubleTag tag)
+            return (int) tag.getAsDouble();
+        return 0;
+    }
+    public static double getDouble(Tag numberTag) {
+        if(numberTag instanceof DoubleTag tag)
+            return tag.getAsDouble();
+        if(numberTag instanceof IntTag tag)
+            return (double) tag.getAsInt();
+        return 0.0;
+    }
 
     /**
      * Converts a UUID into a highly efficient ListTag containing exactly 4 integers.
@@ -39,10 +50,10 @@ public class TagUtil {
         }
 
         try {
-            int i0 = ((IntTag) list.get(0)).getAsInt();
-            int i1 = ((IntTag) list.get(1)).getAsInt();
-            int i2 = ((IntTag) list.get(2)).getAsInt();
-            int i3 = ((IntTag) list.get(3)).getAsInt();
+            int i0 = getInt(list.get(0));
+            int i1 = getInt(list.get(1));
+            int i2 = getInt(list.get(2));
+            int i3 = getInt(list.get(3));
 
             // Reconstruct the two 64-bit longs using bitwise shifts
             long most = ((long) i0 << 32) | (i1 & 0xFFFFFFFFL);

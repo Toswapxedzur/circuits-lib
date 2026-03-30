@@ -102,4 +102,9 @@ public class ListTag extends Tag {
             }
         }
     }
+
+    @Override
+    public boolean matchesJson(JsonElement element) {
+        return element.isJsonArray();
+    }
 }
