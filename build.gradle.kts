@@ -1,5 +1,6 @@
 plugins {
     id("java")
+    application
 }
 
 group = "com.minecart"
@@ -18,6 +19,10 @@ dependencies {
     implementation("org.apache.commons:commons-lang3:3.20.0")
     // Source: https://mvnrepository.com/artifact/org.ejml/ejml-dsparse
     implementation("org.ejml:ejml-dsparse:0.44.0")
+}
+
+application {
+    mainClass = "com.minecart.Main"
 }
 
 tasks.test {

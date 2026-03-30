@@ -24,7 +24,7 @@ public class DoubleVar {
         return new DoubleVar();
     }
 
-     public static DoubleVar create(UUID id, double value){
+    public static DoubleVar create(UUID id, double value){
          return new DoubleVar(id, value);
      }
 

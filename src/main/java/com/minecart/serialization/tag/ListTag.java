@@ -2,11 +2,13 @@ package com.minecart.serialization.tag;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.minecart.serialization.SerializationContext;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class ListTag extends Tag {
@@ -45,9 +47,14 @@ public class ListTag extends Tag {
         return list.isEmpty();
     }
 
+    @Override
+    public List<Tag> children() {
+        return Collections.unmodifiableList(list);
+    }
+
     // --- Binary IO ---
     @Override
-    public void writeData(DataOutput output) throws IOException {
+    public void writeData(DataOutput output, SerializationContext context) throws IOException {
         if (list.isEmpty()) {
             output.writeByte(0); // Type 0 (EndTag/Empty)
             output.writeInt(0);  // Size 0
@@ -55,13 +62,13 @@ public class ListTag extends Tag {
             output.writeByte(elementType);
             output.writeInt(list.size());
             for (Tag tag : list) {
-                tag.writeData(output);
+                tag.writeData(output, context);
             }
         }
     }
 
     @Override
-    public void readData(DataInput input) throws IOException {
+    public void readData(DataInput input, SerializationContext context) throws IOException {
         list.clear();
         this.elementType = input.readByte();
         int size = input.readInt();
@@ -72,7 +79,7 @@ public class ListTag extends Tag {
 
         for (int i = 0; i < size; i++) {
             Tag tag = TagRegistry.createInstance(this.elementType);
-            tag.readData(input);
+            tag.readData(input, context);
             list.add(tag);
         }
     }
@@ -94,7 +101,7 @@ public class ListTag extends Tag {
             JsonArray array = element.getAsJsonArray();
             for (JsonElement jsonElement : array) {
                 try {
-                    Tag tag = TagRegistry.parseJson(jsonElement);
+                    Tag tag = Tag.parseJson(jsonElement);
                     add(tag); // The add() method will automatically set the elementType
                 } catch (IOException e) {
                     System.err.println("Skipping unparseable array element: " + e.getMessage());

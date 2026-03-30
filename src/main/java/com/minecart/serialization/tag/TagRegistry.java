@@ -38,15 +38,4 @@ public class TagRegistry {
         REGISTRY.put(id, factory);
         JSON_TAG_ORDER.add(factory);
     }
-
-    public static Tag parseJson(JsonElement element) throws IOException {
-        for (Supplier<Tag> factory : JSON_TAG_ORDER) {
-            Tag tag = factory.get();
-            if (tag.matchesJson(element)) {
-                tag.readJson(element);
-                return tag;
-            }
-        }
-        throw new IOException("Failed to identify json");
-    }
 }

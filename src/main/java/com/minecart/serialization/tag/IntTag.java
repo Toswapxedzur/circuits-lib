@@ -2,6 +2,7 @@ package com.minecart.serialization.tag;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
+import com.minecart.serialization.SerializationContext;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -19,8 +20,8 @@ public class IntTag extends Tag {
 
     @Override public byte getId() { return ID; }
 
-    @Override public void readData(DataInput input) throws IOException { this.data = input.readInt(); }
-    @Override public void writeData(DataOutput output) throws IOException { output.writeInt(this.data); }
+    @Override public void readData(DataInput input, SerializationContext context) throws IOException { this.data = input.readInt(); }
+    @Override public void writeData(DataOutput output, SerializationContext context) throws IOException { output.writeInt(this.data); }
 
     @Override public void readJson(JsonElement element) { this.data = element.getAsInt(); }
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
