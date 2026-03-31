@@ -16,6 +16,7 @@ import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.DoubleTag;
 import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
+import org.ejml.interfaces.linsol.LinearSolverSparse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
