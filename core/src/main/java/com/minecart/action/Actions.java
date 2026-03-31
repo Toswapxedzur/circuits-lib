@@ -18,6 +18,9 @@ public class Actions {
         public DoubleUnaryOperator getOperator() {
             return operator;
         }
+
+        @Override
+        public abstract ActionType<? extends Action> getActionType();
     }
 
     public static abstract class SetOneIntAction implements Action {
@@ -34,6 +37,9 @@ public class Actions {
         public IntUnaryOperator getOperator() {
             return operator;
         }
+
+        @Override
+        public abstract ActionType<? extends Action> getActionType();
     }
 
     public static class SetVoltageAction extends SetOneDoubleAction {
@@ -43,6 +49,11 @@ public class Actions {
 
         public SetVoltageAction(double value) {
             super(value);
+        }
+
+        @Override
+        public ActionType<SetVoltageAction> getActionType() {
+            return ActionTypes.SET_VOLTAGE;
         }
     }
 
@@ -54,6 +65,11 @@ public class Actions {
         public SetResistanceAction(double value) {
             super(value);
         }
+
+        @Override
+        public ActionType<SetResistanceAction> getActionType() {
+            return ActionTypes.SET_RESISTANCE;
+        }
     }
 
     public static class SetConnectionAction extends SetOneIntAction{
@@ -64,6 +80,11 @@ public class Actions {
         public SetConnectionAction(int value) {
             super(value);
         }
+
+        @Override
+        public ActionType<SetConnectionAction> getActionType() {
+            return ActionTypes.SET_CONNECTION;
+        }
     }
 
     public static class SetCapacitanceAction extends SetOneDoubleAction {
@@ -73,6 +94,11 @@ public class Actions {
 
         public SetCapacitanceAction(double value) {
             super(value);
+        }
+
+        @Override
+        public ActionType<SetCapacitanceAction> getActionType() {
+            return ActionTypes.SET_CAPACITANCE;
         }
     }
 }

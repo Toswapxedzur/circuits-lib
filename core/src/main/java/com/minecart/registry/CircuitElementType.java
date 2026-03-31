@@ -37,6 +37,20 @@ public class CircuitElementType<T extends CircuitElement> {
         return false;
     }
 
+    /**
+     * Dispatches using {@link Action#getActionType()} to find the handler.
+     */
+    @SuppressWarnings("unchecked")
+    public boolean perform(T element, Action action) {
+        ActionType<?> type = action.getActionType();
+        BiConsumer<T, Action> handler = (BiConsumer<T, Action>) actionHandlers.get(type);
+        if (handler != null) {
+            handler.accept(element, action);
+            return true;
+        }
+        return false;
+    }
+
     public T create(World world){
         T t = factory.apply(world);
         if (t instanceof CircuitElement ce) {
