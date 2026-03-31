@@ -52,6 +52,15 @@ public class ListTag extends Tag {
         return Collections.unmodifiableList(list);
     }
 
+    @Override
+    public ListTag copy() {
+        ListTag n = new ListTag();
+        for (Tag t : list) {
+            n.add(t.copy());
+        }
+        return n;
+    }
+
     // --- Binary IO ---
     @Override
     public void writeData(DataOutput output, SerializationContext context) throws IOException {
@@ -95,18 +104,33 @@ public class ListTag extends Tag {
     }
 
     @Override
-    public void readJson(JsonElement element) {
+    public void readJson(JsonElement element) throws IOException {
         list.clear();
-        if (element.isJsonArray()) {
-            JsonArray array = element.getAsJsonArray();
-            for (JsonElement jsonElement : array) {
-                try {
-                    Tag tag = Tag.parseJson(jsonElement);
-                    add(tag); // The add() method will automatically set the elementType
-                } catch (IOException e) {
-                    System.err.println("Skipping unparseable array element: " + e.getMessage());
-                }
+        elementType = 0;
+        if (!element.isJsonArray()) {
+            return;
+        }
+        JsonArray array = element.getAsJsonArray();
+        List<Tag> parsed = new ArrayList<>();
+        List<IOException> failures = new ArrayList<>();
+        for (int i = 0; i < array.size(); i++) {
+            JsonElement jsonElement = array.get(i);
+            try {
+                parsed.add(Tag.parseJson(jsonElement));
+            } catch (IOException e) {
+                failures.add(new IOException("index " + i + ": " + e.getMessage(), e));
             }
+        }
+        if (!failures.isEmpty()) {
+            IOException aggregated = new IOException(
+                    "Failed to parse " + failures.size() + " of " + array.size() + " list elements");
+            for (IOException ex : failures) {
+                aggregated.addSuppressed(ex);
+            }
+            throw aggregated;
+        }
+        for (Tag t : parsed) {
+            add(t);
         }
     }
 

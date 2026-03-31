@@ -3,7 +3,7 @@ package com.minecart.registry;
 import com.minecart.action.ActionType;
 import com.minecart.action.Action;
 import com.minecart.logic.CircuitElement;
-import com.minecart.logic.ServerWorld;
+import com.minecart.logic.World;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -12,15 +12,15 @@ import java.util.function.Function;
 
 public class CircuitElementType<T extends CircuitElement> {
     protected final String id;
-    protected final Function<ServerWorld, T> factory;
+    protected final Function<World, T> factory;
     protected final Map<ActionType<?>, BiConsumer<T, ? extends Action>> actionHandlers = new HashMap<>();
 
-    protected CircuitElementType(String id, Function<ServerWorld, T> factory){
+    protected CircuitElementType(String id, Function<World, T> factory){
         this.id = id;
         this.factory = factory;
     }
 
-    public static <T extends CircuitElement> CircuitElementType<T> build(String id, Function<ServerWorld, T> factory){
+    public static <T extends CircuitElement> CircuitElementType<T> build(String id, Function<World, T> factory){
         return new CircuitElementType<T>(id, factory);
     }
 
@@ -37,8 +37,17 @@ public class CircuitElementType<T extends CircuitElement> {
         return false;
     }
 
-    public T create(ServerWorld world){
-        return factory.apply(world);
+    public T create(World world){
+        T t = factory.apply(world);
+        if (t instanceof CircuitElement ce) {
+            ce.setRegistryTypeId(id);
+        }
+        return t;
+    }
+
+    /** Registry string id (e.g. {@code "resistor"}). */
+    public String getTypeId() {
+        return id;
     }
 
     @Override

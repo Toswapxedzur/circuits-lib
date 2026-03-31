@@ -2,6 +2,7 @@ package com.minecart.serialization;
 
 import com.minecart.serialization.tag.*;
 
+import java.io.IOException;
 import java.util.UUID;
 
 public class TagUtil {
@@ -84,5 +85,27 @@ public class TagUtil {
     public static UUID getUUID(CompoundTag compound, String key) {
         Tag tag = compound.get(key);
         return tag != null ? readUUID(tag) : null;
+    }
+
+    /** Legacy: parses a UUID from a {@link StringTag} list entry (older component id lists). Prefer {@link #readUUID}. */
+    public static UUID parseUuidStringTag(Tag t) {
+        if (t instanceof StringTag st) {
+            try {
+                return UUID.fromString(st.getAsString());
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns {@code tag} as {@link CompoundTag}, or throws {@link IOException} with {@code message}.
+     */
+    public static CompoundTag requireCompoundTag(Tag tag, String message) throws IOException {
+        if (tag instanceof CompoundTag c) {
+            return c;
+        }
+        throw new IOException(message);
     }
 }

@@ -4,27 +4,34 @@ import com.minecart.event.events.Event;
 import com.minecart.event.events.ServerTickEvent;
 import com.minecart.math.DoubleVar;
 import com.minecart.math.LinearSystem;
-import org.apache.commons.lang3.mutable.MutableBoolean;
+import com.minecart.registry.CircuitElementType;
+import com.minecart.serialization.TagUtil;
+import com.minecart.serialization.tag.CompoundTag;
 
-import java.util.*;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
- * Represent a connected bidirectional circuit network
+ * Server-side simulation for a {@link Circuit}: linear system, tick, and world integration.
+ * Structure and serialization are on {@link Circuit}.
  */
-public class ServerCircuit extends Circuit{
+public class ServerCircuit extends Circuit {
+
     protected ServerWorld world;
     protected boolean dirty;
     protected LinearSystem system;
+
+    /** Edges that transitioned into overpowered this tick; drained by {@link ServerWorld} after {@link #tick()}. */
+    protected final List<CircuitEdge> overpoweredThisTick = new ArrayList<>();
 
     protected final ServerTickEvent.Circuit preTick = new ServerTickEvent.Circuit(ServerTickEvent.Phase.PRE, this);
     protected final ServerTickEvent.Circuit postTick = new ServerTickEvent.Circuit(ServerTickEvent.Phase.POST, this);
 
     /**
-     * Invoke this method when the electrical variable changes, few circumstances could cause this to happen:
-     * <p> 1. Nodes or edges is added or removed
-     * <p> 2. Nodes or edges state changes so that it provide different variables
+     * Invoke when the electrical model or topology must be rebuilt (new variables / relations).
      */
     public void markDirty() {
         this.dirty = true;
@@ -38,15 +45,56 @@ public class ServerCircuit extends Circuit{
         this.world = world;
     }
 
-    public ServerCircuit(){
+    /**
+     * Creates a node in this world's graph (delegates to {@link ServerWorld#createNode}).
+     * Call from circuit-level orchestration (e.g. {@link CircuitComponent} during {@link CircuitComponent#generate()}) instead of reaching the world from an element.
+     */
+    public <T extends CircuitNode> T createNode(CircuitElementType<T> type) {
+        if (world == null) {
+            throw new IllegalStateException("ServerCircuit has no world");
+        }
+        return world.createNode(type);
+    }
+
+    /**
+     * Connects two nodes with an edge (delegates to {@link ServerWorld#connect}).
+     * @see #createNode(CircuitElementType)
+     */
+    public <T extends CircuitEdge> T connect(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2) {
+        if (world == null) {
+            throw new IllegalStateException("ServerCircuit has no world");
+        }
+        return world.connect(type, node1, node2);
+    }
+
+    /**
+     * Moves edges reported as newly overpowered this tick to the caller; list is cleared.
+     */
+    public List<CircuitEdge> drainOverpoweredThisTick() {
+        if (overpoweredThisTick.isEmpty()) {
+            return List.of();
+        }
+        List<CircuitEdge> copy = new ArrayList<>(overpoweredThisTick);
+        overpoweredThisTick.clear();
+        return copy;
+    }
+
+    public ServerCircuit() {
         super(UUID.randomUUID());
         system = new LinearSystem();
         dirty = false;
     }
 
-    public void tick(){
+    public ServerCircuit(UUID id) {
+        super(id);
+        system = new LinearSystem();
+        dirty = false;
+    }
+
+    public void tick() {
         post(preTick);
-        if(dirty) {
+        overpoweredThisTick.clear();
+        if (dirty) {
             update();
             dirty = false;
         }
@@ -54,53 +102,16 @@ public class ServerCircuit extends Circuit{
         system.stampRelation(this::collectRelation);
         system.solve();
 
-        for(CircuitNode node : nodes){
+        for (CircuitNode node : nodes) {
             node.tick();
         }
-        for(CircuitEdge edge : edges){
+        for (CircuitEdge edge : edges) {
+            if (!edge.isOverpowered() && edge.shortCircuit()) {
+                overpoweredThisTick.add(edge);
+            }
             edge.tick();
         }
         post(postTick);
-    }
-
-    public void bfs(CircuitNode startNode, Consumer<CircuitNode> nodeConsumer, Consumer<CircuitEdge> edgeConsumer) {
-        if (startNode == null || !this.nodes.contains(startNode)) return;
-
-        Set<CircuitNode> visitedNodes = new HashSet<>();
-        Set<CircuitEdge> visitedEdges = new HashSet<>();
-        Queue<CircuitNode> queue = new LinkedList<>();
-
-        queue.add(startNode);
-        visitedNodes.add(startNode);
-
-        while (!queue.isEmpty()) {
-            CircuitNode current = queue.poll();
-
-            // 1. Process the Node
-            if (nodeConsumer != null) {
-                nodeConsumer.accept(current);
-            }
-
-            // 2. Traverse outgoing connections
-            for (CircuitEdge edge : current.getConnection()) {
-
-                // Process the edge only if we haven't seen it yet
-                if (!visitedEdges.contains(edge)) {
-                    visitedEdges.add(edge);
-                    if (edgeConsumer != null) {
-                        edgeConsumer.accept(edge);
-                    }
-                }
-
-                CircuitNode neighbor = edge.getOther(current);
-
-                // Queue the neighbor if it hasn't been visited
-                if (neighbor != null && !visitedNodes.contains(neighbor)) {
-                    visitedNodes.add(neighbor);
-                    queue.add(neighbor);
-                }
-            }
-        }
     }
 
     public boolean destroy(CircuitNode node, boolean simulate) {
@@ -108,8 +119,7 @@ public class ServerCircuit extends Circuit{
             return this.nodes.contains(node);
         }
 
-        List<CircuitEdge> connectedEdges = new ArrayList<>(node.getConnection());
-        for (CircuitEdge edge : connectedEdges) {
+        for (CircuitEdge edge : new java.util.ArrayList<>(node.getConnection())) {
             this.world.disconnect(edge);
         }
 
@@ -118,10 +128,7 @@ public class ServerCircuit extends Circuit{
         return true;
     }
 
-    /**
-     * Called everytime when the circuit structure changes, not when electrical variable changes
-     */
-    protected void update(){
+    protected void update() {
         for (CircuitNode node : nodes) {
             node.setGround(false);
         }
@@ -132,126 +139,54 @@ public class ServerCircuit extends Circuit{
         system.init();
     }
 
-    public void collectRelation(LinearSystem.RelationProvider provider){
-        for(CircuitNode node : nodes){
+    public void collectRelation(LinearSystem.RelationProvider provider) {
+        for (CircuitNode node : nodes) {
             node.collectRule(provider);
         }
-        for(CircuitEdge edge : edges){
+        for (CircuitEdge edge : edges) {
             edge.collectRule(provider);
         }
     }
 
-    public void collectVariable(Set<DoubleVar> collector){
-        for(CircuitNode node : nodes){
+    public void collectVariable(Set<DoubleVar> collector) {
+        for (CircuitNode node : nodes) {
             node.collectVariable(collector);
         }
-        for(CircuitEdge edge : edges){
+        for (CircuitEdge edge : edges) {
             edge.collectVariable(collector);
         }
-    }
-
-    /**
-     * Merge all the nodes and edges to the other circuit, only handles Circuit scope, doesn't care about ServerWorld
-     * @param toMerge the other circuit to merge into, current circuit is discarded
-     */
-    public void mergeInto(ServerCircuit toMerge){
-        for(CircuitNode node : nodes){
-            node.setCircuit(toMerge);
-            toMerge.nodes().add(node);
-        }
-        for(CircuitEdge edge : edges){
-            edge.setCircuit(toMerge);
-            toMerge.edges().add(edge);
-        }
-    }
-
-    /**
-     * Disconnect the edge and seperate the two node
-     * @return Whether the two node is still connected
-     */
-    public boolean seperate(CircuitNode node1, CircuitNode node2, CircuitEdge edge, ServerCircuit newCircuit){
-        node1.disconnect(edge, false);
-        node2.disconnect(edge, false);
-
-        // ADDED: The edge is broken, remove it from this circuit completely
-        this.edges.remove(edge);
-
-        MutableBoolean contain2 = new MutableBoolean(false);
-        Consumer<CircuitNode> checkConsumer = node -> {
-            if(node == node2)
-                contain2.setTrue();
-        };
-        bfs(node1, checkConsumer, e -> {});
-
-        if(contain2.isTrue()) {
-            this.markDirty();
-            return false;
-        }
-
-        Consumer<CircuitNode> reassignNode = circuitNode -> {
-            circuitNode.setCircuit(newCircuit);
-            newCircuit.addNode(circuitNode);
-            this.nodes.remove(circuitNode);
-        };
-        Consumer<CircuitEdge> reassignEdge = circuitEdge -> {
-            circuitEdge.setCircuit(newCircuit);
-            newCircuit.addEdge(circuitEdge);
-            this.edges.remove(circuitEdge);
-        };
-
-        bfs(node2, reassignNode, reassignEdge);
-        this.markDirty();
-        newCircuit.markDirty();
-        return true;
-    }
-
-    public void addEdge(CircuitEdge edge) {
-        this.edges.add(edge);
-        edge.setCircuit(this);
-    }
-
-    public void addNode(CircuitNode node) {
-        this.nodes.add(node);
-        node.setCircuit(this);
-    }
-
-    public Set<CircuitNode> nodes() {
-        return nodes;
-    }
-
-    public Set<CircuitEdge> edges() {
-        return edges;
-    }
-
-    public Set<CircuitNode> adjacentNodes(CircuitNode node) {
-        return node.getAdjacent().stream().collect(Collectors.toSet());
-    }
-
-    public Set<CircuitEdge> incidentEdges(CircuitNode node) {
-        return node.getConnection();
-    }
-
-    public Set<CircuitEdge> adjacentEdges(CircuitEdge edge) {
-        Set<CircuitEdge> set = new LinkedHashSet<>();
-        edge.getStart().getConnection().forEach(e -> set.add(e));
-        edge.getEnd().getConnection().forEach(e -> set.add(e));
-        return set;
-    }
-
-    public Set<CircuitEdge> edgesConnecting(CircuitNode nodeU, CircuitNode nodeV) {
-        return nodeU.getConnection().stream()
-                .filter(e -> {
-                    return e.connectTo(nodeV);
-                })
-                .collect(Collectors.toSet());
     }
 
     public boolean post(Event event) {
         return world.post(event);
     }
 
+    public static ServerCircuit loadFromTag(ServerWorld world, CompoundTag tag) throws IOException {
+        UUID circuitId = TagUtil.getUUID(tag, "circuit_id");
+        if (circuitId == null) {
+            throw new IOException("Missing circuit_id");
+        }
+        ServerCircuit circuit = new ServerCircuit(circuitId);
+        world.addCircuit(circuit);
+        circuit.load(world, tag);
+        return circuit;
+    }
+
     @Override
-    public int hashCode() {
-        return id.hashCode();
+    public void load(World world, CompoundTag tag) throws IOException {
+        super.load(world, tag);
+        markDirty();
+    }
+
+    @Override
+    public boolean seperate(CircuitNode node1, CircuitNode node2, CircuitEdge edge, Circuit newCircuit) {
+        boolean split = super.seperate(node1, node2, edge, newCircuit);
+        if (!split) {
+            markDirty();
+            return false;
+        }
+        markDirty();
+        ((ServerCircuit) newCircuit).markDirty();
+        return true;
     }
 }

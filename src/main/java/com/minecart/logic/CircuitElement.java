@@ -2,6 +2,9 @@ package com.minecart.logic;
 
 import com.minecart.math.DoubleVar;
 import com.minecart.math.LinearSystem;
+import com.minecart.registry.AllComponents;
+import com.minecart.serialization.TagUtil;
+import com.minecart.serialization.tag.CompoundTag;
 
 import java.util.Comparator;
 import java.util.Set;
@@ -11,22 +14,59 @@ public abstract class CircuitElement implements Comparable<CircuitElement> {
     public static final Comparator<? extends CircuitElement> comparator = (f, s) -> f.id.compareTo(s.id);
 
     protected UUID id;
-    protected ServerWorld world;
-    protected ServerCircuit circuit;
+    protected World world;
+    protected Circuit circuit;
 
-    public ServerCircuit getCircuit() {
+    /** Set when created via {@link com.minecart.registry.CircuitElementType#create}; used for save/load. */
+    protected String registryTypeId;
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public String getRegistryTypeId() {
+        return registryTypeId;
+    }
+
+    public void setRegistryTypeId(String registryTypeId) {
+        this.registryTypeId = registryTypeId;
+    }
+
+    /** Registry id string written to tags; override or use {@link com.minecart.registry.CircuitElementType#create}. */
+    protected String typeIdForSave() {
+        String t = getRegistryTypeId();
+        if (t != null) {
+            return t;
+        }
+        if (getClass() == CircuitNode.class) {
+            return AllComponents.CONNECTION.getTypeId();
+        }
+        throw new IllegalStateException(
+                "Cannot serialize " + getClass().getName() + " without registryTypeId; create via CircuitElementType or setRegistryTypeId");
+    }
+
+    protected void saveElementHeader(CompoundTag tag) {
+        TagUtil.putUUID(tag, "id", getId());
+        tag.putString("type", typeIdForSave());
+    }
+
+    public Circuit getCircuit() {
         return circuit;
     }
 
-    public void setCircuit(ServerCircuit circuit) {
+    public void setCircuit(Circuit circuit) {
         this.circuit = circuit;
     }
 
-    public ServerWorld getWorld() {
+    public World getWorld() {
         return world;
     }
 
-    public void setWorld(ServerWorld world) {
+    public void setWorld(World world) {
         this.world = world;
     }
 

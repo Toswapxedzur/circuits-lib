@@ -11,8 +11,6 @@ import java.util.function.Supplier;
 
 public class TagRegistry {
     protected static final Map<Byte, Supplier<Tag>> REGISTRY = new HashMap<>();
-    /** Order matches {@link #register} calls — first {@link Tag#matchesJson} wins in {@link #parseJson}. */
-    protected static final List<Supplier<Tag>> JSON_TAG_ORDER = new ArrayList<>();
 
     static {
         register(BoolTag.ID, BoolTag::new);
@@ -36,6 +34,5 @@ public class TagRegistry {
             throw new IllegalArgumentException("Tag ID " + id + " is already registered!");
         }
         REGISTRY.put(id, factory);
-        JSON_TAG_ORDER.add(factory);
     }
 }

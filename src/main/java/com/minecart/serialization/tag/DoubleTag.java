@@ -26,6 +26,11 @@ public class DoubleTag extends Tag {
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
 
     @Override
+    public DoubleTag copy() {
+        return new DoubleTag(data);
+    }
+
+    @Override
     public boolean matchesJson(JsonElement element) {
         return element instanceof JsonPrimitive prim && prim.isNumber();
     }

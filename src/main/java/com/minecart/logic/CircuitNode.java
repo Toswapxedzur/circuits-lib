@@ -2,16 +2,20 @@ package com.minecart.logic;
 
 import com.minecart.math.DoubleVar;
 import com.minecart.math.LinearSystem;
+import com.minecart.serialization.TagSerializable;
+import com.minecart.serialization.TagUtil;
+import com.minecart.serialization.tag.CompoundTag;
 
+import java.io.IOException;
 import java.util.*;
 
-public class CircuitNode extends CircuitElement {
+public class CircuitNode extends CircuitElement implements TagSerializable {
     protected DoubleVar voltage;
     protected Set<CircuitEdge> connection;
     protected CircuitComponent component;
     protected boolean ground;
 
-    public CircuitNode(ServerWorld world){
+    public CircuitNode(World world){
         setWorld(world);
         voltage = DoubleVar.create();
         connection = new LinkedHashSet<>();
@@ -104,5 +108,24 @@ public class CircuitNode extends CircuitElement {
 
     public DoubleVar getVoltage() {
         return voltage;
+    }
+
+    @Override
+    public void save(CompoundTag tag) throws IOException {
+        saveElementHeader(tag);
+        tag.putBoolean("ground", isGrounded());
+        tag.putDouble("voltage", getVoltage().getValue());
+        if (getComponent() != null) {
+            TagUtil.putUUID(tag, "component", getComponent().getId());
+        }
+    }
+
+    /**
+     * Restores ground and voltage from {@code tag}. Id and type are applied by {@link Circuit} before this runs.
+     */
+    @Override
+    public void load(CompoundTag tag) throws IOException {
+        setGround(tag.getBoolean("ground"));
+        getVoltage().setValue(tag.getDouble("voltage"));
     }
 }

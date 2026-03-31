@@ -3,7 +3,7 @@ package com.minecart.component;
 import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.logic.ServerWorld;
+import com.minecart.logic.World;
 import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
@@ -12,7 +12,7 @@ import com.minecart.variant.type.Informations.*;
 public class Capacitor extends CircuitEdge implements ElectricalVariate<CapacitorInfo> {
     protected CapacitorInfo info;
 
-    public Capacitor(ServerWorld world) {
+    public Capacitor(World world) {
         super(world);
         info = getDefault();
     }

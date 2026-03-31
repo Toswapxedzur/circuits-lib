@@ -24,6 +24,11 @@ public class StringTag extends Tag {
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
 
     @Override
+    public StringTag copy() {
+        return new StringTag(data);
+    }
+
+    @Override
     public boolean matchesJson(JsonElement element) {
         return element instanceof JsonPrimitive prim && prim.isString();
     }

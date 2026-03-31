@@ -3,7 +3,7 @@ package com.minecart.component;
 import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.logic.ServerWorld;
+import com.minecart.logic.World;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.Informations.BatteryInfo;
@@ -16,7 +16,7 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
 
     protected BatteryInfo info;
 
-    public Battery(ServerWorld world) {
+    public Battery(World world) {
         super(world);
         this.info = getDefault();
     }

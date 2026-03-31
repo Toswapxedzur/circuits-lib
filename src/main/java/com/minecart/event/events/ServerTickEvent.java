@@ -1,10 +1,8 @@
 package com.minecart.event.events;
 
 import com.minecart.logic.ServerCircuit;
-import com.minecart.logic.ServerLevel;
-import com.minecart.logic.ServerWorld;
 
-public abstract class ServerTickEvent extends Event{
+public abstract class ServerTickEvent extends Event {
 
     public enum Phase {
         PRE, POST
@@ -21,23 +19,29 @@ public abstract class ServerTickEvent extends Event{
     }
 
     public static class Level extends ServerTickEvent {
-        private final ServerLevel level;
+        private final com.minecart.logic.Level level;
 
-        public Level(Phase phase, ServerLevel level) {
+        public Level(Phase phase, com.minecart.logic.Level level) {
             super(phase);
             this.level = level;
         }
-        public ServerLevel getLevel() { return level; }
+
+        public com.minecart.logic.Level getLevel() {
+            return level;
+        }
     }
 
     public static class World extends ServerTickEvent {
-        private final ServerWorld world;
+        private final com.minecart.logic.World world;
 
-        public World(Phase phase, ServerWorld world) {
+        public World(Phase phase, com.minecart.logic.World world) {
             super(phase);
             this.world = world;
         }
-        public ServerWorld getWorld() { return world; }
+
+        public com.minecart.logic.World getWorld() {
+            return world;
+        }
     }
 
     public static class Circuit extends ServerTickEvent {
@@ -47,6 +51,9 @@ public abstract class ServerTickEvent extends Event{
             super(phase);
             this.circuit = circuit;
         }
-        public ServerCircuit getCircuit() { return circuit; }
+
+        public ServerCircuit getCircuit() {
+            return circuit;
+        }
     }
 }

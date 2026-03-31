@@ -3,7 +3,7 @@ package com.minecart.component;
 import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.logic.ServerWorld;
+import com.minecart.logic.World;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.Informations.ResistorInfo;
@@ -16,7 +16,7 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
 
     protected ResistorInfo info;
 
-    public Resistor(ServerWorld world) {
+    public Resistor(World world) {
         super(world);
         this.info = getDefault();
     }

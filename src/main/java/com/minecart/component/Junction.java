@@ -4,7 +4,7 @@ import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
-import com.minecart.logic.ServerWorld;
+import com.minecart.logic.World;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.type.Informations;
@@ -15,7 +15,7 @@ import com.minecart.variant.type.Informations;
 public class Junction extends CircuitNode implements ElectricalVariate<Informations.JunctionInfo> {
     Informations.JunctionInfo info;
 
-    public Junction(ServerWorld world) {
+    public Junction(World world) {
         super(world);
         this.info = getDefault();
     }

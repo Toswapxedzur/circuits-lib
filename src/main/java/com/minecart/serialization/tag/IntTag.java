@@ -27,6 +27,11 @@ public class IntTag extends Tag {
     @Override public JsonElement writeJson() { return new JsonPrimitive(this.data); }
 
     @Override
+    public IntTag copy() {
+        return new IntTag(data);
+    }
+
+    @Override
     public boolean matchesJson(JsonElement element) {
         return false;
     }

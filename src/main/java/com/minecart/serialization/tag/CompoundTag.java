@@ -67,6 +67,15 @@ public class CompoundTag extends Tag {
         return Collections.unmodifiableList(new ArrayList<>(entries.values()));
     }
 
+    @Override
+    public CompoundTag copy() {
+        CompoundTag n = new CompoundTag();
+        for (Map.Entry<String, Tag> e : entries.entrySet()) {
+            n.put(e.getKey(), e.getValue().copy());
+        }
+        return n;
+    }
+
     private static boolean useContextualKeys(SerializationContext context) {
         return context != null && !context.isEmpty();
     }

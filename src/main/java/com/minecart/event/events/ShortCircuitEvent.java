@@ -1,8 +1,7 @@
 package com.minecart.event.events;
 
 import com.minecart.logic.CircuitEdge;
-import com.minecart.logic.ServerCircuit;
-import com.minecart.logic.ServerWorld;
+import com.minecart.logic.World;
 
 import java.util.Collections;
 import java.util.List;
@@ -14,15 +13,15 @@ import java.util.List;
  */
 public class ShortCircuitEvent extends Event {
 
-    private final ServerWorld world;
+    private final World world;
     private final List<CircuitEdge> edges;
 
-    public ShortCircuitEvent(ServerWorld world, List<CircuitEdge> edges) {
+    public ShortCircuitEvent(World world, List<CircuitEdge> edges) {
         this.world = world;
         this.edges = edges;
     }
 
-    public ServerWorld getWorld() {
+    public World getWorld() {
         return world;
     }
 

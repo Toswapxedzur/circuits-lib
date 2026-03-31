@@ -3,10 +3,14 @@ package com.minecart.logic;
 import com.google.common.graph.EndpointPair;
 import com.minecart.math.DoubleVar;
 import com.minecart.misc.CurrentFlow;
+import com.minecart.serialization.TagSerializable;
+import com.minecart.serialization.TagUtil;
+import com.minecart.serialization.tag.CompoundTag;
 
+import java.io.IOException;
 import java.util.Set;
 
-public class CircuitEdge extends CircuitElement {
+public class CircuitEdge extends CircuitElement implements TagSerializable {
     public static final double MAX_CURRENT = 1e15;
 
     //positive: from first to second
@@ -19,7 +23,7 @@ public class CircuitEdge extends CircuitElement {
 
     protected boolean overpowered;
 
-    public CircuitEdge(ServerWorld world){
+    public CircuitEdge(World world){
         setWorld(world);
         current = DoubleVar.create();
         overpowered = false;
@@ -33,10 +37,15 @@ public class CircuitEdge extends CircuitElement {
 
     @Override
     public void tick(){
-        if(!overpowered && shortCircuit()){
-            getWorld().setOverpowered(this);
-        }
         overpowered = shortCircuit();
+    }
+
+    /**
+     * Whether this edge was last evaluated as overpowered ({@link #shortCircuit()}) after the previous tick.
+     * Used with {@link #shortCircuit()} before {@link #tick()} to detect a transition into overpowered.
+     */
+    public boolean isOverpowered() {
+        return overpowered;
     }
 
     public boolean shortCircuit(){
@@ -137,5 +146,27 @@ public class CircuitEdge extends CircuitElement {
 
     public EndpointPair<CircuitNode> incidentNodes(){
         return EndpointPair.ordered(getSource(), getTarget());
+    }
+
+    @Override
+    public void save(CompoundTag tag) throws IOException {
+        saveElementHeader(tag);
+        if (getStart() != null) {
+            TagUtil.putUUID(tag, "start", getStart().getId());
+        }
+        if (getEnd() != null) {
+            TagUtil.putUUID(tag, "end", getEnd().getId());
+        }
+        tag.putDouble("current", getCurrent().getValue());
+        tag.putBoolean("overpowered", overpowered);
+    }
+
+    /**
+     * Restores electrical state. Endpoints are resolved and wired by {@link Circuit} after all nodes are loaded.
+     */
+    @Override
+    public void load(CompoundTag tag) throws IOException {
+        getCurrent().setValue(tag.getDouble("current"));
+        overpowered = tag.getBoolean("overpowered");
     }
 }

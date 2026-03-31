@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -37,7 +38,7 @@ public abstract class Tag {
 
     /** Dispatches on JSON shape; see {@link TagRegistry}. */
     public static Tag parseJson(JsonElement element) throws IOException {
-        for (Supplier<Tag> factory : TagRegistry.JSON_TAG_ORDER) {
+        for (Supplier<Tag> factory : TagRegistry.REGISTRY.values()) {
             Tag tag = factory.get();
             if (tag.matchesJson(element)) {
                 tag.readJson(element);
@@ -97,10 +98,10 @@ public abstract class Tag {
         if (tag instanceof CompoundTag compound) {
             for (String key : compound.keySet()) {
                 context.bind(key);
+                bindAllKeysRecursive(context, compound.get(key));
             }
-        }
-        for (Tag child : tag.children()) {
-            bindAllKeysRecursive(context, child);
+        } else {
+            tag.walkDescendants(t -> bindAllKeysRecursive(context, t));
         }
     }
 
@@ -111,6 +112,33 @@ public abstract class Tag {
     public List<Tag> children() {
         return Collections.emptyList();
     }
+
+    /**
+     * Depth-first pre-order walk: invokes {@code visitor} on this tag, then recursively on each
+     * {@link #children() child}. {@link CompoundTag} compound keys are not visited — only values
+     * (same order as map insertion).
+     */
+    public final void walk(Consumer<Tag> visitor) {
+        Objects.requireNonNull(visitor, "visitor");
+        visitor.accept(this);
+        for (Tag child : children()) {
+            child.walk(visitor);
+        }
+    }
+
+    /**
+     * Depth-first pre-order on descendants only: does not invoke {@code visitor} on this tag.
+     * Each child subtree is traversed via {@link #walk(Consumer)}.
+     */
+    public final void walkDescendants(Consumer<Tag> visitor) {
+        Objects.requireNonNull(visitor, "visitor");
+        for (Tag child : children()) {
+            child.walk(visitor);
+        }
+    }
+
+    /** Deep copy of this tag (new instances; nested compounds and lists are copied recursively). */
+    public abstract Tag copy();
 
     public abstract byte getId();
 
