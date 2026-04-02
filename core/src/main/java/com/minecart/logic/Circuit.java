@@ -1,14 +1,11 @@
 package com.minecart.logic;
 
-import com.minecart.registry.CircuitElementRegistry;
-import com.minecart.registry.CircuitElementType;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -19,6 +16,9 @@ import java.util.stream.Collectors;
  */
 public class Circuit {
     protected final UUID id;
+
+    /** Owning electrical network; set via {@link #setWorld(World)} or when loading. */
+    protected World world;
 
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
@@ -33,6 +33,14 @@ public class Circuit {
 
     public UUID getId() {
         return id;
+    }
+
+    public World getWorld() {
+        return world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
     }
 
     public Set<CircuitNode> nodes() {
@@ -67,6 +75,21 @@ public class Circuit {
             if (id.equals(e.getId())) {
                 return e;
             }
+        }
+        return null;
+    }
+
+    /** Searches nodes, edges, and components for an element with the given id. */
+    public CircuitElement findElement(UUID id) {
+        if (id == null) {
+            return null;
+        }
+        CircuitNode n = findNode(id);
+        if (n != null) return n;
+        CircuitEdge e = findEdge(id);
+        if (e != null) return e;
+        for (CircuitComponent c : components) {
+            if (id.equals(c.getId())) return c;
         }
         return null;
     }
@@ -197,7 +220,7 @@ public class Circuit {
                 .collect(Collectors.toSet());
     }
 
-    public void save(CompoundTag tag) throws IOException {
+    public void save(CompoundTag tag) {
         TagUtil.putUUID(tag, "circuit_id", getId());
         ListTag nodeList = new ListTag();
         for (CircuitNode node : nodes()) {
@@ -225,16 +248,17 @@ public class Circuit {
     /**
      * Restores structure from {@code tag}. Requires {@code world} to instantiate elements from registry ids.
      */
-    public void load(World world, CompoundTag tag) throws IOException {
+    public void load(World world, CompoundTag tag) {
         if (world == null) {
-            throw new IOException("world is required to load a circuit");
+            throw new IllegalArgumentException("world is required to load a circuit");
         }
+        this.world = world;
         UUID circuitId = TagUtil.getUUID(tag, "circuit_id");
         if (circuitId == null) {
-            throw new IOException("Missing circuit_id");
+            throw new IllegalArgumentException("Missing circuit_id");
         }
         if (!circuitId.equals(getId())) {
-            throw new IOException("circuit_id mismatch");
+            throw new IllegalArgumentException("circuit_id mismatch");
         }
 
         Tag nodesTag = tag.get("nodes");
@@ -262,78 +286,31 @@ public class Circuit {
         }
     }
 
-    private CircuitNode loadNode(World world, CompoundTag nc) throws IOException {
-        UUID nodeId = TagUtil.getUUID(nc, "id");
-        if (nodeId == null) {
-            throw new IOException("Node missing id");
-        }
-        String typeId = nc.getString("type");
-        CircuitElementType<?> et = CircuitElementRegistry.getType(typeId);
-        CircuitElement el = et.create(world);
+    private void loadNode(World world, CompoundTag nc) {
+        CircuitElement el = CircuitElement.deserialize(nc, world);
         if (!(el instanceof CircuitNode node)) {
-            throw new IOException("Type is not a CircuitNode: " + typeId);
+            throw new IllegalArgumentException("Expected node in nodes[] list, got: " + nc.getString("type"));
         }
-        node.setId(nodeId);
         addNode(node);
         node.load(nc);
-        return node;
     }
 
-    private void loadEdge(World world, CompoundTag ec) throws IOException {
-        UUID edgeId = TagUtil.getUUID(ec, "id");
-        if (edgeId == null) {
-            throw new IOException("Edge missing id");
-        }
-        String typeId = ec.getString("type");
-        CircuitElementType<?> et = CircuitElementRegistry.getType(typeId);
-        CircuitElement el = et.create(world);
+    private void loadEdge(World world, CompoundTag ec) {
+        CircuitElement el = CircuitElement.deserialize(ec, world);
         if (!(el instanceof CircuitEdge edge)) {
-            throw new IOException("Type is not a CircuitEdge: " + typeId);
+            throw new IllegalArgumentException("Expected edge in edges[] list, got: " + ec.getString("type"));
         }
-        edge.setId(edgeId);
-        edge.setCircuit(this);
-        edge.load(ec);
-
-        UUID startId = TagUtil.getUUID(ec, "start");
-        UUID endId = TagUtil.getUUID(ec, "end");
-        if (startId == null || endId == null) {
-            throw new IOException("Edge missing start/end: " + edge.getId());
-        }
-        CircuitNode n1 = findNode(startId);
-        CircuitNode n2 = findNode(endId);
-        if (n1 == null || n2 == null) {
-            throw new IOException("Missing endpoint node for edge " + edge.getId());
-        }
-        if (!edge.connect(n1, n2, true)) {
-            throw new IOException("Edge cannot connect: " + edge.getId());
-        }
-        edge.connect(n1, n2, false);
-        if (!n1.connectEdge(edge, true) || !n2.connectEdge(edge, true)) {
-            throw new IOException("Edge cannot attach to nodes: " + edge.getId());
-        }
-        n1.connectEdge(edge, false);
-        n2.connectEdge(edge, false);
+        edge.load(ec, this);
         addEdge(edge);
     }
 
-    private void loadComponent(World world, CompoundTag cc) throws IOException {
-        UUID compId = TagUtil.getUUID(cc, "id");
-        if (compId == null) {
-            throw new IOException("Component missing id");
-        }
-        String typeId = cc.getString("type");
-        CircuitElementType<?> et = CircuitElementRegistry.getType(typeId);
-        CircuitElement el = et.create(world);
+    private void loadComponent(World world, CompoundTag cc) {
+        CircuitElement el = CircuitElement.deserialize(cc, world);
         if (!(el instanceof CircuitComponent comp)) {
-            throw new IOException("Type is not a CircuitComponent: " + typeId);
-        }
-        comp.setId(compId);
-        comp.setCircuit(this);
-        comp.load(cc);
-        for (CircuitNode n : comp.nodes) {
-            n.setComponent(comp);
+            throw new IllegalArgumentException("Expected component in components[] list, got: " + cc.getString("type"));
         }
         addComponent(comp);
+        comp.load(cc);
     }
 
     @Override

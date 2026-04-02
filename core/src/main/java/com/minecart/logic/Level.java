@@ -6,6 +6,7 @@ import com.minecart.event.events.Event;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -36,6 +37,10 @@ public class Level {
         eventBus.register(eventClass, listener);
     }
 
+    public <T extends Event> void unregister(Class<T> eventClass, Consumer<T> listener) {
+        eventBus.unregister(eventClass, listener);
+    }
+
     public boolean post(Event event) {
         return eventBus.post(event);
     }
@@ -51,5 +56,35 @@ public class Level {
 
     protected void removeWorld(World world) {
         worlds.remove(world);
+    }
+
+    /** Finds a world by {@link World#getId()}. */
+    public World findWorld(UUID worldId) {
+        if (worldId == null) {
+            return null;
+        }
+        for (World w : worlds) {
+            if (worldId.equals(w.getId())) {
+                return w;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Finds a circuit by {@link Circuit#getId()} across all worlds on this level.
+     * Used when an action payload omits world id and only identifies the circuit (single-circuit sync).
+     */
+    public Circuit findCircuit(UUID circuitId) {
+        if (circuitId == null) {
+            return null;
+        }
+        for (World w : worlds) {
+            Circuit c = w.findCircuit(circuitId);
+            if (c != null) {
+                return c;
+            }
+        }
+        return null;
     }
 }

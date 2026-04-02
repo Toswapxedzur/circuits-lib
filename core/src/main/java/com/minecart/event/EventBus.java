@@ -17,6 +17,16 @@ public class EventBus {
         handlers.computeIfAbsent(eventClass, k -> new ArrayList<>()).add(listener);
     }
 
+    /**
+     * Removes a listener previously passed to {@link #register}. No-op if not present.
+     */
+    public <T extends Event> void unregister(Class<T> eventClass, Consumer<T> listener) {
+        List<Consumer<?>> eventListeners = handlers.get(eventClass);
+        if (eventListeners != null) {
+            eventListeners.remove(listener);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public boolean post(Event event) {
         List<Consumer<?>> eventListeners = handlers.get(event.getClass());

@@ -66,7 +66,7 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
     }
 
     protected void handleResistance(Actions.SetResistanceAction action) {
-        info.setResistance(action.getOperator().applyAsDouble(info.getResistance()));
+        info.setResistance(action.getValue());
     }
 
     static {

@@ -1,54 +1,75 @@
 package com.minecart.action;
 
-import java.util.function.DoubleUnaryOperator;
-import java.util.function.IntUnaryOperator;
+import com.minecart.serialization.tag.CompoundTag;
 
 public class Actions {
+
     public static abstract class SetOneDoubleAction implements Action {
-        protected final DoubleUnaryOperator operator;
 
-        public SetOneDoubleAction(DoubleUnaryOperator operator){
-            this.operator = operator;
+        protected double value;
+
+        public SetOneDoubleAction(double value) {
+            this.value = value;
         }
 
-        public SetOneDoubleAction(double value){
-            this.operator = x -> value;
+        public SetOneDoubleAction() {
         }
 
-        public DoubleUnaryOperator getOperator() {
-            return operator;
+        public double getValue() {
+            return value;
         }
 
         @Override
         public abstract ActionType<? extends Action> getActionType();
+
+        @Override
+        public void save(CompoundTag tag) {
+            tag.putString(Action.TAG_ACTION_ID, getActionType().getId());
+            tag.putDouble("double_value", value);
+        }
+
+        @Override
+        public void load(CompoundTag tag) {
+            this.value = tag.getDouble("double_value");
+        }
     }
 
     public static abstract class SetOneIntAction implements Action {
-        protected final IntUnaryOperator operator;
 
-        public SetOneIntAction(IntUnaryOperator operator){
-            this.operator = operator;
+        protected int value;
+
+        public SetOneIntAction(int value) {
+            this.value = value;
         }
 
-        public SetOneIntAction(int value){
-            this.operator = x -> value;
+        public SetOneIntAction() {
         }
 
-        public IntUnaryOperator getOperator() {
-            return operator;
+        public int getValue() {
+            return value;
         }
 
         @Override
         public abstract ActionType<? extends Action> getActionType();
+
+        @Override
+        public void save(CompoundTag tag) {
+            tag.putString(Action.TAG_ACTION_ID, getActionType().getId());
+            tag.putInt("int_value", value);
+        }
+
+        @Override
+        public void load(CompoundTag tag) {
+            this.value = tag.getInt("int_value");
+        }
     }
 
     public static class SetVoltageAction extends SetOneDoubleAction {
-        public SetVoltageAction(DoubleUnaryOperator operator) {
-            super(operator);
-        }
-
         public SetVoltageAction(double value) {
             super(value);
+        }
+
+        public SetVoltageAction() {
         }
 
         @Override
@@ -58,12 +79,11 @@ public class Actions {
     }
 
     public static class SetResistanceAction extends SetOneDoubleAction {
-        public SetResistanceAction(DoubleUnaryOperator operator) {
-            super(operator);
-        }
-
         public SetResistanceAction(double value) {
             super(value);
+        }
+
+        public SetResistanceAction() {
         }
 
         @Override
@@ -72,13 +92,12 @@ public class Actions {
         }
     }
 
-    public static class SetConnectionAction extends SetOneIntAction{
-        public SetConnectionAction(IntUnaryOperator operator) {
-            super(operator);
-        }
-
+    public static class SetConnectionAction extends SetOneIntAction {
         public SetConnectionAction(int value) {
             super(value);
+        }
+
+        public SetConnectionAction() {
         }
 
         @Override
@@ -88,12 +107,11 @@ public class Actions {
     }
 
     public static class SetCapacitanceAction extends SetOneDoubleAction {
-        public SetCapacitanceAction(DoubleUnaryOperator operator) {
-            super(operator);
-        }
-
         public SetCapacitanceAction(double value) {
             super(value);
+        }
+
+        public SetCapacitanceAction() {
         }
 
         @Override

@@ -1,5 +1,6 @@
 package com.minecart.logic;
 
+import com.minecart.event.events.ElementEvent;
 import com.minecart.registry.CircuitElementType;
 import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.TagUtil;
@@ -7,7 +8,6 @@ import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
 
-import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -15,7 +15,7 @@ import java.util.UUID;
 /**
  * A group of nodes and edges constitute to a circuit component, which could provide extra relations
  */
-public class CircuitComponent extends CircuitElement implements TagSerializable {
+public class CircuitComponent extends CircuitElement {
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
 
@@ -90,14 +90,18 @@ public class CircuitComponent extends CircuitElement implements TagSerializable 
      * Safely cleans up the component, breaking it into its base elements for the CircuitManager.
      */
     public void destroy(ServerCircuit masterCircuit) {
+        World w = masterCircuit.getWorld();
+        if (w != null && w.post(new ElementEvent.ElementRemoveEvent(w, this))) {
+            return;
+        }
         for (CircuitNode node : nodes) {
             masterCircuit.destroy(node, false);
         }
     }
 
     @Override
-    public void save(CompoundTag tag) throws IOException {
-        saveElementHeader(tag);
+    public void save(CompoundTag tag) {
+        super.save(tag);
         ListTag nodeIds = new ListTag();
         for (CircuitNode n : nodes) {
             nodeIds.add(TagUtil.writeUUID(n.getId()));
@@ -111,10 +115,11 @@ public class CircuitComponent extends CircuitElement implements TagSerializable 
     }
 
     @Override
-    public void load(CompoundTag tag) throws IOException {
+    public void load(CompoundTag tag) {
+        super.load(tag);
         Circuit c = getCircuit();
         if (c == null) {
-            throw new IOException("CircuitComponent has no circuit");
+            throw new IllegalStateException("CircuitComponent has no circuit");
         }
         nodes.clear();
         edges.clear();
@@ -149,6 +154,9 @@ public class CircuitComponent extends CircuitElement implements TagSerializable 
                     edges.add(e);
                 }
             }
+        }
+        for (CircuitNode n : nodes) {
+            n.setComponent(this);
         }
     }
 }

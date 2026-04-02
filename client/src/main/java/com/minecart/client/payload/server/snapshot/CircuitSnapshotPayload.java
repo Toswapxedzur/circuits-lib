@@ -1,4 +1,4 @@
-package com.minecart.client.payload.snapshot;
+package com.minecart.client.payload.server.snapshot;
 
 import com.minecart.client.payload.Payload;
 import com.minecart.client.payload.PayloadRegistry;

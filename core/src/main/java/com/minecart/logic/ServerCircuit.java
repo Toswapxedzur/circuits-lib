@@ -8,7 +8,6 @@ import com.minecart.registry.CircuitElementType;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -20,7 +19,6 @@ import java.util.UUID;
  */
 public class ServerCircuit extends Circuit {
 
-    protected ServerWorld world;
     protected boolean dirty;
     protected LinearSystem system;
 
@@ -37,12 +35,25 @@ public class ServerCircuit extends Circuit {
         this.dirty = true;
     }
 
+    @Override
     public ServerWorld getWorld() {
-        return world;
+        World w = super.getWorld();
+        if (w != null && !(w instanceof ServerWorld)) {
+            throw new IllegalStateException("ServerCircuit is bound to a non-server world: " + w.getClass().getName());
+        }
+        return (ServerWorld) w;
+    }
+
+    @Override
+    public void setWorld(World world) {
+        if (world != null && !(world instanceof ServerWorld)) {
+            throw new IllegalArgumentException("ServerCircuit requires ServerWorld");
+        }
+        super.setWorld(world);
     }
 
     public void setWorld(ServerWorld world) {
-        this.world = world;
+        super.setWorld(world);
     }
 
     /**
@@ -50,10 +61,11 @@ public class ServerCircuit extends Circuit {
      * Call from circuit-level orchestration (e.g. {@link CircuitComponent} during {@link CircuitComponent#generate()}) instead of reaching the world from an element.
      */
     public <T extends CircuitNode> T createNode(CircuitElementType<T> type) {
-        if (world == null) {
+        ServerWorld w = getWorld();
+        if (w == null) {
             throw new IllegalStateException("ServerCircuit has no world");
         }
-        return world.createNode(type);
+        return w.createNode(type);
     }
 
     /**
@@ -61,10 +73,11 @@ public class ServerCircuit extends Circuit {
      * @see #createNode(CircuitElementType)
      */
     public <T extends CircuitEdge> T connect(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2) {
-        if (world == null) {
+        ServerWorld w = getWorld();
+        if (w == null) {
             throw new IllegalStateException("ServerCircuit has no world");
         }
-        return world.connect(type, node1, node2);
+        return w.connect(type, node1, node2);
     }
 
     /**
@@ -119,8 +132,12 @@ public class ServerCircuit extends Circuit {
             return this.nodes.contains(node);
         }
 
+        ServerWorld w = getWorld();
+        if (w == null) {
+            throw new IllegalStateException("ServerCircuit has no world");
+        }
         for (CircuitEdge edge : new java.util.ArrayList<>(node.getConnection())) {
-            this.world.disconnect(edge);
+            w.disconnectWithoutRemoveEvent(edge);
         }
 
         this.nodes.remove(node);
@@ -161,10 +178,10 @@ public class ServerCircuit extends Circuit {
         return world.post(event);
     }
 
-    public static ServerCircuit loadFromTag(ServerWorld world, CompoundTag tag) throws IOException {
+    public static ServerCircuit loadFromTag(ServerWorld world, CompoundTag tag) {
         UUID circuitId = TagUtil.getUUID(tag, "circuit_id");
         if (circuitId == null) {
-            throw new IOException("Missing circuit_id");
+            throw new IllegalArgumentException("Missing circuit_id");
         }
         ServerCircuit circuit = new ServerCircuit(circuitId);
         world.addCircuit(circuit);
@@ -173,7 +190,10 @@ public class ServerCircuit extends Circuit {
     }
 
     @Override
-    public void load(World world, CompoundTag tag) throws IOException {
+    public void load(World world, CompoundTag tag) {
+        if (world != null && !(world instanceof ServerWorld)) {
+            throw new IllegalArgumentException("ServerCircuit requires ServerWorld for load");
+        }
         super.load(world, tag);
         markDirty();
     }

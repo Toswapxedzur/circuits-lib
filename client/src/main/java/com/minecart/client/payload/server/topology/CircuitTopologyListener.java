@@ -1,4 +1,4 @@
-package com.minecart.client.payload.topology;
+package com.minecart.client.payload.server.topology;
 
 import com.minecart.event.events.ElementEvent;
 import com.minecart.logic.Circuit;

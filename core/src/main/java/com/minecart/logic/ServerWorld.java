@@ -1,6 +1,6 @@
 package com.minecart.logic;
 
-import com.minecart.event.events.Event;
+import com.minecart.event.events.ElementEvent;
 import com.minecart.event.events.ServerTickEvent;
 import com.minecart.event.events.ShortCircuitEvent;
 import com.minecart.registry.CircuitElementType;
@@ -57,6 +57,10 @@ public class ServerWorld extends World {
         node.setWorld(this);
         ServerCircuit circuit = createCircuit();
         node.setCircuit(circuit);
+        if (post(new ElementEvent.ElementInsertEvent(this, node))) {
+            circuits.remove(circuit);
+            throw new IllegalStateException("Circuit element insert cancelled");
+        }
         circuit.nodes().add(node);
         circuit.markDirty();
         return node;
@@ -84,6 +88,12 @@ public class ServerWorld extends World {
         }
         node1.connectEdge(edge, false);
         node2.connectEdge(edge, false);
+        if (post(new ElementEvent.ElementInsertEvent(this, edge))) {
+            node1.disconnect(edge, false);
+            node2.disconnect(edge, false);
+            edge.disconnect(false);
+            return null;
+        }
         Circuit circuit1 = node1.getCircuit();
         Circuit circuit2 = node2.getCircuit();
         if (circuit1 != circuit2) {
@@ -96,6 +106,17 @@ public class ServerWorld extends World {
     }
 
     public boolean disconnect(CircuitEdge edge) {
+        if (post(new ElementEvent.ElementRemoveEvent(this, edge))) {
+            return false;
+        }
+        return disconnectWithoutRemoveEvent(edge);
+    }
+
+    /**
+     * Same as {@link #disconnect(CircuitEdge)} but without firing {@link ElementRemoveEvent}
+     * (used when removing edges as part of destroying a node).
+     */
+    boolean disconnectWithoutRemoveEvent(CircuitEdge edge) {
         CircuitNode node1 = edge.getConnection(0);
         CircuitNode node2 = edge.getConnection(1);
         if (node1.getCircuit() != node2.getCircuit()) {
@@ -122,6 +143,10 @@ public class ServerWorld extends World {
         ServerCircuit circuit = (ServerCircuit) node.getCircuit();
 
         if (!circuit.destroy(node, true)) {
+            return false;
+        }
+
+        if (post(new ElementEvent.ElementRemoveEvent(this, node))) {
             return false;
         }
 

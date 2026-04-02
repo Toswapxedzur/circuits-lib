@@ -4,8 +4,6 @@ import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CircuitSerializationTest {
 
     @Test
-    void saveAndLoadRoundTrip() throws IOException {
+    void saveAndLoadRoundTrip() {
         ServerLevel level = new ServerLevel();
         ServerWorld w1 = level.createWorld();
         CircuitNode n1 = w1.createNode(AllComponents.CONNECTION);

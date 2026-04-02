@@ -66,11 +66,11 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
     }
 
     protected void handleResistance(Actions.SetResistanceAction action) {
-        info.setResistance(action.getOperator().applyAsDouble(info.getResistance()));
+        info.setResistance(action.getValue());
     }
 
     protected void handleVoltage(Actions.SetVoltageAction action) {
-        info.setVoltage(action.getOperator().applyAsDouble(info.getVoltage()));
+        info.setVoltage(action.getValue());
     }
 
     static {

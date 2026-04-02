@@ -7,10 +7,10 @@ import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
-import java.io.IOException;
 import java.util.Set;
+import java.util.UUID;
 
-public class CircuitEdge extends CircuitElement implements TagSerializable {
+public class CircuitEdge extends CircuitElement {
     public static final double MAX_CURRENT = 1e15;
 
     //positive: from first to second
@@ -149,8 +149,8 @@ public class CircuitEdge extends CircuitElement implements TagSerializable {
     }
 
     @Override
-    public void save(CompoundTag tag) throws IOException {
-        saveElementHeader(tag);
+    public void save(CompoundTag tag) {
+        super.save(tag);
         if (getStart() != null) {
             TagUtil.putUUID(tag, "start", getStart().getId());
         }
@@ -162,11 +162,44 @@ public class CircuitEdge extends CircuitElement implements TagSerializable {
     }
 
     /**
-     * Restores electrical state. Endpoints are resolved and wired by {@link Circuit} after all nodes are loaded.
+     * Restores id and electrical state from {@code tag}. Does not attach endpoints; for a full circuit restore
+     * after nodes exist, use {@link #load(CompoundTag, Circuit)}.
      */
     @Override
-    public void load(CompoundTag tag) throws IOException {
+    public void load(CompoundTag tag) {
+        super.load(tag);
         getCurrent().setValue(tag.getDouble("current"));
         overpowered = tag.getBoolean("overpowered");
+    }
+
+    /**
+     * Loads electrical state from {@code tag}, then resolves {@code start}/{@code end} against {@code circuit}
+     * and wires this edge to those nodes.
+     */
+    public void load(CompoundTag tag, Circuit circuit) {
+        load(tag);
+        attachEndpointsFromTag(tag, circuit);
+    }
+
+    private void attachEndpointsFromTag(CompoundTag tag, Circuit circuit) {
+        UUID startId = TagUtil.getUUID(tag, "start");
+        UUID endId = TagUtil.getUUID(tag, "end");
+        if (startId == null || endId == null) {
+            throw new IllegalArgumentException("Edge missing start/end: " + getId());
+        }
+        CircuitNode n1 = circuit.findNode(startId);
+        CircuitNode n2 = circuit.findNode(endId);
+        if (n1 == null || n2 == null) {
+            throw new IllegalArgumentException("Missing endpoint node for edge " + getId());
+        }
+        if (!connect(n1, n2, true)) {
+            throw new IllegalArgumentException("Edge cannot connect: " + getId());
+        }
+        connect(n1, n2, false);
+        if (!n1.connectEdge(this, true) || !n2.connectEdge(this, true)) {
+            throw new IllegalArgumentException("Edge cannot attach to nodes: " + getId());
+        }
+        n1.connectEdge(this, false);
+        n2.connectEdge(this, false);
     }
 }

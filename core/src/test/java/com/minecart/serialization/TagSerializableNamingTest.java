@@ -3,8 +3,6 @@ package com.minecart.serialization;
 import com.minecart.serialization.tag.CompoundTag;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -13,16 +11,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class TagSerializableNamingTest {
 
     @Test
-    void tagSerializableSaveLoad() throws IOException {
+    void tagSerializableSaveLoad() {
         CompoundTag tag = new CompoundTag();
         TagSerializable impl = new TagSerializable() {
             @Override
-            public void save(CompoundTag t) throws IOException {
+            public void save(CompoundTag t) {
                 t.putString("x", "ok");
             }
 
             @Override
-            public void load(CompoundTag t) throws IOException {
+            public void load(CompoundTag t) {
                 assertEquals("ok", t.getString("x"));
             }
         };

@@ -73,11 +73,11 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
     }
 
     protected void handleCapacitance(Actions.SetCapacitanceAction action) {
-        info.setCapacitance(action.getOperator().applyAsDouble(info.getCapacitance()));
+        info.setCapacitance(action.getValue());
     }
 
     protected void handleResistance(Actions.SetResistanceAction action) {
-        info.setInternalResistance(action.getOperator().applyAsDouble(info.getInternalResistance()));
+        info.setInternalResistance(action.getValue());
     }
 
     static {

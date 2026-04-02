@@ -1,4 +1,4 @@
-package com.minecart.client.payload.snapshot;
+package com.minecart.client.payload.server.snapshot;
 
 import com.minecart.client.logic.ClientCircuit;
 import com.minecart.client.logic.ClientLevel;

@@ -48,7 +48,7 @@ public class Junction extends CircuitNode implements ElectricalVariate<Informati
     }
 
     protected void handleConnection(Actions.SetConnectionAction action){
-        info.setConnection(action.getOperator().applyAsInt(info.getConnection()));
+        info.setConnection(action.getValue());
     }
 
     static {

@@ -6,10 +6,9 @@ import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
-import java.io.IOException;
 import java.util.*;
 
-public class CircuitNode extends CircuitElement implements TagSerializable {
+public class CircuitNode extends CircuitElement {
     protected DoubleVar voltage;
     protected Set<CircuitEdge> connection;
     protected CircuitComponent component;
@@ -111,8 +110,8 @@ public class CircuitNode extends CircuitElement implements TagSerializable {
     }
 
     @Override
-    public void save(CompoundTag tag) throws IOException {
-        saveElementHeader(tag);
+    public void save(CompoundTag tag) {
+        super.save(tag);
         tag.putBoolean("ground", isGrounded());
         tag.putDouble("voltage", getVoltage().getValue());
         if (getComponent() != null) {
@@ -121,10 +120,12 @@ public class CircuitNode extends CircuitElement implements TagSerializable {
     }
 
     /**
-     * Restores ground and voltage from {@code tag}. Id and type are applied by {@link Circuit} before this runs.
+     * Restores ground and voltage from {@code tag}. Registry id is set by {@link CircuitElement#deserialize}
+     * before {@link Circuit#addNode} and this call.
      */
     @Override
-    public void load(CompoundTag tag) throws IOException {
+    public void load(CompoundTag tag) {
+        super.load(tag);
         setGround(tag.getBoolean("ground"));
         getVoltage().setValue(tag.getDouble("voltage"));
     }

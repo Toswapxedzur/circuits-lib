@@ -2,7 +2,7 @@ package com.minecart.serialization;
 
 import com.minecart.serialization.tag.*;
 
-import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 
 public class TagUtil {
@@ -100,12 +100,76 @@ public class TagUtil {
     }
 
     /**
-     * Returns {@code tag} as {@link CompoundTag}, or throws {@link IOException} with {@code message}.
+     * Returns {@code tag} as {@link CompoundTag}, or throws {@link IllegalArgumentException} with {@code message}.
      */
-    public static CompoundTag requireCompoundTag(Tag tag, String message) throws IOException {
+    public static CompoundTag requireCompoundTag(Tag tag, String message) {
         if (tag instanceof CompoundTag c) {
             return c;
         }
-        throw new IOException(message);
+        throw new IllegalArgumentException(message);
+    }
+
+    /**
+     * Writes {@code ids} as a {@link ListTag} of {@link #writeUUID(UUID)} entries under {@code key}.
+     * Omits the key when {@code ids} is null or empty.
+     */
+    public static void putUuidList(CompoundTag compound, String key, List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        ListTag list = new ListTag();
+        for (UUID id : ids) {
+            if (id != null) {
+                list.add(writeUUID(id));
+            }
+        }
+        compound.put(key, list);
+    }
+
+    /**
+     * Reads UUID entries from a {@link ListTag} at {@code key} into {@code out} (append).
+     */
+    public static void readUuidList(CompoundTag compound, String key, List<UUID> out) {
+        Tag t = compound.get(key);
+        if (!(t instanceof ListTag list)) {
+            return;
+        }
+        for (int i = 0; i < list.size(); i++) {
+            UUID u = readUUID(list.get(i));
+            if (u == null) {
+                u = parseUuidStringTag(list.get(i));
+            }
+            if (u != null) {
+                out.add(u);
+            }
+        }
+    }
+
+    /**
+     * Writes {@code compounds} as a {@link ListTag} of compound children under {@code key}.
+     * Omits the key when {@code compounds} is null or empty.
+     */
+    public static void putCompoundList(CompoundTag compound, String key, List<CompoundTag> compounds) {
+        if (compounds == null || compounds.isEmpty()) {
+            return;
+        }
+        ListTag list = new ListTag();
+        for (CompoundTag c : compounds) {
+            list.add(c);
+        }
+        compound.put(key, list);
+    }
+
+    /**
+     * Reads {@link CompoundTag} entries from a {@link ListTag} at {@code key} into {@code out} (append).
+     */
+    public static void readCompoundList(CompoundTag compound, String key, List<CompoundTag> out) {
+        Tag t = compound.get(key);
+        if (!(t instanceof ListTag list)) {
+            return;
+        }
+        for (int i = 0; i < list.size(); i++) {
+            out.add(requireCompoundTag(list.get(i), key + "[" + i + "]"));
+        }
     }
 }

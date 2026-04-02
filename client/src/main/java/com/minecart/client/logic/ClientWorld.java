@@ -1,7 +1,9 @@
-package com.minecart.client;
+package com.minecart.client.logic;
 
 import com.minecart.logic.Circuit;
 import com.minecart.logic.World;
+
+import java.util.UUID;
 
 /**
  * Client-side view of one electrical network: holds {@link ClientCircuit}s and links to {@link ClientLevel}.
@@ -11,6 +13,13 @@ public class ClientWorld extends World {
 
     public ClientWorld(ClientLevel level) {
         super(level);
+    }
+
+    /**
+     * Client world with a fixed id (e.g. matching a server {@link com.minecart.logic.World#getId()} for snapshots).
+     */
+    public ClientWorld(ClientLevel level, UUID worldId) {
+        super(level, worldId);
     }
 
     @Override
