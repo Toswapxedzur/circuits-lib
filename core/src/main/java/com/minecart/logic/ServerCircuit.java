@@ -145,6 +145,11 @@ public class ServerCircuit extends Circuit {
         return true;
     }
 
+    @Override
+    public boolean destroyNodeForTopologyMirror(CircuitNode node) {
+        return destroy(node, false);
+    }
+
     protected void update() {
         for (CircuitNode node : nodes) {
             node.setGround(false);

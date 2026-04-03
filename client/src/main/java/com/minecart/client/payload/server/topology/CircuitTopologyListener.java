@@ -7,6 +7,7 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.Level;
+import com.minecart.client.payload.IncrementPayloadListener;
 import com.minecart.serialization.tag.CompoundTag;
 
 import java.util.ArrayList;
@@ -20,8 +21,12 @@ import java.util.function.Consumer;
 /**
  * Subscribes to {@link ElementEvent.ElementInsertEvent} and {@link ElementEvent.ElementRemoveEvent} on a {@link Level},
  * records an ordered {@link CircuitTopologyChange} list per circuit, and flushes via {@link #sync(Consumer)}.
+ * Payloads are {@link com.minecart.client.payload.Payload.Destination#CLIENT}-bound (server replication).
+ * <p>
+ * Implements {@link IncrementPayloadListener} for incremental topology deltas; batched flush uses
+ * {@link #sync(Consumer)} rather than {@link #nextPayload()} (which always returns {@code null}).
  */
-public final class CircuitTopologyListener {
+public final class CircuitTopologyListener implements IncrementPayloadListener<CircuitTopologyPayload> {
 
     private final Level level;
     private final Consumer<CircuitTopologyPayload> defaultSink;
@@ -65,6 +70,15 @@ public final class CircuitTopologyListener {
 
     public boolean isAttached() {
         return attached;
+    }
+
+    /**
+     * Not used for batched topology; call {@link #sync(Consumer)} or {@link #sync()} to emit
+     * {@link CircuitTopologyPayload} instances.
+     */
+    @Override
+    public CircuitTopologyPayload nextPayload() {
+        return null;
     }
 
     /**

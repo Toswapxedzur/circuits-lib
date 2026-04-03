@@ -8,7 +8,8 @@ import java.util.function.Supplier;
 
 /**
  * Central registry for {@link Payload} kinds, parallel to {@link com.minecart.registry.CircuitElementRegistry}.
- * Each kind registers a stable id and a no-arg factory; use {@link #load(CompoundTag)} to decode by {@link Payload#TAG_PAYLOAD_ID}.
+ * Each kind registers a stable id and a no-arg factory; use {@link #deserialize(CompoundTag)} to decode by
+ * {@link Payload#TAG_PAYLOAD_ID}.
  */
 public final class PayloadRegistry {
 
@@ -46,6 +47,48 @@ public final class PayloadRegistry {
             throw new IllegalArgumentException("Unknown payload ID: " + id);
         }
         return type;
+    }
+
+    /**
+     * Writes {@code payload} to a new root tag (includes {@link Payload#TAG_PAYLOAD_ID} and subtype-specific entries).
+     */
+    public static CompoundTag serialize(Payload payload) {
+        CompoundTag tag = new CompoundTag();
+        payload.save(tag);
+        return tag;
+    }
+
+    /**
+     * Decodes a root tag by looking up {@link Payload#TAG_PAYLOAD_ID} in the registry, then {@link Payload#load(CompoundTag)}.
+     */
+    public static Payload deserialize(CompoundTag tag) {
+        String id = peekPayloadId(tag);
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException("Missing or empty " + Payload.TAG_PAYLOAD_ID);
+        }
+        PayloadType<?> payloadType = getType(id);
+        Payload payload = payloadType.create();
+        payload.load(tag);
+        return payload;
+    }
+
+    /**
+     * Same as {@link #deserialize(CompoundTag)} but narrows to {@code type}.
+     *
+     * @throws IllegalArgumentException if the decoded payload is not an instance of {@code type}
+     */
+    public static <T extends Payload> T deserialize(CompoundTag tag, Class<T> type) {
+        Payload p = deserialize(tag);
+        if (!type.isInstance(p)) {
+            throw new IllegalArgumentException(
+                    "Expected payload type " + type.getName() + " but got " + p.getClass().getName());
+        }
+        return type.cast(p);
+    }
+
+    /** Reads {@link Payload#TAG_PAYLOAD_ID} without instantiating a payload (for dispatch). */
+    public static String peekPayloadId(CompoundTag tag) {
+        return tag.getString(Payload.TAG_PAYLOAD_ID);
     }
 
     /**

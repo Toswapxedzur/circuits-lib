@@ -8,6 +8,7 @@ import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -96,6 +97,15 @@ public class CircuitComponent extends CircuitElement {
         }
         for (CircuitNode node : nodes) {
             masterCircuit.destroy(node, false);
+        }
+    }
+
+    /**
+     * Removes internal structural nodes without {@link ElementEvent} (topology replication / mirror apply).
+     */
+    public void destroyForTopologyMirror(Circuit circuit) {
+        for (CircuitNode node : new ArrayList<>(nodes)) {
+            circuit.destroyNodeForTopologyMirror(node);
         }
     }
 

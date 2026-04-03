@@ -3,6 +3,7 @@ package com.minecart.logic;
 import com.minecart.event.events.ServerTickEvent;
 
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
@@ -20,6 +21,24 @@ public class ServerLevel extends Level {
      */
     public ServerWorld createWorld() {
         ServerWorld world = new ServerWorld(this);
+        addWorld(world);
+        return world;
+    }
+
+    /**
+     * Creates a network with a fixed id if none with that id exists yet.
+     *
+     * @return the existing {@link ServerWorld} with {@code worldId}, or a newly registered one
+     */
+    public ServerWorld getOrCreateWorld(UUID worldId) {
+        if (worldId == null) {
+            return createWorld();
+        }
+        World existing = findWorld(worldId);
+        if (existing instanceof ServerWorld sw) {
+            return sw;
+        }
+        ServerWorld world = new ServerWorld(this, worldId);
         addWorld(world);
         return world;
     }

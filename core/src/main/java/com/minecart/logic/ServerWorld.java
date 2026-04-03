@@ -7,6 +7,7 @@ import com.minecart.registry.CircuitElementType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Server-side simulation for a {@link World}: circuit ticks, element creation, and short-circuit events.
@@ -20,6 +21,13 @@ public class ServerWorld extends World {
 
     public ServerWorld(ServerLevel level) {
         super(level);
+    }
+
+    /**
+     * Server world with a stable id (e.g. matching a client or network-assigned {@link World#getId()}).
+     */
+    public ServerWorld(ServerLevel level, UUID worldId) {
+        super(level, worldId);
     }
 
     @Override

@@ -1,9 +1,12 @@
 package com.minecart.client.logic;
 
 import com.minecart.logic.Circuit;
+import com.minecart.logic.CircuitEdge;
+import com.minecart.logic.CircuitNode;
 import com.minecart.logic.World;
 import com.minecart.serialization.tag.CompoundTag;
 
+import java.util.ArrayList;
 import java.util.UUID;
 
 /**
@@ -47,6 +50,29 @@ public class ClientCircuit extends Circuit {
             throw new IllegalArgumentException("ClientCircuit requires ClientWorld for load");
         }
         super.load(world, tag);
+    }
+
+    /**
+     * Removes a node and incident edges from the client mirror (no server element events).
+     */
+    public boolean destroy(CircuitNode node, boolean simulate) {
+        if (simulate) {
+            return this.nodes.contains(node);
+        }
+        ClientWorld w = getWorld();
+        if (w == null) {
+            throw new IllegalStateException("ClientCircuit has no world");
+        }
+        for (CircuitEdge edge : new ArrayList<>(node.getConnection())) {
+            w.disconnectWithoutRemoveEvent(edge);
+        }
+        this.nodes.remove(node);
+        return true;
+    }
+
+    @Override
+    public boolean destroyNodeForTopologyMirror(CircuitNode node) {
+        return destroy(node, false);
     }
 
     /**

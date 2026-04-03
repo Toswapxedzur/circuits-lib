@@ -5,23 +5,27 @@ import com.minecart.client.payload.PayloadRegistry;
 import com.minecart.client.payload.PayloadType;
 import com.minecart.logic.Circuit;
 import com.minecart.logic.World;
+import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.serialization.tag.Tag;
 
 import java.util.UUID;
 
 /**
- * Full serialized circuit for client bootstrap or resync ({@link Circuit#save} shape under {@link CircuitSnapshotReceiver#TAG_CIRCUIT}).
- * Wire format and client application live in {@link CircuitSnapshotReceiver}.
+ * Data for a full circuit snapshot (client resync). Wire format here; client apply is {@link CircuitSnapshotHandler}.
  */
-public class CircuitSnapshotPayload extends Payload {
+public final class CircuitSnapshotPayload implements Payload {
 
     public static final String PAYLOAD_ID = "minecart.circuit_snapshot_payload";
 
     public static final PayloadType<CircuitSnapshotPayload> TYPE =
             PayloadRegistry.register(PAYLOAD_ID, CircuitSnapshotPayload::new);
 
-    UUID worldId;
-    CompoundTag circuitData;
+    private static final String TAG_WORLD_ID = "world_id";
+    static final String TAG_CIRCUIT = "circuit";
+
+    private UUID worldId;
+    private CompoundTag circuitData;
 
     public CircuitSnapshotPayload() {
     }
@@ -31,9 +35,6 @@ public class CircuitSnapshotPayload extends Payload {
         this.circuitData = circuitData;
     }
 
-    /**
-     * Captures the full circuit graph into a payload, optionally tagging the owning world's id for routing.
-     */
     public static CircuitSnapshotPayload capture(World world, Circuit circuit) {
         CompoundTag tag = new CompoundTag();
         circuit.save(tag);
@@ -44,6 +45,11 @@ public class CircuitSnapshotPayload extends Payload {
     @Override
     public String getPayloadId() {
         return PAYLOAD_ID;
+    }
+
+    @Override
+    public Destination getDestination() {
+        return Destination.CLIENT;
     }
 
     public UUID getWorldId() {
@@ -63,12 +69,19 @@ public class CircuitSnapshotPayload extends Payload {
     }
 
     @Override
-    protected void savePayload(CompoundTag tag) {
-        CircuitSnapshotReceiver.writePayload(this, tag);
+    public void save(CompoundTag tag) {
+        Payload.writeEnvelope(tag, this);
+        TagUtil.putUUID(tag, TAG_WORLD_ID, worldId);
+        if (circuitData != null) {
+            tag.put(TAG_CIRCUIT, circuitData.copy());
+        }
     }
 
     @Override
-    protected void loadPayload(CompoundTag tag) {
-        CircuitSnapshotReceiver.readPayload(this, tag);
+    public void load(CompoundTag tag) {
+        Payload.verifyEnvelope(tag, getPayloadId());
+        worldId = TagUtil.getUUID(tag, TAG_WORLD_ID);
+        Tag t = tag.get(TAG_CIRCUIT);
+        circuitData = TagUtil.requireCompoundTag(t, "Missing or invalid '" + TAG_CIRCUIT + "'");
     }
 }

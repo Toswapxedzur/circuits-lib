@@ -6,7 +6,7 @@ import java.util.function.Supplier;
  * Describes a registered payload kind: stable string id and a factory for empty instances used with
  * {@link Payload#load(com.minecart.serialization.tag.CompoundTag)}.
  *
- * @param <T> concrete {@link Payload} subclass
+ * @param <T> concrete {@link Payload} implementation
  */
 public final class PayloadType<T extends Payload> {
 

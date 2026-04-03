@@ -313,6 +313,14 @@ public class Circuit {
         comp.load(cc);
     }
 
+    /**
+     * Removes a node during topology replication (mirrors). {@link ServerCircuit} and client-side circuits override.
+     */
+    public boolean destroyNodeForTopologyMirror(CircuitNode node) {
+        throw new UnsupportedOperationException(
+                "Topology mirror destroy not supported for " + getClass().getSimpleName());
+    }
+
     @Override
     public int hashCode() {
         return id.hashCode();
