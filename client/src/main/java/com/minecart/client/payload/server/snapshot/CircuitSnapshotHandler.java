@@ -1,10 +1,11 @@
 package com.minecart.client.payload.server.snapshot;
 
+import com.minecart.misc.CoreStrings;
 import com.minecart.client.logic.ClientCircuit;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.logic.ClientWorld;
 import com.minecart.client.payload.PayloadHandler;
-import com.minecart.logic.Circuit;
+import com.minecart.foundation.Circuit;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
@@ -13,6 +14,7 @@ import java.util.UUID;
 
 /**
  * Applies {@link CircuitSnapshotPayload} on the client: replaces or inserts the circuit in a {@link ClientWorld}.
+ * Only sent when a client first joined
  */
 public final class CircuitSnapshotHandler implements PayloadHandler<CircuitSnapshotPayload> {
 
@@ -32,17 +34,9 @@ public final class CircuitSnapshotHandler implements PayloadHandler<CircuitSnaps
     }
 
     public static void apply(CircuitSnapshotPayload payload, ClientLevel level) {
-        if (level == null) {
-            throw new IllegalArgumentException("level is null");
-        }
-        CompoundTag data = payload.getCircuitData();
-        if (data == null) {
-            throw new IllegalArgumentException("circuit data is null");
-        }
-        UUID circuitId = TagUtil.getUUID(data, "circuit_id");
-        if (circuitId == null) {
-            throw new IllegalArgumentException("Missing circuit_id in snapshot");
-        }
+        Objects.requireNonNull(level, "level");
+        CompoundTag data = Objects.requireNonNull(payload.getCircuitData(), "circuit data");
+        UUID circuitId = TagUtil.getUUID(data, CoreStrings.CIRCUIT_ID);
         ClientWorld world = level.getOrCreateWorld(payload.getWorldId());
         Circuit existing = world.findCircuit(circuitId);
         if (existing != null) {
@@ -54,21 +48,13 @@ public final class CircuitSnapshotHandler implements PayloadHandler<CircuitSnaps
     }
 
     public static void apply(CircuitSnapshotPayload payload, ClientWorld world) {
-        if (world == null) {
-            throw new IllegalArgumentException("world is null");
-        }
+        Objects.requireNonNull(world, "world");
         UUID wid = payload.getWorldId();
         if (wid != null && !wid.equals(world.getId())) {
             throw new IllegalArgumentException("World id mismatch: payload " + wid + ", target " + world.getId());
         }
-        CompoundTag data = payload.getCircuitData();
-        if (data == null) {
-            throw new IllegalArgumentException("circuit data is null");
-        }
-        UUID circuitId = TagUtil.getUUID(data, "circuit_id");
-        if (circuitId == null) {
-            throw new IllegalArgumentException("Missing circuit_id in snapshot");
-        }
+        CompoundTag data = Objects.requireNonNull(payload.getCircuitData(), "circuit data");
+        UUID circuitId = TagUtil.getUUID(data, CoreStrings.CIRCUIT_ID);
         Circuit existing = world.findCircuit(circuitId);
         if (existing != null) {
             world.removeCircuit(existing);

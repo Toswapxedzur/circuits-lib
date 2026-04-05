@@ -1,8 +1,10 @@
 package com.minecart.logic;
 
+import com.minecart.misc.CoreStrings;
 import com.minecart.event.events.ElementEvent;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.registry.CircuitElementType;
-import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.ListTag;
@@ -116,12 +118,12 @@ public class CircuitComponent extends CircuitElement {
         for (CircuitNode n : nodes) {
             nodeIds.add(TagUtil.writeUUID(n.getId()));
         }
-        tag.put("node_ids", nodeIds);
+        tag.put(CoreStrings.NODE_IDS, nodeIds);
         ListTag edgeIds = new ListTag();
         for (CircuitEdge e : edges) {
             edgeIds.add(TagUtil.writeUUID(e.getId()));
         }
-        tag.put("edge_ids", edgeIds);
+        tag.put(CoreStrings.EDGE_IDS, edgeIds);
     }
 
     @Override
@@ -133,7 +135,7 @@ public class CircuitComponent extends CircuitElement {
         }
         nodes.clear();
         edges.clear();
-        Tag nodeIdsTag = tag.get("node_ids");
+        Tag nodeIdsTag = tag.get(CoreStrings.NODE_IDS);
         if (nodeIdsTag instanceof ListTag nl) {
             for (int i = 0; i < nl.size(); i++) {
                 UUID nu = TagUtil.readUUID(nl.get(i));
@@ -149,7 +151,7 @@ public class CircuitComponent extends CircuitElement {
                 }
             }
         }
-        Tag edgeIdsTag = tag.get("edge_ids");
+        Tag edgeIdsTag = tag.get(CoreStrings.EDGE_IDS);
         if (edgeIdsTag instanceof ListTag el) {
             for (int i = 0; i < el.size(); i++) {
                 UUID eu = TagUtil.readUUID(el.get(i));

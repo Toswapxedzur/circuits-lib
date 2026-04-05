@@ -1,10 +1,12 @@
 package com.minecart.client.payload.server.snapshot;
 
+import com.minecart.misc.CoreStrings;
+import com.minecart.client.ClientStrings;
 import com.minecart.client.payload.Payload;
 import com.minecart.client.payload.PayloadRegistry;
 import com.minecart.client.payload.PayloadType;
-import com.minecart.logic.Circuit;
-import com.minecart.logic.World;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.Tag;
@@ -16,13 +18,10 @@ import java.util.UUID;
  */
 public final class CircuitSnapshotPayload implements Payload {
 
-    public static final String PAYLOAD_ID = "minecart.circuit_snapshot_payload";
+    public static final String PAYLOAD_ID = ClientStrings.PAYLOAD_CIRCUIT_SNAPSHOT;
 
     public static final PayloadType<CircuitSnapshotPayload> TYPE =
             PayloadRegistry.register(PAYLOAD_ID, CircuitSnapshotPayload::new);
-
-    private static final String TAG_WORLD_ID = "world_id";
-    static final String TAG_CIRCUIT = "circuit";
 
     private UUID worldId;
     private CompoundTag circuitData;
@@ -70,18 +69,22 @@ public final class CircuitSnapshotPayload implements Payload {
 
     @Override
     public void save(CompoundTag tag) {
-        Payload.writeEnvelope(tag, this);
-        TagUtil.putUUID(tag, TAG_WORLD_ID, worldId);
+        Payload.super.save(tag);
+        TagUtil.putUUID(tag, ClientStrings.TAG_WORLD_ID, worldId);
         if (circuitData != null) {
-            tag.put(TAG_CIRCUIT, circuitData.copy());
+            tag.put(ClientStrings.SNAPSHOT_TAG_CIRCUIT, circuitData.copy());
         }
     }
 
     @Override
     public void load(CompoundTag tag) {
-        Payload.verifyEnvelope(tag, getPayloadId());
-        worldId = TagUtil.getUUID(tag, TAG_WORLD_ID);
-        Tag t = tag.get(TAG_CIRCUIT);
-        circuitData = TagUtil.requireCompoundTag(t, "Missing or invalid '" + TAG_CIRCUIT + "'");
+        Payload.super.load(tag);
+        worldId = TagUtil.getUUID(tag, ClientStrings.TAG_WORLD_ID);
+        Tag t = tag.get(ClientStrings.SNAPSHOT_TAG_CIRCUIT);
+        circuitData = TagUtil.requireCompoundTag(t, "Missing or invalid '" + ClientStrings.SNAPSHOT_TAG_CIRCUIT + "'");
+        UUID circuitIdInBody = TagUtil.getUUID(circuitData, CoreStrings.CIRCUIT_ID);
+        if (circuitIdInBody == null) {
+            throw new IllegalArgumentException("Missing '" + CoreStrings.CIRCUIT_ID + "' in circuit snapshot");
+        }
     }
 }

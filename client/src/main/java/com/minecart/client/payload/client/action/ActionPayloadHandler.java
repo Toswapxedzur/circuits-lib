@@ -2,8 +2,8 @@ package com.minecart.client.payload.client.action;
 
 import com.minecart.action.Actionable;
 import com.minecart.client.payload.PayloadHandler;
-import com.minecart.logic.Circuit;
-import com.minecart.logic.Level;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.Level;
 import com.minecart.logic.ServerLevel;
 
 import java.util.Objects;
@@ -32,12 +32,8 @@ public final class ActionPayloadHandler implements PayloadHandler<ActionPayload>
      * Queues the action for execution when the server level drains its action queue.
      */
     public static void receive(ActionPayload payload, ServerLevel level) {
-        if (payload == null) {
-            throw new IllegalArgumentException("payload is null");
-        }
-        if (level == null) {
-            throw new IllegalArgumentException("level is null");
-        }
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(level, "level");
         Runnable runnable = Actionable.fromPayload(
                 level,
                 payload.getWorldId(),
@@ -51,7 +47,7 @@ public final class ActionPayloadHandler implements PayloadHandler<ActionPayload>
      * Resolves when the target {@link Circuit} is already known.
      */
     public static Runnable toRunnable(ActionPayload payload, Circuit circuit) {
-        if (payload.getCircuitId() != null && !payload.getCircuitId().equals(circuit.getId())) {
+        if (!payload.getCircuitId().equals(circuit.getId())) {
             throw new IllegalArgumentException(
                     "Circuit id mismatch: payload " + payload.getCircuitId() + ", actual " + circuit.getId());
         }

@@ -1,9 +1,9 @@
 package com.minecart.action;
 
-import com.minecart.logic.Circuit;
+import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitElement;
-import com.minecart.logic.Level;
-import com.minecart.logic.World;
+import com.minecart.foundation.Level;
+import com.minecart.foundation.World;
 import com.minecart.registry.CircuitElementRegistry;
 import com.minecart.registry.CircuitElementType;
 

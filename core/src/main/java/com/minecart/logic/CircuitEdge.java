@@ -1,9 +1,11 @@
 package com.minecart.logic;
 
+import com.minecart.misc.CoreStrings;
 import com.google.common.graph.EndpointPair;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.math.DoubleVar;
 import com.minecart.misc.CurrentFlow;
-import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
@@ -152,13 +154,13 @@ public class CircuitEdge extends CircuitElement {
     public void save(CompoundTag tag) {
         super.save(tag);
         if (getStart() != null) {
-            TagUtil.putUUID(tag, "start", getStart().getId());
+            TagUtil.putUUID(tag, CoreStrings.EDGE_START, getStart().getId());
         }
         if (getEnd() != null) {
-            TagUtil.putUUID(tag, "end", getEnd().getId());
+            TagUtil.putUUID(tag, CoreStrings.EDGE_END, getEnd().getId());
         }
-        tag.putDouble("current", getCurrent().getValue());
-        tag.putBoolean("overpowered", overpowered);
+        tag.putDouble(CoreStrings.EDGE_CURRENT, getCurrent().getValue());
+        tag.putBoolean(CoreStrings.EDGE_OVERPOWERED, overpowered);
     }
 
     /**
@@ -168,8 +170,8 @@ public class CircuitEdge extends CircuitElement {
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
-        getCurrent().setValue(tag.getDouble("current"));
-        overpowered = tag.getBoolean("overpowered");
+        getCurrent().setValue(tag.getDouble(CoreStrings.EDGE_CURRENT));
+        overpowered = tag.getBoolean(CoreStrings.EDGE_OVERPOWERED);
     }
 
     /**
@@ -182,8 +184,8 @@ public class CircuitEdge extends CircuitElement {
     }
 
     private void attachEndpointsFromTag(CompoundTag tag, Circuit circuit) {
-        UUID startId = TagUtil.getUUID(tag, "start");
-        UUID endId = TagUtil.getUUID(tag, "end");
+        UUID startId = TagUtil.getUUID(tag, CoreStrings.EDGE_START);
+        UUID endId = TagUtil.getUUID(tag, CoreStrings.EDGE_END);
         if (startId == null || endId == null) {
             throw new IllegalArgumentException("Edge missing start/end: " + getId());
         }

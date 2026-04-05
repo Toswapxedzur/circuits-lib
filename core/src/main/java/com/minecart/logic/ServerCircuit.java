@@ -1,7 +1,10 @@
 package com.minecart.logic;
 
+import com.minecart.misc.CoreStrings;
 import com.minecart.event.events.Event;
 import com.minecart.event.events.ServerTickEvent;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.math.DoubleVar;
 import com.minecart.math.LinearSystem;
 import com.minecart.registry.CircuitElementType;
@@ -184,9 +187,9 @@ public class ServerCircuit extends Circuit {
     }
 
     public static ServerCircuit loadFromTag(ServerWorld world, CompoundTag tag) {
-        UUID circuitId = TagUtil.getUUID(tag, "circuit_id");
+        UUID circuitId = TagUtil.getUUID(tag, CoreStrings.CIRCUIT_ID);
         if (circuitId == null) {
-            throw new IllegalArgumentException("Missing circuit_id");
+            throw new IllegalArgumentException("Missing '" + CoreStrings.CIRCUIT_ID + "'");
         }
         ServerCircuit circuit = new ServerCircuit(circuitId);
         world.addCircuit(circuit);

@@ -3,6 +3,8 @@ package com.minecart.logic;
 import com.minecart.event.events.ElementEvent;
 import com.minecart.event.events.ServerTickEvent;
 import com.minecart.event.events.ShortCircuitEvent;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.registry.CircuitElementType;
 
 import java.util.ArrayList;

@@ -1,5 +1,7 @@
-package com.minecart.logic;
+package com.minecart.foundation;
 
+import com.minecart.misc.CoreStrings;
+import com.minecart.logic.*;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.ListTag;
@@ -221,28 +223,28 @@ public class Circuit {
     }
 
     public void save(CompoundTag tag) {
-        TagUtil.putUUID(tag, "circuit_id", getId());
+        TagUtil.putUUID(tag, CoreStrings.CIRCUIT_ID, getId());
         ListTag nodeList = new ListTag();
         for (CircuitNode node : nodes()) {
             CompoundTag nc = new CompoundTag();
             node.save(nc);
             nodeList.add(nc);
         }
-        tag.put("nodes", nodeList);
+        tag.put(CoreStrings.NODES, nodeList);
         ListTag edgeList = new ListTag();
         for (CircuitEdge edge : edges()) {
             CompoundTag ec = new CompoundTag();
             edge.save(ec);
             edgeList.add(ec);
         }
-        tag.put("edges", edgeList);
+        tag.put(CoreStrings.EDGES, edgeList);
         ListTag compList = new ListTag();
         for (CircuitComponent comp : components()) {
             CompoundTag cc = new CompoundTag();
             comp.save(cc);
             compList.add(cc);
         }
-        tag.put("components", compList);
+        tag.put(CoreStrings.COMPONENTS, compList);
     }
 
     /**
@@ -253,34 +255,34 @@ public class Circuit {
             throw new IllegalArgumentException("world is required to load a circuit");
         }
         this.world = world;
-        UUID circuitId = TagUtil.getUUID(tag, "circuit_id");
+        UUID circuitId = TagUtil.getUUID(tag, CoreStrings.CIRCUIT_ID);
         if (circuitId == null) {
-            throw new IllegalArgumentException("Missing circuit_id");
+            throw new IllegalArgumentException("Missing '" + CoreStrings.CIRCUIT_ID + "'");
         }
         if (!circuitId.equals(getId())) {
-            throw new IllegalArgumentException("circuit_id mismatch");
+            throw new IllegalArgumentException(CoreStrings.CIRCUIT_ID + " mismatch");
         }
 
-        Tag nodesTag = tag.get("nodes");
+        Tag nodesTag = tag.get(CoreStrings.NODES);
         if (nodesTag instanceof ListTag nl) {
             for (int i = 0; i < nl.size(); i++) {
-                CompoundTag nc = TagUtil.requireCompoundTag(nl.get(i), "nodes[" + i + "]");
+                CompoundTag nc = TagUtil.requireCompoundTag(nl.get(i), CoreStrings.NODES + "[" + i + "]");
                 loadNode(world, nc);
             }
         }
 
-        Tag edgesTag = tag.get("edges");
+        Tag edgesTag = tag.get(CoreStrings.EDGES);
         if (edgesTag instanceof ListTag el) {
             for (int i = 0; i < el.size(); i++) {
-                CompoundTag ec = TagUtil.requireCompoundTag(el.get(i), "edges[" + i + "]");
+                CompoundTag ec = TagUtil.requireCompoundTag(el.get(i), CoreStrings.EDGES + "[" + i + "]");
                 loadEdge(world, ec);
             }
         }
 
-        Tag compsTag = tag.get("components");
+        Tag compsTag = tag.get(CoreStrings.COMPONENTS);
         if (compsTag instanceof ListTag cl) {
             for (int i = 0; i < cl.size(); i++) {
-                CompoundTag cc = TagUtil.requireCompoundTag(cl.get(i), "components[" + i + "]");
+                CompoundTag cc = TagUtil.requireCompoundTag(cl.get(i), CoreStrings.COMPONENTS + "[" + i + "]");
                 loadComponent(world, cc);
             }
         }
@@ -289,7 +291,8 @@ public class Circuit {
     private void loadNode(World world, CompoundTag nc) {
         CircuitElement el = CircuitElement.deserialize(nc, world);
         if (!(el instanceof CircuitNode node)) {
-            throw new IllegalArgumentException("Expected node in nodes[] list, got: " + nc.getString("type"));
+            throw new IllegalArgumentException(
+                    "Expected node in nodes[] list, got: " + nc.getString(CoreStrings.ELEMENT_TYPE));
         }
         addNode(node);
         node.load(nc);
@@ -298,7 +301,8 @@ public class Circuit {
     private void loadEdge(World world, CompoundTag ec) {
         CircuitElement el = CircuitElement.deserialize(ec, world);
         if (!(el instanceof CircuitEdge edge)) {
-            throw new IllegalArgumentException("Expected edge in edges[] list, got: " + ec.getString("type"));
+            throw new IllegalArgumentException(
+                    "Expected edge in edges[] list, got: " + ec.getString(CoreStrings.ELEMENT_TYPE));
         }
         edge.load(ec, this);
         addEdge(edge);
@@ -307,7 +311,8 @@ public class Circuit {
     private void loadComponent(World world, CompoundTag cc) {
         CircuitElement el = CircuitElement.deserialize(cc, world);
         if (!(el instanceof CircuitComponent comp)) {
-            throw new IllegalArgumentException("Expected component in components[] list, got: " + cc.getString("type"));
+            throw new IllegalArgumentException(
+                    "Expected component in components[] list, got: " + cc.getString(CoreStrings.ELEMENT_TYPE));
         }
         addComponent(comp);
         comp.load(cc);

@@ -1,12 +1,12 @@
 package com.minecart.client.payload.server.topology;
 
 import com.minecart.event.events.ElementEvent;
-import com.minecart.logic.Circuit;
+import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
-import com.minecart.logic.Level;
+import com.minecart.foundation.Level;
 import com.minecart.client.payload.IncrementPayloadListener;
 import com.minecart.serialization.tag.CompoundTag;
 

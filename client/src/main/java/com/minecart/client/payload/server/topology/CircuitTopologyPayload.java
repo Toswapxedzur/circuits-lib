@@ -1,5 +1,6 @@
 package com.minecart.client.payload.server.topology;
 
+import com.minecart.client.ClientStrings;
 import com.minecart.client.payload.Payload;
 import com.minecart.client.payload.PayloadRegistry;
 import com.minecart.client.payload.PayloadType;
@@ -15,18 +16,14 @@ import java.util.UUID;
 
 /**
  * Server → client circuit topology: ordered {@link CircuitTopologyChange} steps. Serialization and binary framing are
- * defined here; client application is {@link com.minecart.client.payload.client.topology.CircuitTopologyHandler}.
+ * defined here; client application is {@link CircuitTopologyHandler}.
  */
 public final class CircuitTopologyPayload implements Payload {
 
-    public static final String PAYLOAD_ID = "minecart.circuit_topology_payload";
+    public static final String PAYLOAD_ID = ClientStrings.PAYLOAD_CIRCUIT_TOPOLOGY;
 
     public static final PayloadType<CircuitTopologyPayload> TYPE =
             PayloadRegistry.register(PAYLOAD_ID, CircuitTopologyPayload::new);
-
-    private static final String TAG_WORLD_ID = "world_id";
-    private static final String TAG_CIRCUIT_ID = "circuit_id";
-    private static final String TAG_CHANGES = "changes";
 
     private UUID worldId;
     private UUID circuitId;
@@ -75,31 +72,31 @@ public final class CircuitTopologyPayload implements Payload {
 
     @Override
     public void save(CompoundTag tag) {
-        Payload.writeEnvelope(tag, this);
-        TagUtil.putUUID(tag, TAG_WORLD_ID, worldId);
-        TagUtil.putUUID(tag, TAG_CIRCUIT_ID, circuitId);
+        Payload.super.save(tag);
+        TagUtil.putUUID(tag, ClientStrings.TAG_WORLD_ID, worldId);
+        TagUtil.putUUID(tag, ClientStrings.TAG_CIRCUIT_ID, circuitId);
         ListTag list = new ListTag();
         for (CircuitTopologyChange c : changes) {
             CompoundTag step = new CompoundTag();
             c.save(step);
             list.add(step);
         }
-        tag.put(TAG_CHANGES, list);
+        tag.put(ClientStrings.TAG_CHANGES, list);
     }
 
     @Override
     public void load(CompoundTag tag) {
-        Payload.verifyEnvelope(tag, getPayloadId());
-        worldId = TagUtil.getUUID(tag, TAG_WORLD_ID);
-        circuitId = TagUtil.getUUID(tag, TAG_CIRCUIT_ID);
+        Payload.super.load(tag);
+        worldId = TagUtil.getUUID(tag, ClientStrings.TAG_WORLD_ID);
+        circuitId = TagUtil.getUUID(tag, ClientStrings.TAG_CIRCUIT_ID);
         if (circuitId == null) {
-            throw new IllegalArgumentException("Missing '" + TAG_CIRCUIT_ID + "'");
+            throw new IllegalArgumentException("Missing '" + ClientStrings.TAG_CIRCUIT_ID + "'");
         }
         changes.clear();
-        Tag t = tag.get(TAG_CHANGES);
+        Tag t = tag.get(ClientStrings.TAG_CHANGES);
         if (t instanceof ListTag list) {
             for (int i = 0; i < list.size(); i++) {
-                CompoundTag step = TagUtil.requireCompoundTag(list.get(i), TAG_CHANGES + "[" + i + "]");
+                CompoundTag step = TagUtil.requireCompoundTag(list.get(i), ClientStrings.TAG_CHANGES + "[" + i + "]");
                 changes.add(CircuitTopologyChange.load(step));
             }
         }

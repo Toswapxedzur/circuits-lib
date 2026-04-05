@@ -1,9 +1,11 @@
 package com.minecart.client.logic;
 
-import com.minecart.logic.Circuit;
+import com.minecart.client.event.events.ClientTickEvent;
+import com.minecart.event.events.Event;
+import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
-import com.minecart.logic.World;
+import com.minecart.foundation.World;
 import com.minecart.serialization.tag.CompoundTag;
 
 import java.util.ArrayList;
@@ -14,6 +16,9 @@ import java.util.UUID;
  * Future: reconcile with server snapshots and interpolation; network payloads will be applied here later.
  */
 public class ClientCircuit extends Circuit {
+
+    protected final ClientTickEvent.Circuit preTick = new ClientTickEvent.Circuit(ClientTickEvent.Phase.PRE, this);
+    protected final ClientTickEvent.Circuit postTick = new ClientTickEvent.Circuit(ClientTickEvent.Phase.POST, this);
 
     public ClientCircuit() {
         super(UUID.randomUUID());
@@ -75,9 +80,20 @@ public class ClientCircuit extends Circuit {
         return destroy(node, false);
     }
 
+    public boolean post(Event event) {
+        return getWorld().post(event);
+    }
+
     /**
      * Called between server updates for client-side smoothing or UI (no solver here).
      */
     public void clientTick() {
+        post(preTick);
+        onClientTick();
+        post(postTick);
+    }
+
+    /** Per-frame client work between PRE and POST {@link ClientTickEvent.Circuit}. */
+    protected void onClientTick() {
     }
 }

@@ -1,18 +1,17 @@
-package com.minecart.client.payload.client.topology;
+package com.minecart.client.payload.server.topology;
 
+import com.minecart.misc.CoreStrings;
 import com.minecart.client.logic.ClientCircuit;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.logic.ClientWorld;
 import com.minecart.client.payload.PayloadHandler;
-import com.minecart.client.payload.server.topology.CircuitTopologyChange;
-import com.minecart.client.payload.server.topology.CircuitTopologyPayload;
-import com.minecart.logic.Circuit;
+import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
-import com.minecart.logic.Level;
-import com.minecart.logic.World;
+import com.minecart.foundation.Level;
+import com.minecart.foundation.World;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
@@ -40,21 +39,16 @@ public final class CircuitTopologyHandler implements PayloadHandler<CircuitTopol
     @Override
     public void handle(CircuitTopologyPayload payload) {
         ResolvedWorldCircuit resolved = resolveWorldAndCircuit(level, payload.getWorldId(), payload.getCircuitId());
-        ClientWorld world = resolved.world();
-        ClientCircuit circuit = resolved.circuit();
-        UUID circuitId = payload.getCircuitId();
-        if (circuitId != null && !circuitId.equals(circuit.getId())) {
-            throw new IllegalArgumentException("Circuit id mismatch: payload " + circuitId + ", actual " + circuit.getId());
-        }
-        applyDelta(world, circuit, payload.getChanges());
+        applyDelta(resolved.world(), resolved.circuit(), payload.getChanges());
     }
 
     /**
      * Applies ordered steps when world and circuit are already resolved.
      */
     public static void handle(CircuitTopologyPayload payload, ClientWorld world, ClientCircuit circuit) {
-        if (payload.getCircuitId() != null && !payload.getCircuitId().equals(circuit.getId())) {
-            throw new IllegalArgumentException("Circuit id mismatch: payload " + payload.getCircuitId() + ", actual " + circuit.getId());
+        if (!payload.getCircuitId().equals(circuit.getId())) {
+            throw new IllegalArgumentException(
+                    "Circuit id mismatch: payload " + payload.getCircuitId() + ", actual " + circuit.getId());
         }
         if (circuit.getWorld() != world) {
             throw new IllegalArgumentException("Circuit does not belong to the given world");
@@ -63,9 +57,7 @@ public final class CircuitTopologyHandler implements PayloadHandler<CircuitTopol
     }
 
     private static ResolvedWorldCircuit resolveWorldAndCircuit(ClientLevel level, UUID worldId, UUID circuitId) {
-        if (circuitId == null) {
-            throw new IllegalArgumentException("Missing circuit id");
-        }
+        Objects.requireNonNull(circuitId, "Missing circuit id");
         if (worldId != null) {
             World w = level.findWorld(worldId);
             if (w == null) {
@@ -113,13 +105,10 @@ public final class CircuitTopologyHandler implements PayloadHandler<CircuitTopol
     }
 
     private static void applyDelta(ClientWorld world, ClientCircuit circuit, List<CircuitTopologyChange> ops) {
-        if (world == null || circuit == null) {
-            throw new IllegalArgumentException("world and circuit must be non-null");
-        }
         if (circuit.getWorld() != world) {
             throw new IllegalArgumentException("Circuit does not belong to the given world");
         }
-        if (ops == null || ops.isEmpty()) {
+        if (ops.isEmpty()) {
             return;
         }
         for (CircuitTopologyChange op : ops) {
@@ -133,11 +122,11 @@ public final class CircuitTopologyHandler implements PayloadHandler<CircuitTopol
 
     private static void insertOne(ClientWorld world, ClientCircuit circuit, CircuitTopologyChange.ElementKind kind, CompoundTag data) {
         CompoundTag delta = new CompoundTag();
-        TagUtil.putUUID(delta, "circuit_id", circuit.getId());
+        TagUtil.putUUID(delta, CoreStrings.CIRCUIT_ID, circuit.getId());
         switch (kind) {
-            case NODE -> TagUtil.putCompoundList(delta, "nodes", List.of(data));
-            case EDGE -> TagUtil.putCompoundList(delta, "edges", List.of(data));
-            case COMPONENT -> TagUtil.putCompoundList(delta, "components", List.of(data));
+            case NODE -> TagUtil.putCompoundList(delta, CoreStrings.NODES, List.of(data));
+            case EDGE -> TagUtil.putCompoundList(delta, CoreStrings.EDGES, List.of(data));
+            case COMPONENT -> TagUtil.putCompoundList(delta, CoreStrings.COMPONENTS, List.of(data));
         }
         circuit.load(world, delta);
     }

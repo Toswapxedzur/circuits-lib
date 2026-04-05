@@ -4,7 +4,7 @@ import com.minecart.client.logic.ClientCircuit;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.logic.ClientWorld;
 import com.minecart.client.payload.PayloadHandler;
-import com.minecart.logic.Circuit;
+import com.minecart.foundation.Circuit;
 import com.minecart.logic.ServerCircuit;
 import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
@@ -46,12 +46,6 @@ public final class CircuitLifecycleHandler implements PayloadHandler<CircuitLife
     private static void applyServer(CircuitLifecyclePayload payload, ServerLevel level) {
         UUID wid = payload.getWorldId();
         UUID cid = payload.getCircuitId();
-        if (wid == null) {
-            throw new IllegalArgumentException("Missing world id");
-        }
-        if (cid == null) {
-            throw new IllegalArgumentException("Missing circuit id");
-        }
         ServerWorld sw = (ServerWorld) level.findWorld(wid);
         if (sw == null) {
             throw new IllegalArgumentException("No world for id: " + wid);
@@ -74,12 +68,6 @@ public final class CircuitLifecycleHandler implements PayloadHandler<CircuitLife
     private static void applyClient(CircuitLifecyclePayload payload, ClientLevel level) {
         UUID wid = payload.getWorldId();
         UUID cid = payload.getCircuitId();
-        if (wid == null) {
-            throw new IllegalArgumentException("Missing world id");
-        }
-        if (cid == null) {
-            throw new IllegalArgumentException("Missing circuit id");
-        }
         ClientWorld cw = level.getOrCreateWorld(wid);
         if (payload.getKind() == CircuitLifecyclePayload.Kind.REMOVE) {
             Circuit c = cw.findCircuit(cid);

@@ -19,27 +19,27 @@ public abstract class ServerTickEvent extends Event {
     }
 
     public static class Level extends ServerTickEvent {
-        private final com.minecart.logic.Level level;
+        private final com.minecart.foundation.Level level;
 
-        public Level(Phase phase, com.minecart.logic.Level level) {
+        public Level(Phase phase, com.minecart.foundation.Level level) {
             super(phase);
             this.level = level;
         }
 
-        public com.minecart.logic.Level getLevel() {
+        public com.minecart.foundation.Level getLevel() {
             return level;
         }
     }
 
     public static class World extends ServerTickEvent {
-        private final com.minecart.logic.World world;
+        private final com.minecart.foundation.World world;
 
-        public World(Phase phase, com.minecart.logic.World world) {
+        public World(Phase phase, com.minecart.foundation.World world) {
             super(phase);
             this.world = world;
         }
 
-        public com.minecart.logic.World getWorld() {
+        public com.minecart.foundation.World getWorld() {
             return world;
         }
     }

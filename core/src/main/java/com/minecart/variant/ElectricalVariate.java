@@ -8,7 +8,7 @@ import java.io.Serializable;
  * Represent an information that an electrical component held, only added after creation
  * @param <O> Type of electrical information
  */
-public interface ElectricalVariate<O extends ElectricalInfo> extends Serializable {
+public interface ElectricalVariate<O extends ElectricalInfo> {
     O get();
 
     O getDefault();

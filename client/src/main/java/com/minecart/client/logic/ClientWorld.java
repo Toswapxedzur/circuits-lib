@@ -1,9 +1,10 @@
 package com.minecart.client.logic;
 
-import com.minecart.logic.Circuit;
+import com.minecart.client.event.events.ClientTickEvent;
+import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
-import com.minecart.logic.World;
+import com.minecart.foundation.World;
 
 import java.util.UUID;
 
@@ -13,12 +14,15 @@ import java.util.UUID;
  */
 public class ClientWorld extends World {
 
+    protected final ClientTickEvent.World preTick = new ClientTickEvent.World(ClientTickEvent.Phase.PRE, this);
+    protected final ClientTickEvent.World postTick = new ClientTickEvent.World(ClientTickEvent.Phase.POST, this);
+
     public ClientWorld(ClientLevel level) {
         super(level);
     }
 
     /**
-     * Client world with a fixed id (e.g. matching a server {@link com.minecart.logic.World#getId()} for snapshots).
+     * Client world with a fixed id (e.g. matching a server {@link World#getId()} for snapshots).
      */
     public ClientWorld(ClientLevel level, UUID worldId) {
         super(level, worldId);
@@ -41,11 +45,13 @@ public class ClientWorld extends World {
      * Per-frame client update for all circuits in this world.
      */
     public void tick() {
+        post(preTick);
         for (Circuit c : getCircuits()) {
             if (c instanceof ClientCircuit cc) {
                 cc.clientTick();
             }
         }
+        post(postTick);
     }
 
     /**

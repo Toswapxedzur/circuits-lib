@@ -1,6 +1,7 @@
 package com.minecart.client.payload.client.action;
 
 import com.minecart.action.Action;
+import com.minecart.client.ClientStrings;
 import com.minecart.client.payload.Payload;
 import com.minecart.client.payload.PayloadRegistry;
 import com.minecart.client.payload.PayloadType;
@@ -15,15 +16,10 @@ import java.util.UUID;
  */
 public final class ActionPayload implements Payload {
 
-    public static final String PAYLOAD_ID = "minecart.action_payload";
+    public static final String PAYLOAD_ID = ClientStrings.PAYLOAD_ACTION;
 
     public static final PayloadType<ActionPayload> TYPE =
             PayloadRegistry.register(PAYLOAD_ID, ActionPayload::new);
-
-    private static final String TAG_WORLD_ID = "world_id";
-    private static final String TAG_CIRCUIT_ID = "circuit_id";
-    private static final String TAG_ELEMENT_ID = "element_id";
-    private static final String TAG_ACTION = "action";
 
     private UUID worldId;
     private UUID circuitId;
@@ -68,28 +64,27 @@ public final class ActionPayload implements Payload {
 
     @Override
     public void save(CompoundTag tag) {
-        Payload.writeEnvelope(tag, this);
-        TagUtil.putUUID(tag, TAG_WORLD_ID, worldId);
-        TagUtil.putUUID(tag, TAG_CIRCUIT_ID, circuitId);
-        TagUtil.putUUID(tag, TAG_ELEMENT_ID, elementId);
-        CompoundTag actionTag = new CompoundTag();
-        action.save(actionTag);
-        tag.put(TAG_ACTION, actionTag);
+        Payload.super.save(tag);
+        TagUtil.putUUID(tag, ClientStrings.TAG_WORLD_ID, worldId);
+        TagUtil.putUUID(tag, ClientStrings.TAG_CIRCUIT_ID, circuitId);
+        TagUtil.putUUID(tag, ClientStrings.TAG_ELEMENT_ID, elementId);
+        CompoundTag actionTag = Action.saveAction(action);
+        tag.put(ClientStrings.TAG_ACTION, actionTag);
     }
 
     @Override
     public void load(CompoundTag tag) {
-        Payload.verifyEnvelope(tag, getPayloadId());
-        worldId = TagUtil.getUUID(tag, TAG_WORLD_ID);
-        circuitId = TagUtil.getUUID(tag, TAG_CIRCUIT_ID);
-        elementId = TagUtil.getUUID(tag, TAG_ELEMENT_ID);
+        Payload.super.load(tag);
+        worldId = TagUtil.getUUID(tag, ClientStrings.TAG_WORLD_ID);
+        circuitId = TagUtil.getUUID(tag, ClientStrings.TAG_CIRCUIT_ID);
+        elementId = TagUtil.getUUID(tag, ClientStrings.TAG_ELEMENT_ID);
         if (circuitId == null) {
-            throw new IllegalArgumentException("Missing '" + TAG_CIRCUIT_ID + "'");
+            throw new IllegalArgumentException("Missing '" + ClientStrings.TAG_CIRCUIT_ID + "'");
         }
         if (elementId == null) {
-            throw new IllegalArgumentException("Missing '" + TAG_ELEMENT_ID + "'");
+            throw new IllegalArgumentException("Missing '" + ClientStrings.TAG_ELEMENT_ID + "'");
         }
-        CompoundTag actionTag = TagUtil.requireCompoundTag(tag.get(TAG_ACTION), TAG_ACTION);
+        CompoundTag actionTag = TagUtil.requireCompoundTag(tag.get(ClientStrings.TAG_ACTION), ClientStrings.TAG_ACTION);
         action = Action.loadAction(actionTag);
     }
 }

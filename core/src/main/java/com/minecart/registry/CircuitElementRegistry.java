@@ -1,7 +1,7 @@
 package com.minecart.registry;
 
 import com.minecart.logic.CircuitElement;
-import com.minecart.logic.World;
+import com.minecart.foundation.World;
 
 import java.util.HashMap;
 import java.util.Map;

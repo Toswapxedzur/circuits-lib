@@ -1,5 +1,8 @@
 package com.minecart.logic;
 
+import com.minecart.misc.CoreStrings;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.math.DoubleVar;
 import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
@@ -54,12 +57,12 @@ public abstract class CircuitElement implements Comparable<CircuitElement>, TagS
 
     @Override
     public void save(CompoundTag tag) {
-        TagUtil.putUUID(tag, "id", getId());
+        TagUtil.putUUID(tag, CoreStrings.ELEMENT_ID, getId());
     }
 
     @Override
     public void load(CompoundTag tag) {
-        setId(TagUtil.getUUID(tag, "id"));
+        setId(TagUtil.getUUID(tag, CoreStrings.ELEMENT_ID));
     }
 
     /**
@@ -67,7 +70,7 @@ public abstract class CircuitElement implements Comparable<CircuitElement>, TagS
      */
     public static CompoundTag serialize(CircuitElement element){
         CompoundTag tag = new CompoundTag();
-        tag.putString("type", element.typeIdForSave());
+        tag.putString(CoreStrings.ELEMENT_TYPE, element.typeIdForSave());
         element.save(tag);
         return tag;
     }
@@ -79,11 +82,11 @@ public abstract class CircuitElement implements Comparable<CircuitElement>, TagS
      * or {@link CircuitComponent#load}.
      */
     public static CircuitElement deserialize(CompoundTag tag, World world) {
-        UUID elementId = TagUtil.getUUID(tag, "id");
+        UUID elementId = TagUtil.getUUID(tag, CoreStrings.ELEMENT_ID);
         if (elementId == null) {
             throw new IllegalArgumentException("Element missing id");
         }
-        String typeId = tag.getString("type");
+        String typeId = tag.getString(CoreStrings.ELEMENT_TYPE);
         CircuitElementType<?> et = CircuitElementRegistry.getType(typeId);
         CircuitElement el = et.create(world);
         el.setId(elementId);

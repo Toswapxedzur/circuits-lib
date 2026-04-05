@@ -1,6 +1,8 @@
-package com.minecart.logic;
+package com.minecart.foundation;
 
 import com.minecart.event.events.Event;
+import com.minecart.logic.ServerCircuit;
+import com.minecart.logic.ServerWorld;
 
 import java.util.LinkedHashSet;
 import java.util.Set;

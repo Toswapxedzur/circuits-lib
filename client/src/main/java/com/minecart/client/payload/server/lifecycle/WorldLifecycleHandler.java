@@ -2,9 +2,9 @@ package com.minecart.client.payload.server.lifecycle;
 
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.payload.PayloadHandler;
-import com.minecart.logic.Level;
+import com.minecart.foundation.Level;
 import com.minecart.logic.ServerLevel;
-import com.minecart.logic.World;
+import com.minecart.foundation.World;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -42,9 +42,6 @@ public final class WorldLifecycleHandler implements PayloadHandler<WorldLifecycl
 
     private static void apply(WorldLifecyclePayload payload, Level level) {
         UUID wid = payload.getWorldId();
-        if (wid == null) {
-            throw new IllegalArgumentException("Missing world id");
-        }
         if (payload.getKind() == WorldLifecyclePayload.Kind.REMOVE) {
             World w = level.findWorld(wid);
             if (w != null) {

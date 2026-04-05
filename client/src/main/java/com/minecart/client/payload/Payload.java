@@ -1,5 +1,6 @@
 package com.minecart.client.payload;
 
+import com.minecart.client.ClientStrings;
 import com.minecart.client.codec.TagBinaryEncoder;
 import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.tag.CompoundTag;
@@ -26,7 +27,7 @@ import java.util.Objects;
 public interface Payload extends TagSerializable {
 
     /** Root compound key for type dispatch (written with the payload body by typical {@link Payload} implementations). */
-    String TAG_PAYLOAD_ID = "payload_id";
+    String TAG_PAYLOAD_ID = ClientStrings.PAYLOAD_ENVELOPE_ID;
 
     /**
      * Stable wire id for this payload kind (registry key). Must match the id used with {@link PayloadRegistry}.
@@ -34,27 +35,72 @@ public interface Payload extends TagSerializable {
     String getPayloadId();
 
     /**
-     * Writes {@link #TAG_PAYLOAD_ID} and {@link #getPayloadId()} before subtype fields (typical root tag shape).
+     * Writes {@link #TAG_PAYLOAD_ID} and this payload's {@link #getPayloadId()}. Concrete {@link Payload} types must
+     * call {@code Payload.super.save(tag)} first, then write their own fields.
      */
-    static void writeEnvelope(CompoundTag tag, Payload payload) {
+    @Override
+    default void save(CompoundTag tag) {
         Objects.requireNonNull(tag, "tag");
-        Objects.requireNonNull(payload, "payload");
-        tag.putString(TAG_PAYLOAD_ID, payload.getPayloadId());
+        tag.putString(TAG_PAYLOAD_ID, getPayloadId());
     }
 
     /**
-     * Verifies the root tag was written for the expected payload kind.
+     * Verifies {@link #TAG_PAYLOAD_ID} matches this instance's {@link #getPayloadId()}. Concrete types must call
+     * {@code Payload.super.load(tag)} first, then read their own fields.
      */
-    static void verifyEnvelope(CompoundTag tag, String expectedPayloadId) {
+    @Override
+    default void load(CompoundTag tag) {
         Objects.requireNonNull(tag, "tag");
-        Objects.requireNonNull(expectedPayloadId, "expectedPayloadId");
         String id = tag.getString(TAG_PAYLOAD_ID);
         if (id.isEmpty()) {
             throw new IllegalArgumentException("Missing " + TAG_PAYLOAD_ID);
         }
-        if (!expectedPayloadId.equals(id)) {
-            throw new IllegalArgumentException("Payload id mismatch: expected " + expectedPayloadId + ", got " + id);
+        if (!getPayloadId().equals(id)) {
+            throw new IllegalArgumentException("Payload id mismatch: expected " + getPayloadId() + ", got " + id);
         }
+    }
+
+    /**
+     * Serializes a payload to a new root compound (includes type id and subtype fields).
+     */
+    static CompoundTag serialize(Payload payload) {
+        Objects.requireNonNull(payload, "payload");
+        CompoundTag tag = new CompoundTag();
+        payload.save(tag);
+        return tag;
+    }
+
+    /**
+     * Deserializes by {@link #TAG_PAYLOAD_ID} via {@link PayloadRegistry}, then {@link #load(CompoundTag)}.
+     */
+    static Payload deserialize(CompoundTag tag) {
+        Objects.requireNonNull(tag, "tag");
+        String id = peekPayloadId(tag);
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException("Missing or empty " + TAG_PAYLOAD_ID);
+        }
+        PayloadType<?> payloadType = PayloadRegistry.getType(id);
+        Payload payload = payloadType.create();
+        payload.load(tag);
+        return payload;
+    }
+
+    /**
+     * Same as {@link #deserialize(CompoundTag)} but narrows to {@code type}.
+     */
+    static <T extends Payload> T deserialize(CompoundTag tag, Class<T> type) {
+        Payload p = deserialize(tag);
+        if (!type.isInstance(p)) {
+            throw new IllegalArgumentException(
+                    "Expected payload type " + type.getName() + " but got " + p.getClass().getName());
+        }
+        return type.cast(p);
+    }
+
+    /** Reads {@link #TAG_PAYLOAD_ID} without instantiating a payload (for dispatch). */
+    static String peekPayloadId(CompoundTag tag) {
+        Objects.requireNonNull(tag, "tag");
+        return tag.getString(TAG_PAYLOAD_ID);
     }
 
     /**

@@ -1,7 +1,7 @@
 package com.minecart.event.events;
 
 import com.minecart.logic.CircuitElement;
-import com.minecart.logic.World;
+import com.minecart.foundation.World;
 
 public class ElementEvent extends CancellableEvent{
     private final World world;

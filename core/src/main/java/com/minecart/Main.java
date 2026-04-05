@@ -4,19 +4,18 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
-import com.minecart.logic.Circuit;
+import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerCircuit;
 import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
+import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
-import com.minecart.serialization.tag.DoubleTag;
 import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
-import org.ejml.interfaces.linsol.LinearSolverSparse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -77,7 +76,7 @@ public class Main {
 
         CompoundTag tageous = new CompoundTag();
         tageous.readJson(JsonParser.parseString(result));
-        UUID rid = TagUtil.getUUID(tageous, "circuit_id");
+        UUID rid = TagUtil.getUUID(tageous, CoreStrings.CIRCUIT_ID);
         ServerCircuit retrieve = new ServerCircuit(Objects.requireNonNull(rid));
         retrieve.setWorld(w);
         retrieve.load(w, tageous);

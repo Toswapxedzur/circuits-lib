@@ -1,5 +1,6 @@
 package com.minecart.logic;
 
+import com.minecart.foundation.Circuit;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
 import org.junit.jupiter.api.Test;

@@ -1,5 +1,6 @@
 package com.minecart.client.payload.server.topology;
 
+import com.minecart.client.ClientStrings;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
@@ -10,18 +11,6 @@ import java.util.UUID;
  * One ordered step in a {@link CircuitTopologyPayload}: insert a serialized element or remove by id.
  */
 public final class CircuitTopologyChange {
-
-    public static final String TAG_KIND = "kind";
-    public static final String TAG_ELEMENT_KIND = "element_kind";
-    public static final String TAG_ELEMENT_ID = "element_id";
-    public static final String TAG_DATA = "data";
-
-    public static final String KIND_INSERT = "insert";
-    public static final String KIND_REMOVE = "remove";
-
-    public static final String ELEM_NODE = "node";
-    public static final String ELEM_EDGE = "edge";
-    public static final String ELEM_COMPONENT = "component";
 
     public enum Kind {
         INSERT,
@@ -75,27 +64,27 @@ public final class CircuitTopologyChange {
 
     public void save(CompoundTag tag) {
         if (kind == Kind.INSERT) {
-            tag.putString(TAG_KIND, KIND_INSERT);
-            tag.putString(TAG_ELEMENT_KIND, elementKindToString(elementKind));
-            tag.put(TAG_DATA, data.copy());
+            tag.putString(ClientStrings.TAG_KIND, ClientStrings.KIND_INSERT);
+            tag.putString(ClientStrings.TOPOLOGY_TAG_ELEMENT_KIND, elementKindToString(elementKind));
+            tag.put(ClientStrings.TOPOLOGY_TAG_DATA, data.copy());
         } else {
-            tag.putString(TAG_KIND, KIND_REMOVE);
-            TagUtil.putUUID(tag, TAG_ELEMENT_ID, elementId);
+            tag.putString(ClientStrings.TAG_KIND, ClientStrings.KIND_REMOVE);
+            TagUtil.putUUID(tag, ClientStrings.TAG_ELEMENT_ID, elementId);
         }
     }
 
     public static CircuitTopologyChange load(CompoundTag tag) {
-        String k = tag.getString(TAG_KIND);
-        if (KIND_INSERT.equals(k)) {
-            String ek = tag.getString(TAG_ELEMENT_KIND);
+        String k = tag.getString(ClientStrings.TAG_KIND);
+        if (ClientStrings.KIND_INSERT.equals(k)) {
+            String ek = tag.getString(ClientStrings.TOPOLOGY_TAG_ELEMENT_KIND);
             ElementKind elementKind = parseElementKind(ek);
-            CompoundTag data = TagUtil.requireCompoundTag(tag.get(TAG_DATA), TAG_DATA);
+            CompoundTag data = TagUtil.requireCompoundTag(tag.get(ClientStrings.TOPOLOGY_TAG_DATA), ClientStrings.TOPOLOGY_TAG_DATA);
             return insert(elementKind, data);
         }
-        if (KIND_REMOVE.equals(k)) {
-            UUID id = TagUtil.getUUID(tag, TAG_ELEMENT_ID);
+        if (ClientStrings.KIND_REMOVE.equals(k)) {
+            UUID id = TagUtil.getUUID(tag, ClientStrings.TAG_ELEMENT_ID);
             if (id == null) {
-                throw new IllegalArgumentException("Missing '" + TAG_ELEMENT_ID + "' for remove step");
+                throw new IllegalArgumentException("Missing '" + ClientStrings.TAG_ELEMENT_ID + "' for remove step");
             }
             return remove(id);
         }
@@ -104,20 +93,20 @@ public final class CircuitTopologyChange {
 
     private static String elementKindToString(ElementKind ek) {
         return switch (ek) {
-            case NODE -> ELEM_NODE;
-            case EDGE -> ELEM_EDGE;
-            case COMPONENT -> ELEM_COMPONENT;
+            case NODE -> ClientStrings.ELEM_NODE;
+            case EDGE -> ClientStrings.ELEM_EDGE;
+            case COMPONENT -> ClientStrings.ELEM_COMPONENT;
         };
     }
 
     private static ElementKind parseElementKind(String s) {
-        if (ELEM_NODE.equals(s)) {
+        if (ClientStrings.ELEM_NODE.equals(s)) {
             return ElementKind.NODE;
         }
-        if (ELEM_EDGE.equals(s)) {
+        if (ClientStrings.ELEM_EDGE.equals(s)) {
             return ElementKind.EDGE;
         }
-        if (ELEM_COMPONENT.equals(s)) {
+        if (ClientStrings.ELEM_COMPONENT.equals(s)) {
             return ElementKind.COMPONENT;
         }
         throw new IllegalArgumentException("Unknown element_kind: " + s);

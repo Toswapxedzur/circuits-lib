@@ -50,48 +50,6 @@ public final class PayloadRegistry {
     }
 
     /**
-     * Writes {@code payload} to a new root tag (includes {@link Payload#TAG_PAYLOAD_ID} and subtype-specific entries).
-     */
-    public static CompoundTag serialize(Payload payload) {
-        CompoundTag tag = new CompoundTag();
-        payload.save(tag);
-        return tag;
-    }
-
-    /**
-     * Decodes a root tag by looking up {@link Payload#TAG_PAYLOAD_ID} in the registry, then {@link Payload#load(CompoundTag)}.
-     */
-    public static Payload deserialize(CompoundTag tag) {
-        String id = peekPayloadId(tag);
-        if (id == null || id.isEmpty()) {
-            throw new IllegalArgumentException("Missing or empty " + Payload.TAG_PAYLOAD_ID);
-        }
-        PayloadType<?> payloadType = getType(id);
-        Payload payload = payloadType.create();
-        payload.load(tag);
-        return payload;
-    }
-
-    /**
-     * Same as {@link #deserialize(CompoundTag)} but narrows to {@code type}.
-     *
-     * @throws IllegalArgumentException if the decoded payload is not an instance of {@code type}
-     */
-    public static <T extends Payload> T deserialize(CompoundTag tag, Class<T> type) {
-        Payload p = deserialize(tag);
-        if (!type.isInstance(p)) {
-            throw new IllegalArgumentException(
-                    "Expected payload type " + type.getName() + " but got " + p.getClass().getName());
-        }
-        return type.cast(p);
-    }
-
-    /** Reads {@link Payload#TAG_PAYLOAD_ID} without instantiating a payload (for dispatch). */
-    public static String peekPayloadId(CompoundTag tag) {
-        return tag.getString(Payload.TAG_PAYLOAD_ID);
-    }
-
-    /**
      * Call after registration phase is complete to forbid further {@link #register} calls.
      */
     public static void freeze() {

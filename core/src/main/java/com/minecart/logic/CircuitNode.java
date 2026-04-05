@@ -1,8 +1,10 @@
 package com.minecart.logic;
 
+import com.minecart.misc.CoreStrings;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.math.DoubleVar;
 import com.minecart.math.LinearSystem;
-import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
@@ -112,10 +114,10 @@ public class CircuitNode extends CircuitElement {
     @Override
     public void save(CompoundTag tag) {
         super.save(tag);
-        tag.putBoolean("ground", isGrounded());
-        tag.putDouble("voltage", getVoltage().getValue());
+        tag.putBoolean(CoreStrings.NODE_GROUND, isGrounded());
+        tag.putDouble(CoreStrings.NODE_VOLTAGE, getVoltage().getValue());
         if (getComponent() != null) {
-            TagUtil.putUUID(tag, "component", getComponent().getId());
+            TagUtil.putUUID(tag, CoreStrings.NODE_COMPONENT, getComponent().getId());
         }
     }
 
@@ -126,7 +128,7 @@ public class CircuitNode extends CircuitElement {
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
-        setGround(tag.getBoolean("ground"));
-        getVoltage().setValue(tag.getDouble("voltage"));
+        setGround(tag.getBoolean(CoreStrings.NODE_GROUND));
+        getVoltage().setValue(tag.getDouble(CoreStrings.NODE_VOLTAGE));
     }
 }

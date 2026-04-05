@@ -1,7 +1,5 @@
 package com.minecart.math;
 
-import com.minecart.misc.MultiDoubleOperator;
-
 @Deprecated
 public class MultiOperator extends Operator{
     MultiDoubleOperator multiOperator;

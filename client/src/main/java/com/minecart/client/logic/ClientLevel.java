@@ -1,7 +1,8 @@
 package com.minecart.client.logic;
 
-import com.minecart.logic.Level;
-import com.minecart.logic.World;
+import com.minecart.client.event.events.ClientTickEvent;
+import com.minecart.foundation.Level;
+import com.minecart.foundation.World;
 
 import java.util.UUID;
 
@@ -10,6 +11,9 @@ import java.util.UUID;
  * Future: drive state from server snapshots and optional prediction; packet handling will attach here later.
  */
 public class ClientLevel extends Level {
+
+    protected final ClientTickEvent.Level preTick = new ClientTickEvent.Level(ClientTickEvent.Phase.PRE, this);
+    protected final ClientTickEvent.Level postTick = new ClientTickEvent.Level(ClientTickEvent.Phase.POST, this);
 
     /**
      * Creates a new client-side electrical network container.
@@ -25,7 +29,7 @@ public class ClientLevel extends Level {
     }
 
     /**
-     * Finds a {@link ClientWorld} by {@link com.minecart.logic.World#getId()}, or creates one with that id.
+     * Finds a {@link ClientWorld} by {@link World#getId()}, or creates one with that id.
      * When {@code worldId} is {@code null}, uses the sole existing world if there is exactly one, otherwise creates a new world.
      */
     public ClientWorld getOrCreateWorld(UUID worldId) {
@@ -52,10 +56,12 @@ public class ClientLevel extends Level {
      * Client frame step: visualization and hooks between server updates (not the authoritative simulation).
      */
     public void tick() {
+        post(preTick);
         for (World w : getWorlds()) {
             if (w instanceof ClientWorld cw) {
                 cw.tick();
             }
         }
+        post(postTick);
     }
 }

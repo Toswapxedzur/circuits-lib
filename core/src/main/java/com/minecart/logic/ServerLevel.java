@@ -1,6 +1,8 @@
 package com.minecart.logic;
 
 import com.minecart.event.events.ServerTickEvent;
+import com.minecart.foundation.Level;
+import com.minecart.foundation.World;
 
 import java.util.Queue;
 import java.util.UUID;

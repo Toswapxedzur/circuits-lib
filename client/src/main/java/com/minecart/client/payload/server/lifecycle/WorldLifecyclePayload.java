@@ -1,25 +1,24 @@
 package com.minecart.client.payload.server.lifecycle;
 
+import com.minecart.client.ClientStrings;
 import com.minecart.client.payload.Payload;
 import com.minecart.client.payload.PayloadRegistry;
 import com.minecart.client.payload.PayloadType;
+import com.minecart.foundation.World;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 
 import java.util.UUID;
 
 /**
- * Server → client: adding or removing a {@link com.minecart.logic.World} on the level. Application: {@link WorldLifecycleHandler}.
+ * Server → client: adding or removing a {@link World} on the level. Application: {@link WorldLifecycleHandler}.
  */
 public final class WorldLifecyclePayload implements Payload {
 
-    public static final String PAYLOAD_ID = "minecart.world_lifecycle_payload";
+    public static final String PAYLOAD_ID = ClientStrings.PAYLOAD_WORLD_LIFECYCLE;
 
     public static final PayloadType<WorldLifecyclePayload> TYPE =
             PayloadRegistry.register(PAYLOAD_ID, WorldLifecyclePayload::new);
-
-    private static final String TAG_WORLD_ID = "world_id";
-    private static final String TAG_KIND = "kind";
 
     public enum Kind {
         INSERT,
@@ -73,24 +72,27 @@ public final class WorldLifecyclePayload implements Payload {
 
     @Override
     public void save(CompoundTag tag) {
-        Payload.writeEnvelope(tag, this);
-        TagUtil.putUUID(tag, TAG_WORLD_ID, worldId);
+        Payload.super.save(tag);
+        TagUtil.putUUID(tag, ClientStrings.TAG_WORLD_ID, worldId);
         if (kind != null) {
-            tag.putString(TAG_KIND, kind == Kind.INSERT ? "insert" : "remove");
+            tag.putString(ClientStrings.TAG_KIND, kind == Kind.INSERT ? ClientStrings.KIND_INSERT : ClientStrings.KIND_REMOVE);
         }
     }
 
     @Override
     public void load(CompoundTag tag) {
-        Payload.verifyEnvelope(tag, getPayloadId());
-        worldId = TagUtil.getUUID(tag, TAG_WORLD_ID);
-        String k = tag.getString(TAG_KIND);
-        if ("insert".equalsIgnoreCase(k)) {
+        Payload.super.load(tag);
+        worldId = TagUtil.getUUID(tag, ClientStrings.TAG_WORLD_ID);
+        if (worldId == null) {
+            throw new IllegalArgumentException("Missing '" + ClientStrings.TAG_WORLD_ID + "'");
+        }
+        String k = tag.getString(ClientStrings.TAG_KIND);
+        if (ClientStrings.KIND_INSERT.equalsIgnoreCase(k)) {
             kind = Kind.INSERT;
-        } else if ("remove".equalsIgnoreCase(k)) {
+        } else if (ClientStrings.KIND_REMOVE.equalsIgnoreCase(k)) {
             kind = Kind.REMOVE;
         } else {
-            throw new IllegalArgumentException("Missing or invalid '" + TAG_KIND + "'");
+            throw new IllegalArgumentException("Missing or invalid '" + ClientStrings.TAG_KIND + "'");
         }
     }
 }
