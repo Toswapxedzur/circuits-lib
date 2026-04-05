@@ -11,6 +11,9 @@ import java.io.Serializable;
 public interface ElectricalVariate<O extends ElectricalInfo> {
     O get();
 
+    /**
+     * Should be treated as a static method
+     */
     O getDefault();
 
     boolean hasProperty(int index);

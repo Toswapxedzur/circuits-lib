@@ -1,18 +1,18 @@
 package com.minecart.client.network;
 
-import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitElement;
 import com.minecart.serialization.tag.CompoundTag;
 
 import java.util.Objects;
 import java.util.function.BiConsumer;
 
 /**
- * Pairs a sync writer and reader for a {@link CircuitComponent} type. Use {@link #combineChain} and {@link #stack}
+ * Pairs a sync writer and reader for a concrete {@link CircuitElement} type. Use {@link #combineChain} and {@link #stack}
  * to compose handlers without duplicating registration logic.
  *
- * @param <T> component type
+ * @param <T> element type (node, edge, component, …)
  */
-public final class SyncHandler<T extends CircuitComponent> {
+public final class SyncHandler<T extends CircuitElement> {
 
     private final BiConsumer<T, CompoundTag> writer;
     private final BiConsumer<T, CompoundTag> reader;
@@ -31,13 +31,13 @@ public final class SyncHandler<T extends CircuitComponent> {
     }
 
     /**
-     * Folds left: {@code steps[0]}, then {@code steps[1]}, … on the same component and tag. Use for writer or reader
+     * Folds left: {@code steps[0]}, then {@code steps[1]}, … on the same element and tag. Use for writer or reader
      * pipelines (same {@link BiConsumer} shape).
      *
      * @throws IllegalArgumentException if {@code steps} is empty
      */
     @SafeVarargs
-    public static <T extends CircuitComponent> BiConsumer<T, CompoundTag> combineChain(
+    public static <T extends CircuitElement> BiConsumer<T, CompoundTag> combineChain(
             BiConsumer<T, CompoundTag>... steps) {
         Objects.requireNonNull(steps, "steps");
         if (steps.length == 0) {
@@ -53,7 +53,7 @@ public final class SyncHandler<T extends CircuitComponent> {
     /**
      * Runs {@code overlay} writers/readers after {@code base} (same tag; overlay can add or overwrite keys).
      */
-    public static <T extends CircuitComponent> SyncHandler<T> stack(
+    public static <T extends CircuitElement> SyncHandler<T> stack(
             SyncHandler<T> base,
             BiConsumer<T, CompoundTag> moreWriter,
             BiConsumer<T, CompoundTag> moreReader) {
@@ -68,7 +68,7 @@ public final class SyncHandler<T extends CircuitComponent> {
     /**
      * Runs {@code base} first, then {@code overlay}, for both write and read.
      */
-    public static <T extends CircuitComponent> SyncHandler<T> stack(SyncHandler<T> base, SyncHandler<T> overlay) {
+    public static <T extends CircuitElement> SyncHandler<T> stack(SyncHandler<T> base, SyncHandler<T> overlay) {
         Objects.requireNonNull(base, "base");
         Objects.requireNonNull(overlay, "overlay");
         return new SyncHandler<>(
@@ -79,7 +79,7 @@ public final class SyncHandler<T extends CircuitComponent> {
     /**
      * Builds a handler from two bi-consumers (same as {@code new SyncHandler<>(writer, reader)}).
      */
-    public static <T extends CircuitComponent> SyncHandler<T> of(
+    public static <T extends CircuitElement> SyncHandler<T> of(
             BiConsumer<T, CompoundTag> writer, BiConsumer<T, CompoundTag> reader) {
         return new SyncHandler<>(writer, reader);
     }

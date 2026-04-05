@@ -52,6 +52,7 @@ public class Main {
     private static void testCircuitLongResistorChain() throws IOException {
         System.out.println("--- Long resistor chain (5 nodes, 4 resistors) ---\n");
         ServerLevel level = new ServerLevel();
+        level.setInitialized();
         ServerWorld w = level.createWorld();
 
         CircuitNode[] nodes = new CircuitNode[5];

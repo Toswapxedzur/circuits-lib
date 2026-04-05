@@ -63,6 +63,7 @@ public class ServerLevel extends Level {
      * The single global tick method.
      */
     public void tick() {
+        init();
         post(preTick);
         while (!actionQueue.isEmpty()) {
             Runnable action = actionQueue.poll();

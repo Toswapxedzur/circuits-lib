@@ -16,7 +16,7 @@ import java.util.Comparator;
 import java.util.Set;
 import java.util.UUID;
 
-public abstract class CircuitElement implements Comparable<CircuitElement>, TagSerializable {
+public class CircuitElement implements Comparable<CircuitElement>, TagSerializable {
     public static final Comparator<? extends CircuitElement> comparator = (f, s) -> f.id.compareTo(s.id);
 
     protected UUID id;
@@ -57,6 +57,7 @@ public abstract class CircuitElement implements Comparable<CircuitElement>, TagS
 
     @Override
     public void save(CompoundTag tag) {
+        tag.putString(CoreStrings.ELEMENT_TYPE, typeIdForSave());
         TagUtil.putUUID(tag, CoreStrings.ELEMENT_ID, getId());
     }
 
@@ -107,6 +108,17 @@ public abstract class CircuitElement implements Comparable<CircuitElement>, TagS
 
     public void setWorld(World world) {
         this.world = world;
+    }
+
+    /**
+     * Notifies {@link Level} element-change listeners (registered during {@link Level#init()}). No-op if no world or
+     * before {@link Level#init()} has run.
+     */
+    protected void notifyElementChanged() {
+        World w = getWorld();
+        if (w != null) {
+            w.getLevel().notifyElementChanged(this);
+        }
     }
 
     public void tick() {

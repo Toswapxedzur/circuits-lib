@@ -1,6 +1,6 @@
 package com.minecart.client.logic;
 
-import com.minecart.client.event.events.ClientTickEvent;
+import com.minecart.client.events.ClientTickEvent;
 import com.minecart.foundation.Level;
 import com.minecart.foundation.World;
 
@@ -56,6 +56,7 @@ public class ClientLevel extends Level {
      * Client frame step: visualization and hooks between server updates (not the authoritative simulation).
      */
     public void tick() {
+        init();
         post(preTick);
         for (World w : getWorlds()) {
             if (w instanceof ClientWorld cw) {

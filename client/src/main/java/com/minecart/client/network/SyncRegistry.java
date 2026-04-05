@@ -1,6 +1,6 @@
 package com.minecart.client.network;
 
-import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitElement;
 import com.minecart.serialization.tag.CompoundTag;
 
 import java.util.HashMap;
@@ -9,13 +9,13 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 /**
- * Optional custom sync readers/writers for {@link CircuitComponent} subclasses when mirroring state to the client.
- * When no handler is registered for a component's class, {@link CircuitComponent#save(CompoundTag)} /
- * {@link CircuitComponent#load(CompoundTag)} are used.
+ * Optional custom sync readers/writers for concrete {@link CircuitElement} subclasses when mirroring state to the client.
+ * When no handler is registered for an element's runtime class, {@link CircuitElement#save(CompoundTag)} /
+ * {@link CircuitElement#load(CompoundTag)} are used.
  */
 public final class SyncRegistry {
 
-    private static final Map<Class<? extends CircuitComponent>, SyncHandler<?>> REGISTRY = new HashMap<>();
+    private static final Map<Class<? extends CircuitElement>, SyncHandler<?>> REGISTRY = new HashMap<>();
 
     private static volatile boolean handlersLoaded;
 
@@ -38,56 +38,56 @@ public final class SyncRegistry {
     }
 
     /**
-     * Registers custom sync logic for a specific component class (exact {@link Class} match on
-     * {@link Object#getClass()} during read/write).
+     * Registers custom sync logic for a specific element class (exact {@link Class} match on {@link Object#getClass()}
+     * during read/write).
      */
-    public static <T extends CircuitComponent> void register(
-            Class<T> componentClass,
+    public static <T extends CircuitElement> void register(
+            Class<T> elementClass,
             BiConsumer<T, CompoundTag> customWriter,
             BiConsumer<T, CompoundTag> customReader) {
-        register(componentClass, new SyncHandler<>(customWriter, customReader));
+        register(elementClass, new SyncHandler<>(customWriter, customReader));
     }
 
     /**
-     * Registers a composed {@link SyncHandler} for a component class.
+     * Registers a composed {@link SyncHandler} for an element class.
      */
-    public static <T extends CircuitComponent> void register(Class<T> componentClass, SyncHandler<T> handler) {
-        Objects.requireNonNull(componentClass, "componentClass");
+    public static <T extends CircuitElement> void register(Class<T> elementClass, SyncHandler<T> handler) {
+        Objects.requireNonNull(elementClass, "elementClass");
         Objects.requireNonNull(handler, "handler");
-        REGISTRY.put(componentClass, handler);
+        REGISTRY.put(elementClass, handler);
     }
 
     /**
-     * Writes component data to {@code tag} for client sync (network-friendly subset or full save).
+     * Writes element data to {@code tag} for client sync (network-friendly subset or full save).
      */
     @SuppressWarnings("unchecked")
-    public static void writeSyncData(CircuitComponent component, CompoundTag tag) {
+    public static void writeSyncData(CircuitElement element, CompoundTag tag) {
         ensureHandlersRegistered();
-        Objects.requireNonNull(component, "component");
+        Objects.requireNonNull(element, "element");
         Objects.requireNonNull(tag, "tag");
-        SyncHandler<CircuitComponent> handler =
-                (SyncHandler<CircuitComponent>) REGISTRY.get(component.getClass());
+        SyncHandler<CircuitElement> handler =
+                (SyncHandler<CircuitElement>) REGISTRY.get(element.getClass());
         if (handler != null) {
-            handler.writer().accept(component, tag);
+            handler.writer().accept(element, tag);
         } else {
-            component.save(tag);
+            element.save(tag);
         }
     }
 
     /**
-     * Reads synced data from {@code tag} into {@code component}.
+     * Reads synced data from {@code tag} into {@code element}.
      */
     @SuppressWarnings("unchecked")
-    public static void readSyncData(CircuitComponent component, CompoundTag tag) {
+    public static void readSyncData(CircuitElement element, CompoundTag tag) {
         ensureHandlersRegistered();
-        Objects.requireNonNull(component, "component");
+        Objects.requireNonNull(element, "element");
         Objects.requireNonNull(tag, "tag");
-        SyncHandler<CircuitComponent> handler =
-                (SyncHandler<CircuitComponent>) REGISTRY.get(component.getClass());
+        SyncHandler<CircuitElement> handler =
+                (SyncHandler<CircuitElement>) REGISTRY.get(element.getClass());
         if (handler != null) {
-            handler.reader().accept(component, tag);
+            handler.reader().accept(element, tag);
         } else {
-            component.load(tag);
+            element.load(tag);
         }
     }
 }

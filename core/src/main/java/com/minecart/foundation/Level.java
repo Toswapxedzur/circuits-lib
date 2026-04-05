@@ -2,17 +2,19 @@ package com.minecart.foundation;
 
 import com.minecart.event.EventBus;
 import com.minecart.event.events.Event;
-import com.minecart.logic.ServerLevel;
+import com.minecart.event.events.RegisterElementChangeListenerEvent;
+import com.minecart.logic.CircuitElement;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
  * Holds level-wide state: tick configuration, event bus, and the {@link World}s attached to this level.
- * {@link ServerLevel} adds the global tick loop and deferred actions.
+ * {@link com.minecart.logic.ServerLevel} adds the global tick loop and deferred actions.
  */
 public class Level {
 
@@ -21,6 +23,13 @@ public class Level {
     private final EventBus eventBus = new EventBus();
 
     private final Set<World> worlds = new LinkedHashSet<>();
+
+    private boolean initialized;
+    private Consumer<CircuitElement> elementChangeNotifier = el -> {};
+
+    public Level(){
+        initialized = false;
+    }
 
     public double getTickRate() {
         return tickRate;
@@ -44,6 +53,39 @@ public class Level {
 
     public boolean post(Event event) {
         return eventBus.post(event);
+    }
+
+    /**
+     * Runs once before the first tick: posts {@link RegisterElementChangeListenerEvent} so handlers can
+     * {@link RegisterElementChangeListenerEvent#register register} {@link Consumer}s, then installs the combined notifier
+     * for {@link #notifyElementChanged}. Idempotent after the first run.
+     */
+    public void init() {
+        if (initialized) {
+            throw new UnsupportedOperationException("Registration already frozen");
+        }
+        RegisterElementChangeListenerEvent event = new RegisterElementChangeListenerEvent(this);
+        post(event);
+        elementChangeNotifier = event.getNotifier();
+    }
+
+    /**
+     * Must be called before the first tick ran
+     */
+    public void setInitialized() {
+        this.initialized = true;
+    }
+
+    public boolean isInitialized() {
+        return initialized;
+    }
+
+    /**
+     * Notifies all combined element-change listeners (typically from {@link CircuitElement} when replicated state changes).
+     */
+    public void notifyElementChanged(CircuitElement element) {
+        Objects.requireNonNull(element, "element");
+        elementChangeNotifier.accept(element);
     }
 
     /** Worlds registered on this level (e.g. separate electrical networks). */

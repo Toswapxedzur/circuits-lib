@@ -160,4 +160,62 @@ public class Informations {
             this.charge = charge;
         }
     }
+
+    /**
+     * Idealized diode as a variable resistor: low forward resistance when current flows start→end, high reverse
+     * resistance when current opposes that direction. {@link #effectiveResistance} is updated each tick from the
+     * solved current; forward/reverse are the parameters.
+     */
+    public static class DiodeInfo extends ElectricalInfo {
+        private static final String TAG_FORWARD = "forward_resistance";
+        private static final String TAG_REVERSE = "reverse_resistance";
+
+        protected double forwardResistance;
+        protected double reverseResistance;
+        /** Last applied resistance for the linearized relation (updated after each solve). */
+        protected double effectiveResistance;
+
+        public DiodeInfo(double forwardResistance, double reverseResistance) {
+            setForwardResistance(forwardResistance);
+            setReverseResistance(reverseResistance);
+            this.effectiveResistance = this.forwardResistance;
+        }
+
+        @Override
+        public void save(CompoundTag tag) {
+            tag.putDouble(TAG_FORWARD, forwardResistance);
+            tag.putDouble(TAG_REVERSE, reverseResistance);
+        }
+
+        @Override
+        public void load(CompoundTag tag) {
+            setForwardResistance(tag.getDouble(TAG_FORWARD));
+            setReverseResistance(tag.getDouble(TAG_REVERSE));
+            effectiveResistance = forwardResistance;
+        }
+
+        public double getForwardResistance() {
+            return forwardResistance;
+        }
+
+        public void setForwardResistance(double forwardResistance) {
+            this.forwardResistance = Math.max(forwardResistance, DELTA);
+        }
+
+        public double getReverseResistance() {
+            return reverseResistance;
+        }
+
+        public void setReverseResistance(double reverseResistance) {
+            this.reverseResistance = Math.max(reverseResistance, DELTA);
+        }
+
+        public double getEffectiveResistance() {
+            return effectiveResistance;
+        }
+
+        public void setEffectiveResistance(double effectiveResistance) {
+            this.effectiveResistance = Math.max(effectiveResistance, DELTA);
+        }
+    }
 }

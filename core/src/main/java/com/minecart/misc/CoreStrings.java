@@ -28,4 +28,6 @@ public final class CoreStrings {
     public static final String EDGE_END = "end";
     public static final String EDGE_CURRENT = "current";
     public static final String EDGE_OVERPOWERED = "overpowered";
+    /** Subtag for {@link com.minecart.elements.edge.Diode} variant parameters. */
+    public static final String EDGE_DIODE_INFO = "diode_info";
 }

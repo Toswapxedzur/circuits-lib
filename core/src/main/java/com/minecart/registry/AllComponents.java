@@ -1,10 +1,10 @@
 package com.minecart.registry;
 
-import com.minecart.action.ActionTypes;
-import com.minecart.component.Battery;
-import com.minecart.component.Capacitor;
-import com.minecart.component.Junction;
-import com.minecart.component.Resistor;
+import com.minecart.elements.edge.Battery;
+import com.minecart.elements.edge.Capacitor;
+import com.minecart.elements.edge.Diode;
+import com.minecart.elements.node.Junction;
+import com.minecart.elements.edge.Resistor;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitNode;
 
@@ -25,6 +25,8 @@ public class AllComponents {
             CircuitElementRegistry.register("battery", world -> new Battery(world));
     public static final CircuitElementType<Capacitor> CAPACITOR =
             CircuitElementRegistry.register("capacitor", world -> new Capacitor(world));
+    public static final CircuitElementType<Diode> DIODE =
+            CircuitElementRegistry.register("diode", world -> new Diode(world));
 
     static {
     }

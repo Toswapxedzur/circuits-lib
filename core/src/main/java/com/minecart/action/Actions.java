@@ -119,4 +119,18 @@ public class Actions {
             return ActionTypes.SET_CAPACITANCE;
         }
     }
+
+    public static class SetReverseResistanceAction extends SetOneDoubleAction {
+        public SetReverseResistanceAction(double value) {
+            super(value);
+        }
+
+        public SetReverseResistanceAction() {
+        }
+
+        @Override
+        public ActionType<SetReverseResistanceAction> getActionType() {
+            return ActionTypes.SET_REVERSE_RESISTANCE;
+        }
+    }
 }

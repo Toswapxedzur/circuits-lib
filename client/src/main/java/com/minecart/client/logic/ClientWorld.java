@@ -1,10 +1,11 @@
 package com.minecart.client.logic;
 
-import com.minecart.client.event.events.ClientTickEvent;
+import com.minecart.client.events.ClientTickEvent;
 import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
 import com.minecart.foundation.World;
+import com.minecart.registry.CircuitElementType;
 
 import java.util.UUID;
 
@@ -55,6 +56,29 @@ public class ClientWorld extends World {
     }
 
     /**
+     * Connects two nodes with an edge, like {@link com.minecart.logic.ServerWorld#connect} but with no simulation checks
+     * and no {@link com.minecart.event.events.ElementEvent}s — for client mirror / replication only.
+     */
+    public <T extends CircuitEdge> T connect(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2) {
+        if (node1.getWorld() != this || node2.getWorld() != this) {
+            throw new IllegalArgumentException("Nodes must belong to this ClientWorld");
+        }
+        T edge = type.create(this);
+        edge.setWorld(this);
+        edge.connect(node1, node2, false);
+        node1.connectEdge(edge, false);
+        node2.connectEdge(edge, false);
+        Circuit c1 = node1.getCircuit();
+        Circuit c2 = node2.getCircuit();
+        if (c1 != c2) {
+            c2.mergeInto(c1);
+            removeCircuit(c2);
+        }
+        c1.addEdge(edge);
+        return edge;
+    }
+
+    /**
      * Disconnects an edge and splits {@link Circuit}s; no {@link com.minecart.event.events.ElementEvent}s (replication apply).
      */
     public boolean disconnectWithoutRemoveEvent(CircuitEdge edge) {
@@ -84,10 +108,7 @@ public class ClientWorld extends World {
             throw new IllegalArgumentException("Node does not belong to this ClientWorld");
         }
         ClientCircuit circuit = (ClientCircuit) node.getCircuit();
-        if (!circuit.destroy(node, true)) {
-            return false;
-        }
-        circuit.destroy(node, false);
+        circuit.destroy(node);
         if (circuit.nodes().isEmpty()) {
             this.circuits.remove(circuit);
         }

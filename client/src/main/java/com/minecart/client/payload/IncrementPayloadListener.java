@@ -1,7 +1,7 @@
 package com.minecart.client.payload;
 
 /**
- * Send-side hook for <strong>continuous, incremental</strong> streams: repeated small updates (e.g. batched topology
+ * Send-side hook for <strong>continuous, incremental</strong> streams: repeated small updates (e.g. batched circuit element
  * deltas flushed each tick). Pair with {@link PayloadHandler} on the receiver.
  * <p>
  * Not for one-shot or snapshot-style payloads (full state sync, single actions, lifecycle handshakes); those are

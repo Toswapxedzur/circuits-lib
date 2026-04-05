@@ -1,6 +1,6 @@
 package com.minecart.client.payload;
 
-import com.minecart.client.ClientStrings;
+import com.minecart.client.misc.ClientStrings;
 import com.minecart.client.codec.TagBinaryEncoder;
 import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.tag.CompoundTag;

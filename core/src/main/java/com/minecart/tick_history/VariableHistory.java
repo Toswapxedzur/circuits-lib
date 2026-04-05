@@ -2,6 +2,9 @@ package com.minecart.tick_history;
 
 import com.minecart.math.DoubleVar;
 
+/**
+ * Not needed for accessing information on the current tick
+ */
 public class VariableHistory {
 
     private final DoubleVar target;
