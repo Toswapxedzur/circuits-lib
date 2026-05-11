@@ -8,11 +8,18 @@ import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
 import com.minecart.registry.CircuitElementRegistry;
 import com.minecart.registry.CircuitElementType;
+import com.minecart.registry.ElementInfoRegistry;
+import com.minecart.registry.ElementInfoType;
 import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.serialization.tag.Tag;
+import com.minecart.variant.ElementInfo;
 
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -26,6 +33,13 @@ public sealed class CircuitElement implements Comparable<CircuitElement>, TagSer
 
     /** Set when created via {@link com.minecart.registry.CircuitElementType#create}; used for save/load. */
     protected String registryTypeId;
+
+    /**
+     * Per-element metadata bag attached via {@link com.minecart.event.events.ElementInfoInjectEvent}.
+     * Insertion-ordered so save output is stable. At most one entry per {@link ElementInfoType} key
+     * (data-component semantics).
+     */
+    protected final Map<ElementInfoType<?>, ElementInfo> infos = new LinkedHashMap<>();
 
     public UUID getId() {
         return id;
@@ -60,11 +74,63 @@ public sealed class CircuitElement implements Comparable<CircuitElement>, TagSer
     public void save(CompoundTag tag) {
         tag.putString(CoreStrings.ELEMENT_TYPE, typeIdForSave());
         TagUtil.putUUID(tag, CoreStrings.ELEMENT_ID, getId());
+        saveInfos(tag);
     }
 
     @Override
     public void load(CompoundTag tag) {
         setId(TagUtil.getUUID(tag, CoreStrings.ELEMENT_ID));
+        loadInfos(tag);
+    }
+
+    /**
+     * Writes a sub-{@link CompoundTag} under {@link CoreStrings#INFOS} containing every attached
+     * {@link ElementInfo} whose {@link ElementInfo#shouldSerialize() shouldSerialize()} returns {@code true},
+     * keyed by its {@link ElementInfoType#getTypeId() type id}. Skips writing the sub-tag entirely if no
+     * info is serializable.
+     */
+    protected void saveInfos(CompoundTag tag) {
+        if (infos.isEmpty()) {
+            return;
+        }
+        CompoundTag infosTag = new CompoundTag();
+        for (Map.Entry<ElementInfoType<?>, ElementInfo> e : infos.entrySet()) {
+            ElementInfo info = e.getValue();
+            if (info == null || !info.shouldSerialize()) {
+                continue;
+            }
+            CompoundTag infoTag = new CompoundTag();
+            info.save(infoTag);
+            infosTag.put(e.getKey().getTypeId(), infoTag);
+        }
+        if (!infosTag.keySet().isEmpty()) {
+            tag.put(CoreStrings.INFOS, infosTag);
+        }
+    }
+
+    /**
+     * Reads infos previously written by {@link #saveInfos}. Only overwrites infos whose type id is present
+     * in the tag, so any defaults injected via {@link com.minecart.event.events.ElementInfoInjectEvent}
+     * before load remain intact for non-persisted infos. Unknown type ids (contributing module not loaded)
+     * are silently skipped.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    protected void loadInfos(CompoundTag tag) {
+        Tag infosTag = tag.get(CoreStrings.INFOS);
+        if (!(infosTag instanceof CompoundTag infosCompound)) {
+            return;
+        }
+        for (String typeId : infosCompound.keySet()) {
+            ElementInfoType type = ElementInfoRegistry.getType(typeId);
+            if (type == null) {
+                continue;
+            }
+            ElementInfo info = (ElementInfo) type.create();
+            if (infosCompound.get(typeId) instanceof CompoundTag infoTag) {
+                info.load(infoTag);
+            }
+            infos.put(type, info);
+        }
     }
 
     /**
@@ -93,6 +159,29 @@ public sealed class CircuitElement implements Comparable<CircuitElement>, TagSer
         CircuitElement el = et.create(world, true);
         el.setId(elementId);
         return el;
+    }
+
+    /** @return the info attached under {@code type}, or {@code null} if none has been injected. */
+    @SuppressWarnings("unchecked")
+    public <I extends ElementInfo> I getInfo(ElementInfoType<I> type) {
+        return (I) infos.get(type);
+    }
+
+    /**
+     * Attaches {@code info} under {@code type}, replacing any existing entry. Pass {@code null} to remove.
+     * Typically called via {@link com.minecart.event.events.ElementInfoInjectEvent#inject}.
+     */
+    public <I extends ElementInfo> void setInfo(ElementInfoType<I> type, I info) {
+        if (info == null) {
+            infos.remove(type);
+        } else {
+            infos.put(type, info);
+        }
+    }
+
+    /** Read-only view of all attached infos, in insertion order. */
+    public Map<ElementInfoType<?>, ElementInfo> getInfos() {
+        return Collections.unmodifiableMap(infos);
     }
 
     public Circuit getCircuit() {

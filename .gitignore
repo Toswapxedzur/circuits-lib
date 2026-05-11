@@ -41,3 +41,6 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Display module runtime data (worlds, server list) ###
+data/

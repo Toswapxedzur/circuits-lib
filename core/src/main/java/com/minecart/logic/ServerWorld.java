@@ -1,6 +1,7 @@
 package com.minecart.logic;
 
 import com.minecart.event.events.ElementEvent;
+import com.minecart.event.events.ElementInfoInjectEvent;
 import com.minecart.event.events.ServerTickEvent;
 import com.minecart.event.events.ShortCircuitEvent;
 import com.minecart.foundation.Circuit;
@@ -80,6 +81,7 @@ public class ServerWorld extends World {
         node.setWorld(this);
         ServerCircuit circuit = createCircuit();
         node.setCircuit(circuit);
+        post(new ElementInfoInjectEvent(this, node));
         if (post(new ElementEvent.ElementInsertEvent(this, node))) {
             circuits.remove(circuit);
             throw new IllegalStateException("Circuit element insert cancelled");
@@ -117,6 +119,7 @@ public class ServerWorld extends World {
         T comp = type.create(this, false);
         circuit.addComponent(comp);
         comp.set(propertyInfo);
+        post(new ElementInfoInjectEvent(this, comp));
         circuit.markDirty();
         return comp;
     }
@@ -155,6 +158,7 @@ public class ServerWorld extends World {
         }
         node1.connectEdge(edge, false);
         node2.connectEdge(edge, false);
+        post(new ElementInfoInjectEvent(this, edge));
         if (post(new ElementEvent.ElementInsertEvent(this, edge))) {
             node1.disconnect(edge, false);
             node2.disconnect(edge, false);

@@ -1,25 +1,47 @@
 package com.minecart.display;
 
-import com.badlogic.gdx.ApplicationAdapter;
-import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Game;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.minecart.display.screen.MainMenuScreen;
+import com.minecart.display.server.ServerManager;
+import com.minecart.display.ui.Skins;
+import com.minecart.display.world.WorldManager;
 
 /**
- * Empty LibGDX application that just opens a window and clears it each frame.
- * Real rendering of {@link com.minecart.client.logic.ClientWorld} state will land in later iterations.
+ * Top-level LibGDX entry point. Owns the shared {@link Skin} and the singleplayer/multiplayer managers,
+ * then hands off to {@link com.badlogic.gdx.Screen}s for actual UI. Each screen reads everything it needs
+ * via getters on this app.
  */
-public class DisplayApp extends ApplicationAdapter {
+public class DisplayApp extends Game {
+
+    private Skin skin;
+    private WorldManager worlds;
+    private ServerManager servers;
 
     @Override
     public void create() {
+        skin = Skins.build();
+        worlds = new WorldManager();
+        servers = new ServerManager();
+        setScreen(new MainMenuScreen(this));
     }
 
-    @Override
-    public void render() {
-        Gdx.gl.glClearColor(0.08f, 0.09f, 0.11f, 1f);
-        Gdx.gl.glClear(com.badlogic.gdx.graphics.GL20.GL_COLOR_BUFFER_BIT);
+    public Skin getSkin() {
+        return skin;
+    }
+
+    public WorldManager getWorlds() {
+        return worlds;
+    }
+
+    public ServerManager getServers() {
+        return servers;
     }
 
     @Override
     public void dispose() {
+        super.dispose();
+        if (servers != null) servers.shutdown();
+        if (skin != null) skin.dispose();
     }
 }

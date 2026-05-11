@@ -19,6 +19,11 @@ public final class CoreStrings {
 
     public static final String ELEMENT_ID = "id";
     public static final String ELEMENT_TYPE = "type";
+    /**
+     * Subtag holding all serializable {@link com.minecart.variant.ElementInfo}s on a
+     * {@link com.minecart.logic.CircuitElement}, keyed by {@link com.minecart.registry.ElementInfoType#getTypeId()}.
+     */
+    public static final String INFOS = "infos";
 
     public static final String NODE_GROUND = "ground";
     public static final String NODE_VOLTAGE = "voltage";

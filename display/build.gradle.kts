@@ -12,6 +12,7 @@ application {
 val gdxVersion = "1.14.0"
 
 dependencies {
+    implementation(project(":core"))
     implementation(project(":client"))
 
     // Source: https://mvnrepository.com/artifact/com.badlogicgames.gdx/gdx

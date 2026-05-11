@@ -1,5 +1,6 @@
 package com.minecart.foundation;
 
+import com.minecart.event.events.ElementInfoInjectEvent;
 import com.minecart.misc.CoreStrings;
 import com.minecart.logic.*;
 import com.minecart.serialization.TagUtil;
@@ -295,6 +296,7 @@ public class Circuit {
                     "Expected node in nodes[] list, got: " + nc.getString(CoreStrings.ELEMENT_TYPE));
         }
         addNode(node);
+        world.post(new ElementInfoInjectEvent(world, node));
         node.load(nc);
     }
 
@@ -304,6 +306,7 @@ public class Circuit {
             throw new IllegalArgumentException(
                     "Expected edge in edges[] list, got: " + ec.getString(CoreStrings.ELEMENT_TYPE));
         }
+        world.post(new ElementInfoInjectEvent(world, edge));
         edge.load(ec, this);
         addEdge(edge);
     }
@@ -315,6 +318,7 @@ public class Circuit {
                     "Expected component in components[] list, got: " + cc.getString(CoreStrings.ELEMENT_TYPE));
         }
         addComponent(comp);
+        world.post(new ElementInfoInjectEvent(world, comp));
         comp.load(cc);
     }
 
