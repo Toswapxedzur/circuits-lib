@@ -171,6 +171,9 @@ public class ServerCircuit extends Circuit {
         for (CircuitEdge edge : edges) {
             edge.collectRule(provider);
         }
+        for (CircuitComponent comp : components()) {
+            comp.collectRule(provider);
+        }
     }
 
     public void collectVariable(Set<DoubleVar> collector) {

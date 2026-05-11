@@ -63,7 +63,7 @@ public class ClientWorld extends World {
         if (node1.getWorld() != this || node2.getWorld() != this) {
             throw new IllegalArgumentException("Nodes must belong to this ClientWorld");
         }
-        T edge = type.create(this);
+        T edge = type.create(this, false);
         edge.setWorld(this);
         edge.connect(node1, node2, false);
         node1.connectEdge(edge, false);

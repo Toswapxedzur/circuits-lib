@@ -11,7 +11,10 @@ import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
-import com.minecart.variant.type.Informations.BJTInfo;
+import com.minecart.variant.ElectricalVariate;
+import com.minecart.variant.Informations.BJTInfo;
+
+import java.util.Objects;
 
 /**
  * Bipolar junction transistor as a Y-shaped internal graph: {@code center} connects to {@code base} (ideal
@@ -22,7 +25,7 @@ import com.minecart.variant.type.Informations.BJTInfo;
  * currents. Call {@link #generate()} after {@link Circuit#addComponent(CircuitComponent)} when creating a new
  * instance (not needed after {@link #load(CompoundTag)} from a saved circuit).
  */
-public class BJTransistor extends CircuitComponent {
+public class BJTransistor extends CircuitComponent implements ElectricalVariate<BJTInfo> {
 
     protected BJTInfo info;
 
@@ -42,6 +45,42 @@ public class BJTransistor extends CircuitComponent {
 
     public BJTInfo getInfo() {
         return info;
+    }
+
+    @Override
+    public BJTInfo get() {
+        return info;
+    }
+
+    @Override
+    public BJTInfo getDefault() {
+        return new BJTInfo(100.0);
+    }
+
+    @Override
+    public boolean hasProperty(int index) {
+        return index == 0;
+    }
+
+    @Override
+    public Object getProperty(int index) {
+        return index == 0 ? info.getBeta() : null;
+    }
+
+    @Override
+    public void set(BJTInfo property) {
+        this.info = Objects.requireNonNull(property, "property");
+    }
+
+    @Override
+    public void set(int index, Object property) {
+        if (index != 0) {
+            throw new IllegalArgumentException("Unknown property index: " + index);
+        }
+        if (!(property instanceof Number n)) {
+            throw new IllegalArgumentException("Expected Number for beta, got " + property);
+        }
+        info.setBeta(n.doubleValue());
     }
 
     /**

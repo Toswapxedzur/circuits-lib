@@ -6,8 +6,10 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.Informations.BatteryInfo;
+import com.minecart.variant.Informations.BatteryInfo;
 import com.minecart.math.LinearSystem.RelationProvider;
+
+import java.util.Objects;
 
 /**
  * A non-fully-ideal battery, use extreme small internal resistance for near ideal performance
@@ -25,7 +27,7 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
     public void collectRule(RelationProvider equations) {
         super.collectRule(equations);
 
-        if (getStart() == null || getEnd() == null || info == null) return;
+        if (!isConnected() || info == null) return;
 
         equations.stampCoefficient(getStart().getVoltage(), 1.0);
         equations.stampCoefficient(getEnd().getVoltage(), -1.0);
@@ -63,6 +65,26 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
             };
         }
         return null;
+    }
+
+    @Override
+    public void set(BatteryInfo property) {
+        this.info = Objects.requireNonNull(property, "property");
+    }
+
+    @Override
+    public void set(int index, Object property) {
+        if (index < 0 || index > 1) {
+            throw new IllegalArgumentException("Unknown property index: " + index);
+        }
+        if (!(property instanceof Number n)) {
+            throw new IllegalArgumentException("Expected Number, got " + property);
+        }
+        if (index == 0) {
+            info.setVoltage(n.doubleValue());
+        } else {
+            info.setResistance(n.doubleValue());
+        }
     }
 
     protected void handleResistance(Actions.SetResistanceAction action) {

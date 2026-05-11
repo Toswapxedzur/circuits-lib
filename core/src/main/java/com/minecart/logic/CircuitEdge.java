@@ -12,7 +12,7 @@ import com.minecart.serialization.tag.CompoundTag;
 import java.util.Set;
 import java.util.UUID;
 
-public class CircuitEdge extends CircuitElement {
+public non-sealed class CircuitEdge extends CircuitElement {
     public static final double MAX_CURRENT = 1e15;
 
     //positive: from first to second

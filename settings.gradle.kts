@@ -1,3 +1,3 @@
 rootProject.name = "CircuitsLib"
 
-include("core", "client")
+include("core", "client", "display")

@@ -10,7 +10,7 @@ import com.minecart.serialization.tag.CompoundTag;
 
 import java.util.*;
 
-public class CircuitNode extends CircuitElement {
+public non-sealed class CircuitNode extends CircuitElement {
     protected DoubleVar voltage;
     protected Set<CircuitEdge> connection;
     protected CircuitComponent component;

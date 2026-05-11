@@ -6,8 +6,10 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.Informations.ResistorInfo;
+import com.minecart.variant.Informations.ResistorInfo;
 import com.minecart.math.LinearSystem.RelationProvider;
+
+import java.util.Objects;
 
 /**
  * An Ohmic resistor
@@ -63,6 +65,22 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
             return info.getResistance();
         }
         return null;
+    }
+
+    @Override
+    public void set(ResistorInfo property) {
+        this.info = Objects.requireNonNull(property, "property");
+    }
+
+    @Override
+    public void set(int index, Object property) {
+        if (index != 0) {
+            throw new IllegalArgumentException("Unknown property index: " + index);
+        }
+        if (!(property instanceof Number n)) {
+            throw new IllegalArgumentException("Expected Number for resistance, got " + property);
+        }
+        info.setResistance(n.doubleValue());
     }
 
     protected void handleResistance(Actions.SetResistanceAction action) {

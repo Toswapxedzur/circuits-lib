@@ -1,6 +1,9 @@
 package com.minecart.logic;
 
+import com.minecart.math.LinearSystem;
 import com.minecart.misc.CoreStrings;
+import com.minecart.variant.ElectricalVariate;
+import com.minecart.variant.ElectricalInfo;
 import com.minecart.event.events.ElementEvent;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
@@ -18,7 +21,7 @@ import java.util.UUID;
 /**
  * A group of nodes and edges constitute to a circuit component, which could provide extra relations
  */
-public class CircuitComponent extends CircuitElement {
+public non-sealed class CircuitComponent extends CircuitElement {
     protected Set<CircuitNode> nodes;
     protected Set<CircuitEdge> edges;
 
@@ -28,33 +31,82 @@ public class CircuitComponent extends CircuitElement {
         edges = new LinkedHashSet<>();
     }
 
+    @Override
+    public void setCircuit(Circuit circuit) {
+        super.setCircuit(circuit);
+        if (circuit != null && circuit.getWorld() != null) {
+            setWorld(circuit.getWorld());
+        }
+    }
+
+    /**
+     * Extra constitutive relations beyond branch/device equations (e.g. controlled sources). Default: none.
+     */
+    public void collectRule(LinearSystem.RelationProvider equations) {
+    }
+
     /**
      * Generate the local nodes and edges, not connected to the outside.
      * Subclasses should populate the 'nodes' and 'edges' sets here.
      */
-    protected void generate(){
-
+    public void generate(){
     }
 
     // 1. Basic Node Creation
     protected <T extends CircuitNode> T newNode(CircuitElementType<T> type){
-        ServerCircuit sc = (ServerCircuit) getCircuit();
-        if (sc == null) {
-            throw new IllegalStateException("CircuitComponent has no circuit");
-        }
-        T node = sc.createNode(type);
+        ServerWorld serverWorld = (ServerWorld) getWorld();
+        T node = serverWorld.createNodeForComponent(type);
         nodes.add(node);
+        node.setComponent(this);
+        return node;
+    }
+
+    protected <T extends CircuitNode & ElectricalVariate<O>, O extends ElectricalInfo> T newNode(
+            CircuitElementType<T> type, O propertyInfo) {
+        ServerWorld serverWorld = (ServerWorld) getWorld();
+        T node = serverWorld.createNodeForComponent(type, propertyInfo);
+        nodes.add(node);
+        node.setComponent(this);
+        return node;
+    }
+
+    protected <T extends CircuitNode & ElectricalVariate<?>> T newNode(
+            CircuitElementType<T> type, int propertyIndex, Object property) {
+        ServerWorld serverWorld = (ServerWorld) getWorld();
+        T node = serverWorld.createNodeForComponent(type);
+        node.set(propertyIndex, property);
+        nodes.add(node);
+        node.setComponent(this);
         return node;
     }
 
     // 3. Basic Edge Creation
     protected <T extends CircuitEdge> T newEdge(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2){
-        ServerCircuit sc = (ServerCircuit) getCircuit();
-        if (sc == null) {
-            throw new IllegalStateException("CircuitComponent has no circuit");
-        }
-        T edge = sc.connect(type, node1, node2);
+        ServerWorld serverWorld = (ServerWorld) getWorld();
+        T edge = serverWorld.connectInComponent(type, node1, node2);
         edges.add(edge);
+        edge.setComponent(this);
+        return edge;
+    }
+
+    protected <T extends CircuitEdge & ElectricalVariate<O>, O extends ElectricalInfo> T newEdge(
+            CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, O propertyInfo) {
+        ServerWorld serverWorld = (ServerWorld) getWorld();
+        T edge = serverWorld.connectInComponent(type, node1, node2, propertyInfo);
+        edges.add(edge);
+        edge.setComponent(this);
+        return edge;
+    }
+
+    protected <T extends CircuitEdge & ElectricalVariate<?>> T newEdge(
+            CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, int propertyIndex, Object property) {
+        ServerWorld serverWorld = (ServerWorld) getWorld();
+        T edge = serverWorld.connectInComponent(type, node1, node2);
+        if (edge != null) {
+            edge.set(propertyIndex, property);
+        }
+        edges.add(edge);
+        edge.setComponent(this);
         return edge;
     }
 

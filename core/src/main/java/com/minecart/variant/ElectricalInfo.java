@@ -1,4 +1,4 @@
-package com.minecart.variant.type;
+package com.minecart.variant;
 
 import com.minecart.serialization.TagSerializable;
 import com.minecart.serialization.tag.CompoundTag;

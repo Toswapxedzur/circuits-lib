@@ -8,20 +8,18 @@ import com.minecart.math.LinearSystem.RelationProvider;
 import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
-import com.minecart.tick_history.VariableHistory;
 import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.Informations;
-import com.minecart.variant.type.Informations.DiodeInfo;
+import com.minecart.variant.Informations;
+import com.minecart.variant.Informations.DiodeInfo;
+
+import java.util.Objects;
+
 /**
  * One-way conductor modeled as a resistor whose effective value switches each tick: forward flow (start→end,
  * nonnegative branch current) uses {@link DiodeInfo#getForwardResistance()}, reverse flow uses
- * {@link DiodeInfo#getReverseResistance()}. Solved branch current is appended to {@link #getCurrentHistory()} each
- * tick after the solve (see {@link VariableHistory}).
+ * {@link DiodeInfo#getReverseResistance()}.
  */
 public class Diode extends CircuitEdge implements ElectricalVariate<DiodeInfo> {
-
-    /** Default depth for {@link #currentHistory}. */
-    public static final int DEFAULT_HISTORY_TICKS = 100;
 
     protected DiodeInfo info;
 
@@ -102,6 +100,26 @@ public class Diode extends CircuitEdge implements ElectricalVariate<DiodeInfo> {
             case 1 -> info.getReverseResistance();
             default -> null;
         };
+    }
+
+    @Override
+    public void set(DiodeInfo property) {
+        this.info = Objects.requireNonNull(property, "property");
+    }
+
+    @Override
+    public void set(int index, Object property) {
+        if (index < 0 || index > 1) {
+            throw new IllegalArgumentException("Unknown property index: " + index);
+        }
+        if (!(property instanceof Number n)) {
+            throw new IllegalArgumentException("Expected Number, got " + property);
+        }
+        if (index == 0) {
+            info.setForwardResistance(n.doubleValue());
+        } else {
+            info.setReverseResistance(n.doubleValue());
+        }
     }
 
     protected void handleForwardResistance(Actions.SetResistanceAction action) {

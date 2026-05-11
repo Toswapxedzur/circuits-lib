@@ -5,7 +5,7 @@ import com.minecart.logic.ServerWorld;
 import com.minecart.logic.CircuitNode;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
-import com.minecart.variant.type.Informations;
+import com.minecart.variant.Informations;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,19 +34,6 @@ class DiodeTest {
         d.getCurrent().setValue(0.0);
         d.tick();
         assertEquals(2.0, d.get().getEffectiveResistance(), 1e-9);
-    }
-
-    @Test
-    void currentHistory_recordsAfterTick() {
-        ServerLevel level = new ServerLevel();
-        ServerWorld w = level.createWorld();
-        CircuitNode n1 = w.createNode(AllComponents.CONNECTION);
-        CircuitNode n2 = w.createNode(AllComponents.CONNECTION);
-        Diode d = (Diode) w.connect(AllComponents.DIODE, n1, n2);
-
-        d.getCurrent().setValue(3.0);
-        d.tick();
-        assertEquals(3.0, d.getCurrentHistory().getValueTicksAgo(0), 1e-12);
     }
 
     @Test

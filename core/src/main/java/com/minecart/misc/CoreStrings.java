@@ -30,4 +30,6 @@ public final class CoreStrings {
     public static final String EDGE_OVERPOWERED = "overpowered";
     /** Subtag for {@link com.minecart.elements.edge.Diode} variant parameters. */
     public static final String EDGE_DIODE_INFO = "diode_info";
+    /** Subtag for {@link com.minecart.elements.component.BJTransistor} parameters and internal topology ids. */
+    public static final String COMPONENT_BJT_INFO = "bjt_info";
 }

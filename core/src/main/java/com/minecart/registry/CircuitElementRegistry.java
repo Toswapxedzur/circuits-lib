@@ -12,13 +12,18 @@ public class CircuitElementRegistry {
     protected static boolean isFrozen = false;
 
     public static <T extends CircuitElement> CircuitElementType<T> register(String id, Function<World, T> factory) {
-        if(isFrozen){
+        return register(id, factory, false);
+    }
+
+    public static <T extends CircuitElement> CircuitElementType<T> register(
+            String id, Function<World, T> factory, boolean unusual) {
+        if (isFrozen) {
             throw new UnsupportedOperationException("The registry is already frozen and no further component can be registered");
         }
         if (REGISTRY.containsKey(id)) {
             throw new IllegalArgumentException("CircuitElement ID already registered: " + id);
         }
-        CircuitElementType<T> type = new CircuitElementType<>(id, factory);
+        CircuitElementType<T> type = new CircuitElementType<>(id, factory, unusual);
         REGISTRY.put(id, type);
         return type;
     }

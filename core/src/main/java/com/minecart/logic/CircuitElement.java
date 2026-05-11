@@ -16,7 +16,8 @@ import java.util.Comparator;
 import java.util.Set;
 import java.util.UUID;
 
-public class CircuitElement implements Comparable<CircuitElement>, TagSerializable {
+public sealed class CircuitElement implements Comparable<CircuitElement>, TagSerializable
+        permits CircuitNode, CircuitEdge, CircuitComponent {
     public static final Comparator<? extends CircuitElement> comparator = (f, s) -> f.id.compareTo(s.id);
 
     protected UUID id;
@@ -89,7 +90,7 @@ public class CircuitElement implements Comparable<CircuitElement>, TagSerializab
         }
         String typeId = tag.getString(CoreStrings.ELEMENT_TYPE);
         CircuitElementType<?> et = CircuitElementRegistry.getType(typeId);
-        CircuitElement el = et.create(world);
+        CircuitElement el = et.create(world, true);
         el.setId(elementId);
         return el;
     }

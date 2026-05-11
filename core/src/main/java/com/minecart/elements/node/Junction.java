@@ -7,7 +7,9 @@ import com.minecart.logic.CircuitNode;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.Informations;
+import com.minecart.variant.Informations;
+
+import java.util.Objects;
 
 /**
  * A circuit node that only allows limited amount of connection.
@@ -45,6 +47,22 @@ public class Junction extends CircuitNode implements ElectricalVariate<Informati
     @Override
     public Object getProperty(int index) {
         return null;
+    }
+
+    @Override
+    public void set(Informations.JunctionInfo property) {
+        this.info = Objects.requireNonNull(property, "property");
+    }
+
+    @Override
+    public void set(int index, Object property) {
+        if (index != 0) {
+            throw new IllegalArgumentException("Unknown property index: " + index);
+        }
+        if (!(property instanceof Integer i)) {
+            throw new IllegalArgumentException("Expected Integer for max connections, got " + property);
+        }
+        info.setConnection(i);
     }
 
     protected void handleConnection(Actions.SetConnectionAction action){

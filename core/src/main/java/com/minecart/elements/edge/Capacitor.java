@@ -7,7 +7,9 @@ import com.minecart.foundation.World;
 import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
 import com.minecart.variant.ElectricalVariate;
-import com.minecart.variant.type.Informations.*;
+import com.minecart.variant.Informations.*;
+
+import java.util.Objects;
 
 public class Capacitor extends CircuitEdge implements ElectricalVariate<CapacitorInfo> {
     protected CapacitorInfo info;
@@ -70,6 +72,27 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
             case 1 -> info.getCharge();
             default -> info.getInternalResistance();
         };
+    }
+
+    @Override
+    public void set(CapacitorInfo property) {
+        this.info = Objects.requireNonNull(property, "property");
+    }
+
+    @Override
+    public void set(int index, Object property) {
+        if (index < 0 || index > 2) {
+            throw new IllegalArgumentException("Unknown property index: " + index);
+        }
+        if (!(property instanceof Number n)) {
+            throw new IllegalArgumentException("Expected Number, got " + property);
+        }
+        double v = n.doubleValue();
+        switch (index) {
+            case 0 -> info.setCapacitance(v);
+            case 1 -> info.setCharge(v);
+            default -> info.setInternalResistance(v);
+        }
     }
 
     protected void handleCapacitance(Actions.SetCapacitanceAction action) {

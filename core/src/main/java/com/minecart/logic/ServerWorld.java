@@ -6,6 +6,8 @@ import com.minecart.event.events.ShortCircuitEvent;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.registry.CircuitElementType;
+import com.minecart.variant.ElectricalVariate;
+import com.minecart.variant.ElectricalInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,7 +65,18 @@ public class ServerWorld extends World {
     }
 
     public <T extends CircuitNode> T createNode(CircuitElementType<T> type) {
-        T node = type.create(this);
+        return createNodeInternal(type, false);
+    }
+
+    /**
+     * Creates a node when building internal structure from {@link CircuitComponent} (allows {@link CircuitElementType#isUnusual()} types).
+     */
+    protected <T extends CircuitNode> T createNodeForComponent(CircuitElementType<T> type) {
+        return createNodeInternal(type, true);
+    }
+
+    private <T extends CircuitNode> T createNodeInternal(CircuitElementType<T> type, boolean allowUnusual) {
+        T node = type.create(this, allowUnusual);
         node.setWorld(this);
         ServerCircuit circuit = createCircuit();
         node.setCircuit(circuit);
@@ -76,6 +89,38 @@ public class ServerWorld extends World {
         return node;
     }
 
+    /**
+     * Like {@link #createNode(CircuitElementType)} but applies {@link ElectricalVariate#set(ElectricalInfo)} after insert.
+     */
+    public <T extends CircuitNode & ElectricalVariate<O>, O extends ElectricalInfo> T createNode(
+            CircuitElementType<T> type, O propertyInfo) {
+        T node = createNode(type);
+        node.set(propertyInfo);
+        return node;
+    }
+
+    /**
+     * Like {@link #createNodeForComponent(CircuitElementType)} but applies {@link ElectricalVariate#set(ElectricalInfo)} after insert.
+     */
+    protected <T extends CircuitNode & ElectricalVariate<O>, O extends ElectricalInfo> T createNodeForComponent(
+            CircuitElementType<T> type, O propertyInfo) {
+        T node = createNodeForComponent(type);
+        node.set(propertyInfo);
+        return node;
+    }
+
+    /**
+     * Creates a {@link CircuitComponent} on {@code circuit}, then applies {@link ElectricalVariate#set(ElectricalInfo)}.
+     */
+    public <T extends CircuitComponent & ElectricalVariate<O>, O extends ElectricalInfo> T createComponent(
+            ServerCircuit circuit, CircuitElementType<T> type, O propertyInfo) {
+        T comp = type.create(this, false);
+        circuit.addComponent(comp);
+        comp.set(propertyInfo);
+        circuit.markDirty();
+        return comp;
+    }
+
     protected ServerCircuit createCircuit() {
         ServerCircuit circuit = new ServerCircuit();
         circuit.setWorld(this);
@@ -84,10 +129,22 @@ public class ServerWorld extends World {
     }
 
     public <T extends CircuitEdge> T connect(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2) {
+        return connectInternal(type, node1, node2, false);
+    }
+
+    /**
+     * Connects two nodes with an edge when building from {@link CircuitComponent} (allows {@link CircuitElementType#isUnusual()} types).
+     */
+    protected <T extends CircuitEdge> T connectInComponent(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2) {
+        return connectInternal(type, node1, node2, true);
+    }
+
+    protected <T extends CircuitEdge> T connectInternal(
+            CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, boolean allowUnusual) {
         if (node1.getWorld() != this || node2.getWorld() != this) {
             throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current ServerWorld");
         }
-        T edge = type.create(this);
+        T edge = type.create(this, allowUnusual);
         edge.setWorld(this);
         if (!edge.connect(node1, node2, true)) {
             return null;
@@ -112,6 +169,31 @@ public class ServerWorld extends World {
         }
         circuit1.addEdge(edge);
         ((ServerCircuit) circuit1).markDirty();
+        return edge;
+    }
+
+    /**
+     * Like {@link #connect(CircuitElementType, CircuitNode, CircuitNode)} but applies {@link ElectricalVariate#set(ElectricalInfo)}
+     * after the edge is placed.
+     */
+    public <T extends CircuitEdge & ElectricalVariate<O>, O extends ElectricalInfo> T connect(
+            CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, O propertyInfo) {
+        T edge = connect(type, node1, node2);
+        if (edge != null) {
+            edge.set(propertyInfo);
+        }
+        return edge;
+    }
+
+    /**
+     * Like {@link #connectInComponent(CircuitElementType, CircuitNode, CircuitNode)} but applies {@link ElectricalVariate#set(ElectricalInfo)}.
+     */
+    protected <T extends CircuitEdge & ElectricalVariate<O>, O extends ElectricalInfo> T connectInComponent(
+            CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, O propertyInfo) {
+        T edge = connectInComponent(type, node1, node2);
+        if (edge != null) {
+            edge.set(propertyInfo);
+        }
         return edge;
     }
 

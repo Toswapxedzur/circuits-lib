@@ -13,15 +13,37 @@ import java.util.function.Function;
 public class CircuitElementType<T extends CircuitElement> {
     protected final String id;
     protected final Function<World, T> factory;
+    /**
+     * When {@code true}, instances may not be created via world graph APIs ({@link com.minecart.logic.ServerWorld#createNode},
+     * {@link com.minecart.logic.ServerWorld#connect}) or {@link #create(World)}; use
+     * {@link com.minecart.logic.ServerWorld#createNodeForComponent} / {@link com.minecart.logic.ServerWorld#connectInComponent}
+     * from {@link com.minecart.logic.CircuitComponent} instead. Tag deserialization uses {@link #create(World, boolean)} with
+     * {@code allowUnusual true}.
+     */
+    protected final boolean unusual;
     protected final Map<ActionType<?>, BiConsumer<T, ? extends Action>> actionHandlers = new HashMap<>();
 
-    protected CircuitElementType(String id, Function<World, T> factory){
-        this.id = id;
-        this.factory = factory;
+    protected CircuitElementType(String id, Function<World, T> factory) {
+        this(id, factory, false);
     }
 
-    public static <T extends CircuitElement> CircuitElementType<T> build(String id, Function<World, T> factory){
-        return new CircuitElementType<T>(id, factory);
+    protected CircuitElementType(String id, Function<World, T> factory, boolean unusual) {
+        this.id = id;
+        this.factory = factory;
+        this.unusual = unusual;
+    }
+
+    public static <T extends CircuitElement> CircuitElementType<T> build(String id, Function<World, T> factory) {
+        return new CircuitElementType<>(id, factory);
+    }
+
+    public static <T extends CircuitElement> CircuitElementType<T> build(
+            String id, Function<World, T> factory, boolean unusual) {
+        return new CircuitElementType<>(id, factory, unusual);
+    }
+
+    public boolean isUnusual() {
+        return unusual;
     }
 
     public <A extends Action> void addActionHandler(ActionType<A> type, BiConsumer<T, A> handler) {
@@ -51,7 +73,25 @@ public class CircuitElementType<T extends CircuitElement> {
         return false;
     }
 
-    public T create(World world){
+    /**
+     * Creates an element for normal world graph use; fails for {@link #isUnusual()} types.
+     */
+    public T create(World world) {
+        return create(world, false);
+    }
+
+    /**
+     * @param allowUnusual pass {@code true} only from {@link com.minecart.logic.CircuitComponent} scaffolding,
+     *                     tag deserialization, or other controlled paths.
+     */
+    public T create(World world, boolean allowUnusual) {
+        if (unusual && !allowUnusual) {
+            throw new IllegalStateException(
+                    "Unusual element type '"
+                            + id
+                            + "' must be created from a CircuitComponent (newNode/newEdge) or via deserialization, "
+                            + "not via world createNode/connect");
+        }
         T t = factory.apply(world);
         if (t instanceof CircuitElement ce) {
             ce.setRegistryTypeId(id);

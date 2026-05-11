@@ -1,4 +1,4 @@
-package com.minecart.variant.type;
+package com.minecart.variant;
 
 import com.minecart.serialization.tag.CompoundTag;
 
@@ -216,6 +216,35 @@ public class Informations {
 
         public void setEffectiveResistance(double effectiveResistance) {
             this.effectiveResistance = Math.max(effectiveResistance, DELTA);
+        }
+    }
+
+    /** Small-signal current gain β for {@link com.minecart.elements.component.BJTransistor}: {@code I_C = β I_B}. */
+    public static class BJTInfo extends ElectricalInfo {
+        private static final String TAG_BETA = "beta";
+
+        protected double beta;
+
+        public BJTInfo(double beta) {
+            setBeta(beta);
+        }
+
+        @Override
+        public void save(CompoundTag tag) {
+            tag.putDouble(TAG_BETA, beta);
+        }
+
+        @Override
+        public void load(CompoundTag tag) {
+            setBeta(tag.getDouble(TAG_BETA));
+        }
+
+        public double getBeta() {
+            return beta;
+        }
+
+        public void setBeta(double beta) {
+            this.beta = Math.max(beta, DELTA);
         }
     }
 }
