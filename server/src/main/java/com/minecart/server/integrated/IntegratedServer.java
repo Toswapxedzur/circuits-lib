@@ -1,8 +1,16 @@
 package com.minecart.server.integrated;
 
+import com.minecart.event.events.ServerTickEvent;
+import com.minecart.event.info.InfoInjectors;
+import com.minecart.foundation.Circuit;
+import com.minecart.foundation.World;
 import com.minecart.logic.ServerLevel;
 import com.minecart.protocol.codec.PayloadDecoder;
 import com.minecart.protocol.codec.PayloadEncoder;
+import com.minecart.protocol.payload.server.CircuitElementPayload;
+import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
+import com.minecart.protocol.payload.server.WorldLifecyclePayload;
+import com.minecart.server.listener.CircuitElementListener;
 import com.minecart.server.network.ServerPayloadDispatcher;
 import com.minecart.server.network.ServerTickThread;
 import com.minecart.server.network.StandardServerHandlers;
@@ -12,14 +20,18 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.DefaultEventLoopGroup;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalServerChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
+import io.netty.util.concurrent.GlobalEventExecutor;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * In-process server backing the singleplayer "join world" flow: binds a {@link LocalServerChannel} at a unique
@@ -33,6 +45,13 @@ import java.util.UUID;
  * {@link #start()} (skipped if no save file exists yet) and is the target of {@link #save()}.
  * <p>
  * Lifecycle: construct → {@link #start()} → {@link #address()} → … → {@link #stop()}. Not restartable.
+ * <p>
+ * Replication: {@link InfoInjectors} attaches default {@link com.minecart.variant.info.PositionInfo} /
+ * {@link com.minecart.variant.info.RotationInfo}. A {@link CircuitElementListener} subscribes to element inserts
+ * and removes; after each tick, pending deltas are flushed as
+ * {@link com.minecart.protocol.payload.server.CircuitElementPayload}s to every connected channel. New
+ * connections receive a {@link WorldLifecyclePayload}/{@link CircuitSnapshotPayload} catch-up so the client mirror
+ * starts in sync with the authoritative state.
  */
 public class IntegratedServer {
 
@@ -42,6 +61,9 @@ public class IntegratedServer {
     private final ServerTickThread tickThread;
     /** Directory containing {@code level.dat}; {@code null} for in-memory only. */
     private final Path saveDir;
+
+    private final ChannelGroup channels = new DefaultChannelGroup("integrated-server", GlobalEventExecutor.INSTANCE);
+    private final CircuitElementListener elementListener;
 
     private EventLoopGroup loop;
     private Channel serverChannel;
@@ -63,6 +85,13 @@ public class IntegratedServer {
         StandardServerHandlers.register(dispatcher, level);
         this.tickThread = new ServerTickThread(level, "integrated-server-tick");
         this.saveDir = saveDir;
+        Consumer<CircuitElementPayload> broadcastSink = payload -> {
+            if (channels.isEmpty()) {
+                return;
+            }
+            channels.writeAndFlush(payload);
+        };
+        this.elementListener = new CircuitElementListener(level, broadcastSink);
     }
 
     public ServerLevel level() {
@@ -90,10 +119,21 @@ public class IntegratedServer {
         if (started) {
             throw new IllegalStateException("IntegratedServer already started");
         }
+        // Default-info injection must be attached before any element exists, so loaded elements
+        // get their PositionInfo/RotationInfo defaults applied before save data overrides them.
+        InfoInjectors.attach(level);
         // Load BEFORE binding (no client can connect yet) and BEFORE starting tick (no concurrent mutation).
         if (saveDir != null) {
             WorldStorage.load(saveDir, level);
         }
+        elementListener.attach();
+        // Flush element deltas at the end of every tick so the next inbound payload from the client sees
+        // an up-to-date mirror; runs on the tick thread because ServerTickEvent is posted from tick().
+        level.register(ServerTickEvent.Level.class, evt -> {
+            if (evt.getPhase() == ServerTickEvent.Phase.POST && evt.getLevel() == level) {
+                elementListener.sync();
+            }
+        });
         loop = new DefaultEventLoopGroup(1, new DefaultThreadFactory("integrated-server-net", true));
         ServerBootstrap b = new ServerBootstrap()
                 .group(loop)
@@ -101,15 +141,35 @@ public class IntegratedServer {
                 .childHandler(new ChannelInitializer<>() {
                     @Override
                     protected void initChannel(Channel ch) {
+                        channels.add(ch);
                         ch.pipeline()
                                 .addLast("decoder", new PayloadDecoder())
                                 .addLast("encoder", new PayloadEncoder())
                                 .addLast("dispatcher", dispatcher);
+                        // Catch-up snapshot. Marshal onto the tick thread so reads of `level` are
+                        // serialised against in-flight mutations.
+                        level.submit(() -> sendInitialSnapshot(ch));
                     }
                 });
         serverChannel = b.bind(address).sync().channel();
         tickThread.start();
         started = true;
+    }
+
+    /**
+     * Send every existing world's lifecycle + circuit snapshots to a freshly connected channel so the client
+     * mirror starts in sync. Runs on the tick thread; channel writes are queued onto the channel's I/O loop.
+     */
+    private void sendInitialSnapshot(Channel ch) {
+        if (!ch.isActive()) {
+            return;
+        }
+        for (World world : level.getWorlds()) {
+            ch.writeAndFlush(WorldLifecyclePayload.insert(world.getId()));
+            for (Circuit circuit : world.getCircuits()) {
+                ch.writeAndFlush(CircuitSnapshotPayload.capture(world, circuit));
+            }
+        }
     }
 
     /**
@@ -147,6 +207,14 @@ public class IntegratedServer {
         }
         try {
             tickThread.stop();
+        } catch (Throwable ignored) {
+        }
+        try {
+            elementListener.detach();
+        } catch (Throwable ignored) {
+        }
+        try {
+            channels.close().syncUninterruptibly();
         } catch (Throwable ignored) {
         }
         try {

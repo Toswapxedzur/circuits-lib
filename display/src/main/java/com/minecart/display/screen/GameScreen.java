@@ -5,22 +5,37 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
+import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.display.DisplayApp;
+import com.minecart.display.editor.Editor;
+import com.minecart.display.editor.EditorTool;
+import com.minecart.display.editor.PaletteEntries;
+import com.minecart.display.input.CameraController;
+import com.minecart.display.render.Textures;
+import com.minecart.display.render.WorldStage;
 import com.minecart.server.integrated.IntegratedServer;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Inside-a-world view. Owns the per-session client+server pair: in singleplayer the {@link IntegratedServer} runs the
@@ -35,10 +50,13 @@ import java.io.IOException;
  *   <li>Netty I/O threads only forward via {@code level.submit(...)} or {@code Gdx.app.postRunnable(...)}.</li>
  * </ul>
  * <p>
- * UI: world name + mode at top, "Settings" at top-right, "Save" / "Save & Quit" buttons at bottom (singleplayer only;
- * multiplayer shows a single "Disconnect"). {@code Esc} toggles the in-world settings dialog. Both the bottom buttons
- * and the dialog go through the same {@link #saveNow()} / {@link #saveAndQuit()} entry points so behaviour stays
- * consistent.
+ * UI is split across two Scene2D stages:
+ * <ul>
+ *   <li>{@link #worldStage} — pannable/zoomable {@link com.badlogic.gdx.graphics.OrthographicCamera}; renders the live circuit mirror.</li>
+ *   <li>{@link #uiStage} — fixed top bar (title + Settings) + bottom palette (search + scrollable element tiles).</li>
+ * </ul>
+ * Input is routed UI → camera → editor so the palette wins clicks, then pan/zoom claims the right/middle drag, then
+ * the editor handles left clicks on the canvas.
  */
 public class GameScreen extends ScreenAdapter {
 
@@ -50,8 +68,16 @@ public class GameScreen extends ScreenAdapter {
     /** {@code null} in multiplayer (no integrated server, no on-disk save). */
     private final IntegratedServer integrated;
 
-    private final Stage stage;
+    private final Textures textures;
+    private final WorldStage worldStage;
+    private final Stage uiStage;
+    private final Editor editor;
+    private final CameraController cameraController;
+
     private final Label statusLabel;
+    private final Label toolLabel;
+    private final Table paletteTilesTable;
+    private TextField searchField;
 
     /** Hides "Save & Quit" while the snapshot is flushing so the user can't double-click. */
     private boolean shuttingDown;
@@ -69,8 +95,14 @@ public class GameScreen extends ScreenAdapter {
         this.clientLevel = clientLevel;
         this.connection = connection;
         this.integrated = integrated;
-        this.stage = new Stage(new ScreenViewport());
+        this.textures = new Textures();
+        this.worldStage = new WorldStage(clientLevel, textures);
+        this.uiStage = new Stage(new ScreenViewport());
+        this.editor = new Editor(clientLevel, connection, worldStage);
+        this.cameraController = new CameraController(worldStage);
         this.statusLabel = new Label("", skin, "muted");
+        this.toolLabel = new Label("Tool: none", skin, "muted");
+        this.paletteTilesTable = new Table();
         buildUi();
     }
 
@@ -80,10 +112,10 @@ public class GameScreen extends ScreenAdapter {
 
     private void buildUi() {
         Label title = new Label("World: " + worldName, skin);
-        title.setFontScale(1.4f);
+        title.setFontScale(1.2f);
 
         String modeText = isSingleplayer()
-                ? "(integrated server @ " + integrated.address() + ")"
+                ? "(integrated server)"
                 : "(remote server)";
         Label mode = new Label(modeText, skin, "muted");
 
@@ -96,58 +128,119 @@ public class GameScreen extends ScreenAdapter {
 
         Table topBar = new Table();
         topBar.setFillParent(true);
-        topBar.top().pad(12f);
+        topBar.top().pad(8f);
         Table topLeft = new Table();
         topLeft.add(title).left().row();
         topLeft.add(mode).left();
         topBar.add(topLeft).expandX().left();
-        topBar.add(settings).width(120f).height(36f).right();
-        stage.addActor(topBar);
-
-        Label hint = new Label("(Circuit renderer will land here)", skin, "muted");
-        Table center = new Table();
-        center.setFillParent(true);
-        center.add(hint);
-        stage.addActor(center);
+        topBar.add(toolLabel).right().padRight(12f);
+        topBar.add(settings).width(100f).height(32f).right();
+        uiStage.addActor(topBar);
 
         Table bottomBar = new Table();
         bottomBar.setFillParent(true);
-        bottomBar.bottom().pad(16f);
+        bottomBar.bottom();
 
-        if (isSingleplayer()) {
-            TextButton save = new TextButton("Save", skin);
-            save.addListener(new ClickListener() {
-                @Override public void clicked(InputEvent e, float x, float y) {
-                    saveNow();
-                }
-            });
-            TextButton saveQuit = new TextButton("Save & Quit", skin);
-            saveQuit.addListener(new ClickListener() {
-                @Override public void clicked(InputEvent e, float x, float y) {
-                    saveAndQuit();
-                }
-            });
-            bottomBar.add(save).width(140f).height(44f).padRight(8f);
-            bottomBar.add(saveQuit).width(160f).height(44f).padRight(8f);
-            bottomBar.add(statusLabel).padLeft(8f);
-        } else {
-            TextButton disconnect = new TextButton("Disconnect", skin);
-            disconnect.addListener(new ClickListener() {
-                @Override public void clicked(InputEvent e, float x, float y) {
-                    leaveWithoutSaving();
-                }
-            });
-            bottomBar.add(disconnect).width(180f).height(44f);
+        Table paletteRow = new Table();
+        paletteRow.setBackground(skin.getDrawable("d_panel"));
+        paletteRow.pad(8f);
+
+        Label searchLabel = new Label("Search:", skin, "muted");
+        searchField = new TextField("", skin);
+        searchField.setMessageText("filter...");
+        searchField.setTextFieldListener((field, c) -> rebuildPaletteTiles(field.getText()));
+
+        ScrollPane scroll = new ScrollPane(paletteTilesTable, skin);
+        scroll.setScrollingDisabled(false, true);
+        scroll.setFadeScrollBars(false);
+
+        paletteRow.add(searchLabel).padRight(6f);
+        paletteRow.add(searchField).width(140f).padRight(8f);
+        paletteRow.add(scroll).height(72f).expandX().fillX();
+        paletteRow.add(statusLabel).padLeft(12f);
+
+        bottomBar.add(paletteRow).expandX().fillX();
+        uiStage.addActor(bottomBar);
+
+        rebuildPaletteTiles("");
+        refreshToolLabel();
+
+        // Centre the camera so (0,0) is mid-screen at start.
+        worldStage.getCamera().position.set(0f, 0f, 0f);
+        worldStage.getCamera().update();
+    }
+
+    private void rebuildPaletteTiles(String filter) {
+        paletteTilesTable.clearChildren();
+        String f = filter == null ? "" : filter.toLowerCase(Locale.ROOT).trim();
+        for (PaletteEntries.Entry entry : PaletteEntries.ALL) {
+            if (!matches(entry, f)) continue;
+            paletteTilesTable.add(buildTile(entry)).pad(2f).width(64f).height(56f);
         }
-        stage.addActor(bottomBar);
+    }
+
+    private static boolean matches(PaletteEntries.Entry entry, String f) {
+        if (f.isEmpty()) return true;
+        return entry.type().getTypeId().toLowerCase(Locale.ROOT).contains(f)
+                || entry.displayName().toLowerCase(Locale.ROOT).contains(f);
+    }
+
+    private Table buildTile(PaletteEntries.Entry entry) {
+        Table tile = new Table();
+        tile.setBackground(skin.getDrawable("d_button"));
+        TextureRegion region = new TextureRegion(textures.get(entry.type()));
+        ImageButton.ImageButtonStyle style = new ImageButton.ImageButtonStyle();
+        style.up = skin.getDrawable("d_button");
+        style.over = skin.getDrawable("d_button_h");
+        style.down = skin.getDrawable("d_button_d");
+        style.imageUp = new TextureRegionDrawable(region);
+        ImageButton img = new ImageButton(style);
+        img.getImage().setColor(Color.WHITE);
+        Label name = new Label(entry.displayName(), skin, "muted");
+        name.setFontScale(0.85f);
+        tile.add(img).width(40f).height(36f).row();
+        tile.add(name).padTop(2f);
+        tile.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                selectPaletteEntry(entry);
+            }
+        });
+        img.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                selectPaletteEntry(entry);
+            }
+        });
+        return tile;
+    }
+
+    private void selectPaletteEntry(PaletteEntries.Entry entry) {
+        EditorTool tool = switch (entry.kind()) {
+            case NODE -> new EditorTool.PlaceNode(entry.type());
+            case EDGE -> new EditorTool.ConnectEdge(entry.type(), null);
+            case COMPONENT -> new EditorTool.PlaceComponent(entry.type(), 0.0);
+        };
+        editor.setTool(tool);
+        flashStatus("Selected " + entry.displayName());
+        refreshToolLabel();
+    }
+
+    private void refreshToolLabel() {
+        EditorTool t = editor.getTool();
+        if (t instanceof EditorTool.Idle) {
+            toolLabel.setText("Tool: none");
+        } else if (t instanceof EditorTool.PlaceNode pn) {
+            toolLabel.setText("Tool: place node " + pn.type().getTypeId());
+        } else if (t instanceof EditorTool.PlaceComponent pc) {
+            toolLabel.setText(String.format(Locale.ROOT, "Tool: place %s @%.0f°",
+                    pc.type().getTypeId(), Math.toDegrees(pc.angle())));
+        } else if (t instanceof EditorTool.ConnectEdge ce) {
+            toolLabel.setText("Tool: connect " + ce.type().getTypeId()
+                    + (ce.firstNodeId() == null ? " (pick start)" : " (pick end)"));
+        }
     }
 
     // --- Save / quit core ---
 
-    /**
-     * Persists the world to disk (singleplayer only). Returns immediately; the actual write runs on the server-tick
-     * thread between ticks. Updates {@link #statusLabel} so the user sees feedback.
-     */
     private void saveNow() {
         if (!isSingleplayer() || shuttingDown) return;
         try {
@@ -159,10 +252,6 @@ public class GameScreen extends ScreenAdapter {
         }
     }
 
-    /**
-     * Singleplayer: synchronously writes a final snapshot, tears the session down, then returns to the world list.
-     * Multiplayer: simply disconnects.
-     */
     private void saveAndQuit() {
         if (shuttingDown) return;
         shuttingDown = true;
@@ -189,7 +278,6 @@ public class GameScreen extends ScreenAdapter {
         navigateBack();
     }
 
-    /** Quits without writing a final snapshot (singleplayer) or just disconnects (multiplayer). */
     private void leaveWithoutSaving() {
         if (shuttingDown) return;
         shuttingDown = true;
@@ -201,7 +289,6 @@ public class GameScreen extends ScreenAdapter {
         app.setScreen(isSingleplayer() ? new WorldListScreen(app) : new MultiplayerScreen(app));
     }
 
-    /** Tears down the client connection then the integrated server, but does <strong>not</strong> save. */
     private void shutdownSessionNoSave() {
         try {
             if (connection != null) connection.close();
@@ -241,9 +328,7 @@ public class GameScreen extends ScreenAdapter {
         if (isSingleplayer()) {
             TextButton save = new TextButton("Save", skin);
             save.addListener(new ClickListener() {
-                @Override public void clicked(InputEvent e, float x, float y) {
-                    saveNow();
-                }
+                @Override public void clicked(InputEvent e, float x, float y) { saveNow(); }
             });
             TextButton saveQuit = new TextButton("Save & Quit", skin);
             saveQuit.addListener(new ClickListener() {
@@ -274,14 +359,12 @@ public class GameScreen extends ScreenAdapter {
         }
         TextButton back = new TextButton("Back to Game", skin);
         back.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent e, float x, float y) {
-                dialog.hide();
-            }
+            @Override public void clicked(InputEvent e, float x, float y) { dialog.hide(); }
         });
         buttons.add(back).width(140f).height(40f);
 
         settingsDialog = dialog;
-        dialog.show(stage);
+        dialog.show(uiStage);
     }
 
     private void flashStatus(String text) {
@@ -291,7 +374,15 @@ public class GameScreen extends ScreenAdapter {
     // --- Lifecycle ---
 
     @Override public void show() {
-        InputMultiplexer mux = new InputMultiplexer(stage, new InputAdapter() {
+        InputMultiplexer mux = new InputMultiplexer();
+        // UI first so palette / settings clicks win.
+        mux.addProcessor(uiStage);
+        // Camera (right/middle drag + scroll) before editor so editor only sees left clicks.
+        mux.addProcessor(cameraController);
+        // Editor handles palette-driven left clicks + R + Esc.
+        mux.addProcessor(editor);
+        // Falls through to settings dialog toggle if Esc not consumed by Editor.
+        mux.addProcessor(new InputAdapter() {
             @Override public boolean keyDown(int keycode) {
                 if (keycode == Input.Keys.ESCAPE) {
                     if (settingsDialog != null) {
@@ -303,6 +394,12 @@ public class GameScreen extends ScreenAdapter {
                 }
                 return false;
             }
+            @Override public boolean keyUp(int keycode) {
+                if (keycode == Input.Keys.R) {
+                    refreshToolLabel();
+                }
+                return false;
+            }
         });
         Gdx.input.setInputProcessor(mux);
     }
@@ -311,23 +408,28 @@ public class GameScreen extends ScreenAdapter {
         Gdx.gl.glClearColor(0.05f, 0.06f, 0.08f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // Client tick on render thread (mirrors arrive via Gdx.app.postRunnable from Netty).
         clientLevel.tick();
+        cameraController.update(dt);
+        refreshToolLabel();
 
-        stage.act(dt);
-        stage.draw();
+        worldStage.act(dt);
+        worldStage.draw();
+
+        uiStage.act(dt);
+        uiStage.draw();
     }
 
     @Override public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
+        worldStage.getViewport().update(width, height, false);
+        uiStage.getViewport().update(width, height, true);
     }
 
     @Override public void dispose() {
-        // If the user navigated away without clicking a button, still tear the session down without saving.
-        // Save&Quit / Quit-Without-Saving paths already shut down before navigating, so this is a safety net.
         if (!shuttingDown) {
             shutdownSessionNoSave();
         }
-        stage.dispose();
+        worldStage.dispose();
+        uiStage.dispose();
+        textures.dispose();
     }
 }

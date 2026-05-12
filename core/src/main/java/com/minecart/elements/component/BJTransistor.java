@@ -121,6 +121,10 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
         };
     }
 
+    public CircuitNode getCenter() {
+        return center;
+    }
+
     @Override
     public void save(CompoundTag tag) {
         super.save(tag);

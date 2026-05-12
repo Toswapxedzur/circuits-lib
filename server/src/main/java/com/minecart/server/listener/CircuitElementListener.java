@@ -209,23 +209,51 @@ public class CircuitElementListener implements IncrementPayloadListener<CircuitE
     }
 
     private static final class Delta {
-        private final List<CircuitElementChange> ops = new ArrayList<>();
+        /**
+         * Pending operations recorded since the last sync. Each entry either holds a fully-formed
+         * {@link CircuitElementChange} (for REMOVE / CHANGE) or a deferred INSERT that captures the live
+         * {@link CircuitElement} reference; INSERT serialization happens at {@link #toPayload} time so any
+         * info / field updates applied between the insert event and end-of-tick are included in the snapshot.
+         */
+        private final List<Op> ops = new ArrayList<>();
 
         void onInsert(CircuitElement el) {
-            CompoundTag data = CircuitElement.serialize(el);
-            ops.add(CircuitElementChange.insert(CircuitElementChange.registryTypeIdOf(el), data));
+            ops.add(new Op.DeferredInsert(el));
         }
 
         void onRemove(CircuitElement el) {
-            ops.add(CircuitElementChange.remove(el.getId()));
+            ops.add(new Op.Eager(CircuitElementChange.remove(el.getId())));
         }
 
         void onChange(CircuitElement el) {
-            ops.add(CircuitElementChange.changeFromSync(el));
+            ops.add(new Op.Eager(CircuitElementChange.changeFromSync(el)));
         }
 
         CircuitElementPayload toPayload(CircuitKey key) {
-            return new CircuitElementPayload(key.worldId(), key.circuitId(), new ArrayList<>(ops));
+            List<CircuitElementChange> resolved = new ArrayList<>(ops.size());
+            for (Op op : ops) {
+                CircuitElementChange c = op.resolve();
+                if (c != null) {
+                    resolved.add(c);
+                }
+            }
+            return new CircuitElementPayload(key.worldId(), key.circuitId(), resolved);
+        }
+
+        sealed interface Op {
+            CircuitElementChange resolve();
+
+            record Eager(CircuitElementChange change) implements Op {
+                @Override public CircuitElementChange resolve() { return change; }
+            }
+
+            record DeferredInsert(CircuitElement element) implements Op {
+                @Override
+                public CircuitElementChange resolve() {
+                    CompoundTag data = CircuitElement.serialize(element);
+                    return CircuitElementChange.insert(CircuitElementChange.registryTypeIdOf(element), data);
+                }
+            }
         }
     }
 }

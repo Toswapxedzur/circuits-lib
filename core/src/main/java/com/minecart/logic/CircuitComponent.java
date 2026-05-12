@@ -112,9 +112,10 @@ public non-sealed class CircuitComponent extends CircuitElement {
 
     /**
      * Maps an external connection index (e.g., 0 for North side, 1 for South side)
-     * to the specific internal CircuitNode acting as that port.
+     * to the specific internal CircuitNode acting as that port. Public so callers (renderer, server-side
+     * placement handlers, anchor wiring) can look up a port without going through {@link #connect}.
      */
-    protected CircuitNode getPort(int index){
+    public CircuitNode getPort(int index){
         return null;
     }
 

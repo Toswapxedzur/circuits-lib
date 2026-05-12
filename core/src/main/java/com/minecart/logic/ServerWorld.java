@@ -124,6 +124,31 @@ public class ServerWorld extends World {
         return comp;
     }
 
+    /**
+     * Creates a {@link CircuitComponent}, attaches it to a fresh {@link ServerCircuit}, fires the standard
+     * insert events, and runs {@link CircuitComponent#generate()} so its internal nodes/edges exist. Used by
+     * the server-side placement pipeline when no {@link ElectricalVariate} info is being supplied (e.g. UI
+     * "drop a fresh BJT" with default beta).
+     */
+    public <T extends CircuitComponent> T createComponent(CircuitElementType<T> type) {
+        if (type.isUnusual()) {
+            throw new IllegalStateException(
+                    "Unusual element type '" + type.getTypeId() + "' cannot be created via createComponent");
+        }
+        T comp = type.create(this, false);
+        comp.setWorld(this);
+        ServerCircuit circuit = createCircuit();
+        circuit.addComponent(comp);
+        post(new ElementInfoInjectEvent(this, comp));
+        if (post(new ElementEvent.ElementInsertEvent(this, comp))) {
+            circuits.remove(circuit);
+            throw new IllegalStateException("Component insert cancelled");
+        }
+        comp.generate();
+        circuit.markDirty();
+        return comp;
+    }
+
     protected ServerCircuit createCircuit() {
         ServerCircuit circuit = new ServerCircuit();
         circuit.setWorld(this);

@@ -8,8 +8,9 @@ import com.minecart.client.handler.WorldLifecycleHandler;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.client.network.ClientPayloadDispatcher;
-import com.minecart.display.info.PositionInjector;
+import com.minecart.event.info.InfoInjectors;
 import com.minecart.display.world.WorldEntry;
+import com.minecart.registry.AllElementInfos;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
 import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
@@ -84,8 +85,10 @@ public final class Sessions {
 
     private static ClientLevel newClientLevel() {
         ClientLevel level = new ClientLevel();
-        // Inject default display infos (e.g. PositionInfo) into elements as they are created on the client mirror.
-        PositionInjector.attach(level);
+        // Touch AllElementInfos so its types are registered before any payload is decoded.
+        Class<?> ignored = AllElementInfos.class;
+        // Inject default PositionInfo / RotationInfo on the client mirror; loaded payloads override these.
+        InfoInjectors.attach(level);
         return level;
     }
 

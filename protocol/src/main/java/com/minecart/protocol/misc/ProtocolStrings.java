@@ -15,6 +15,9 @@ public final class ProtocolStrings {
     public static final String PAYLOAD_CIRCUIT_SNAPSHOT = "minecart.circuit_snapshot_payload";
     public static final String PAYLOAD_CIRCUIT_LIFECYCLE = "minecart.circuit_lifecycle_payload";
     public static final String PAYLOAD_WORLD_LIFECYCLE = "minecart.world_lifecycle_payload";
+    public static final String PAYLOAD_PLACE_NODE = "minecart.place_node_payload";
+    public static final String PAYLOAD_PLACE_COMPONENT = "minecart.place_component_payload";
+    public static final String PAYLOAD_CONNECT_EDGE = "minecart.connect_edge_payload";
 
     public static final String PAYLOAD_ENVELOPE_ID = "payload_id";
 
@@ -24,6 +27,12 @@ public final class ProtocolStrings {
     public static final String TAG_ACTION = "action";
     public static final String TAG_CHANGES = "changes";
     public static final String TAG_KIND = "kind";
+    public static final String TAG_ELEMENT_TYPE_ID = "element_type_id";
+    public static final String TAG_X = "x";
+    public static final String TAG_Y = "y";
+    public static final String TAG_ANGLE = "angle";
+    public static final String TAG_START_NODE_ID = "start_node_id";
+    public static final String TAG_END_NODE_ID = "end_node_id";
 
     /** Snapshot body: embedded circuit compound under the payload root. */
     public static final String SNAPSHOT_TAG_CIRCUIT = "circuit";

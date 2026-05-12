@@ -1,6 +1,9 @@
 package com.minecart.protocol.payload;
 
 import com.minecart.protocol.payload.client.ActionPayload;
+import com.minecart.protocol.payload.client.ConnectEdgePayload;
+import com.minecart.protocol.payload.client.PlaceComponentPayload;
+import com.minecart.protocol.payload.client.PlaceNodePayload;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
 import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
@@ -17,6 +20,9 @@ public final class AllPayloads {
     public static final PayloadType<CircuitSnapshotPayload> CIRCUIT_SNAPSHOT = CircuitSnapshotPayload.TYPE;
     public static final PayloadType<CircuitLifecyclePayload> CIRCUIT_LIFECYCLE = CircuitLifecyclePayload.TYPE;
     public static final PayloadType<WorldLifecyclePayload> WORLD_LIFECYCLE = WorldLifecyclePayload.TYPE;
+    public static final PayloadType<PlaceNodePayload> PLACE_NODE = PlaceNodePayload.TYPE;
+    public static final PayloadType<PlaceComponentPayload> PLACE_COMPONENT = PlaceComponentPayload.TYPE;
+    public static final PayloadType<ConnectEdgePayload> CONNECT_EDGE = ConnectEdgePayload.TYPE;
 
     private AllPayloads() {}
 }

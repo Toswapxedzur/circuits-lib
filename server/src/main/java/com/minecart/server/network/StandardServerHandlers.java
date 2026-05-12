@@ -2,10 +2,16 @@ package com.minecart.server.network;
 
 import com.minecart.logic.ServerLevel;
 import com.minecart.protocol.payload.client.ActionPayload;
+import com.minecart.protocol.payload.client.ConnectEdgePayload;
+import com.minecart.protocol.payload.client.PlaceComponentPayload;
+import com.minecart.protocol.payload.client.PlaceNodePayload;
 import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.WorldLifecyclePayload;
 import com.minecart.server.handler.ActionPayloadHandler;
 import com.minecart.server.handler.CircuitLifecycleHandler;
+import com.minecart.server.handler.ConnectEdgeHandler;
+import com.minecart.server.handler.PlaceComponentHandler;
+import com.minecart.server.handler.PlaceNodeHandler;
 import com.minecart.server.handler.WorldLifecycleHandler;
 
 /**
@@ -21,5 +27,8 @@ public final class StandardServerHandlers {
         dispatcher.register(ActionPayload.class, new ActionPayloadHandler(level));
         dispatcher.register(CircuitLifecyclePayload.class, new CircuitLifecycleHandler(level));
         dispatcher.register(WorldLifecyclePayload.class, new WorldLifecycleHandler(level));
+        dispatcher.register(PlaceNodePayload.class, new PlaceNodeHandler(level));
+        dispatcher.register(PlaceComponentPayload.class, new PlaceComponentHandler(level));
+        dispatcher.register(ConnectEdgePayload.class, new ConnectEdgeHandler(level));
     }
 }
