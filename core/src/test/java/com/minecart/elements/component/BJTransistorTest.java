@@ -30,8 +30,12 @@ class BJTransistorTest {
         assertNotNull(bjt.edgeBase);
         assertNotNull(bjt.edgeCollector);
         assertNotNull(bjt.edgeEmitter);
-        assertEquals(3, circuit.edges().size());
-        assertEquals(4, circuit.nodes().size());
+        // generate() creates 4 connected internal nodes via createNodeForComponent (each spawning its own
+        // Circuit) and then 3 connectInComponent calls that merge them. The merged circuit is wherever the
+        // first node landed: bjt.center.getCircuit().
+        ServerCircuit internal = (ServerCircuit) bjt.center.getCircuit();
+        assertEquals(3, internal.edges().size());
+        assertEquals(4, internal.nodes().size());
         assertEquals(100.0, bjt.getInfo().getBeta(), 1e-9);
         assertEquals(bjt.base, bjt.getPort(0));
         assertEquals(bjt.collector, bjt.getPort(1));

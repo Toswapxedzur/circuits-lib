@@ -18,6 +18,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.display.DisplayApp;
 import com.minecart.display.server.ServerEntry;
 import com.minecart.display.server.ServerManager;
+import com.minecart.display.session.Sessions;
 
 public class MultiplayerScreen extends ScreenAdapter {
 
@@ -111,7 +112,7 @@ public class MultiplayerScreen extends ScreenAdapter {
 
         join.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) {
-                Gdx.app.log("Multiplayer", "Joining " + entry.address() + " (Netty wiring TBD)");
+                joinServer(entry);
             }
         });
         del.addListener(new ClickListener() {
@@ -133,6 +134,21 @@ public class MultiplayerScreen extends ScreenAdapter {
         // Stash the entry on the row so render() can refresh status text.
         row.setUserObject(entry);
         return row;
+    }
+
+    /**
+     * Connects a fresh client to the remote dedicated server and pushes {@link GameScreen}. No integrated server
+     * is started for multiplayer.
+     */
+    private void joinServer(ServerEntry entry) {
+        Sessions.Session session;
+        try {
+            session = Sessions.multiplayer(entry.host, entry.port);
+        } catch (Exception ex) {
+            Gdx.app.log("Multiplayer", "Failed to connect to " + entry.address() + ": " + ex.getMessage());
+            return;
+        }
+        app.setScreen(new GameScreen(app, entry.name, session.level(), session.connection(), session.integrated()));
     }
 
     private void refreshStatusLabels() {

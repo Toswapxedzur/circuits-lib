@@ -27,6 +27,10 @@ subprojects{
         // Source: https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
         implementation("org.apache.commons:commons-lang3:3.20.0")
     }
+
+    tasks.withType<Test> {
+        useJUnitPlatform()
+    }
 }
 
 tasks.test {

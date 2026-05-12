@@ -1,16 +1,16 @@
 package com.minecart.client.sync;
 
-import com.minecart.client.handler.server.CircuitElementHandler;
+import com.minecart.client.handler.CircuitElementHandler;
 import com.minecart.client.logic.ClientCircuit;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.logic.ClientWorld;
-import com.minecart.client.network.SyncRegistry;
-import com.minecart.client.payload.Payload;
-import com.minecart.client.payload.server.CircuitElementChange;
-import com.minecart.client.payload.server.CircuitElementPayload;
 import com.minecart.elements.edge.Resistor;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
+import com.minecart.protocol.payload.Payload;
+import com.minecart.protocol.payload.server.CircuitElementChange;
+import com.minecart.protocol.payload.server.CircuitElementPayload;
+import com.minecart.protocol.sync.SyncRegistry;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
 import org.junit.jupiter.api.Test;

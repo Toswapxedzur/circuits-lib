@@ -16,6 +16,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.display.DisplayApp;
+import com.minecart.display.session.Sessions;
 import com.minecart.display.world.WorldEntry;
 import com.minecart.display.world.WorldManager;
 
@@ -97,7 +98,7 @@ public class WorldListScreen extends ScreenAdapter {
 
         join.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) {
-                app.setScreen(new GameScreen(app, world.name()));
+                joinWorld(world);
             }
         });
         del.addListener(new ClickListener() {
@@ -113,6 +114,21 @@ public class WorldListScreen extends ScreenAdapter {
         row.add(join).width(80f).height(36f).padLeft(8f);
         row.add(del).width(80f).height(36f).padLeft(8f);
         return row;
+    }
+
+    /**
+     * Boots an integrated server, connects a client to it via Netty's in-process LocalChannel, and pushes
+     * {@link GameScreen}. Failures show a log entry; the user stays on the world list.
+     */
+    private void joinWorld(WorldEntry world) {
+        Sessions.Session session;
+        try {
+            session = Sessions.singleplayer(world);
+        } catch (Exception ex) {
+            Gdx.app.log("WorldList", "Failed to start singleplayer session for '" + world.name() + "': " + ex.getMessage());
+            return;
+        }
+        app.setScreen(new GameScreen(app, world.name(), session.level(), session.connection(), session.integrated()));
     }
 
     private void showCreateDialog() {

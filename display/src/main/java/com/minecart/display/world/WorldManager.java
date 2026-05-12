@@ -2,10 +2,13 @@ package com.minecart.display.world;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import com.minecart.server.persistence.WorldStorage;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -53,13 +56,21 @@ public final class WorldManager {
     }
 
     /**
-     * Creates an empty world directory. Returns {@code null} if the name is invalid or already exists.
+     * Creates an empty world directory and seeds it with an empty {@code level.dat} (one {@link com.minecart.foundation.World}
+     * with no circuits). Returns {@code null} if the name is invalid or already exists, or if the {@code level.dat}
+     * write fails (in which case the partially-created directory is left for inspection).
      */
     public WorldEntry create(String name) {
         if (!isNameValid(name)) return null;
         String trimmed = name.trim();
         FileHandle dir = Gdx.files.local(ROOT + "/" + trimmed);
         dir.mkdirs();
+        try {
+            WorldStorage.writeEmpty(dir.file().toPath(), UUID.randomUUID());
+        } catch (IOException e) {
+            Gdx.app.log("WorldManager", "Failed to write initial level.dat for '" + trimmed + "': " + e.getMessage());
+            return null;
+        }
         return new WorldEntry(trimmed, dir, dir.lastModified());
     }
 
