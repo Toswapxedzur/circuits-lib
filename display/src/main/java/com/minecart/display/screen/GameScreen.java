@@ -20,6 +20,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
+import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.network.ClientConnection;
@@ -29,13 +30,19 @@ import com.minecart.display.editor.EditorTool;
 import com.minecart.display.editor.PaletteEntries;
 import com.minecart.display.input.CameraController;
 import com.minecart.display.render.Textures;
+import com.minecart.display.render.UiIcons;
 import com.minecart.display.render.WorldStage;
+import com.minecart.foundation.World;
+import com.minecart.protocol.payload.client.CreateWorldPayload;
+import com.minecart.protocol.payload.client.DeleteWorldPayload;
+import com.minecart.protocol.payload.client.RenameWorldPayload;
 import com.minecart.server.integrated.IntegratedServer;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * Inside-a-world view. Owns the per-session client+server pair: in singleplayer the {@link IntegratedServer} runs the
@@ -53,22 +60,26 @@ import java.util.Locale;
  * UI is split across two Scene2D stages:
  * <ul>
  *   <li>{@link #worldStage} — pannable/zoomable {@link com.badlogic.gdx.graphics.OrthographicCamera}; renders the live circuit mirror.</li>
- *   <li>{@link #uiStage} — fixed top bar (title + Settings) + bottom palette (search + scrollable element tiles).</li>
+ *   <li>{@link #uiStage} — fixed top bar (selected-world label + hamburger + Settings) + bottom palette
+ *       (search + scrollable element tiles) + an overlay world dropdown.</li>
  * </ul>
- * Input is routed UI → camera → editor so the palette wins clicks, then pan/zoom claims the right/middle drag, then
- * the editor handles left clicks on the canvas.
+ * The hamburger ("≡") button toggles a dropdown listing every world the server knows about, with per-row
+ * Modify (rename) and Trash (delete) controls and a "+ Create world" footer. The user must select a world
+ * here before they can place anything; trying to place without a selection flashes a warning in the status
+ * label.
  */
 public class GameScreen extends ScreenAdapter {
 
     private final DisplayApp app;
     private final Skin skin;
-    private final String worldName;
+    private final String saveName;
     private final ClientLevel clientLevel;
     private final ClientConnection connection;
     /** {@code null} in multiplayer (no integrated server, no on-disk save). */
     private final IntegratedServer integrated;
 
     private final Textures textures;
+    private final UiIcons uiIcons;
     private final WorldStage worldStage;
     private final Stage uiStage;
     private final Editor editor;
@@ -76,8 +87,17 @@ public class GameScreen extends ScreenAdapter {
 
     private final Label statusLabel;
     private final Label toolLabel;
+    private final Label selectedWorldLabel;
     private final Table paletteTilesTable;
     private TextField searchField;
+
+    /** Currently-selected target world for placement; {@code null} until the user picks one. */
+    private UUID selectedWorldId;
+
+    /** Right-edge dropdown panel: header + scrollable world list + create-world footer. */
+    private final Table worldDropdown;
+    private final Table worldListBody;
+    private boolean worldDropdownOpen;
 
     /** Hides "Save & Quit" while the snapshot is flushing so the user can't double-click. */
     private boolean shuttingDown;
@@ -85,24 +105,33 @@ public class GameScreen extends ScreenAdapter {
     private Dialog settingsDialog;
 
     public GameScreen(DisplayApp app,
-                      String worldName,
+                      String saveName,
                       ClientLevel clientLevel,
                       ClientConnection connection,
                       IntegratedServer integrated) {
         this.app = app;
         this.skin = app.getSkin();
-        this.worldName = worldName;
+        this.saveName = saveName;
         this.clientLevel = clientLevel;
         this.connection = connection;
         this.integrated = integrated;
         this.textures = new Textures();
+        this.uiIcons = new UiIcons();
         this.worldStage = new WorldStage(clientLevel, textures);
         this.uiStage = new Stage(new ScreenViewport());
-        this.editor = new Editor(clientLevel, connection, worldStage);
         this.cameraController = new CameraController(worldStage);
         this.statusLabel = new Label("", skin, "muted");
         this.toolLabel = new Label("Tool: none", skin, "muted");
+        this.selectedWorldLabel = new Label("World: (none -- pick one)", skin, "muted");
         this.paletteTilesTable = new Table();
+        this.worldListBody = new Table();
+        this.worldDropdown = new Table();
+        this.editor = new Editor(
+                clientLevel,
+                connection,
+                worldStage,
+                () -> selectedWorldId,
+                () -> flashStatus("Select or create a world before placing anything."));
         buildUi();
     }
 
@@ -111,13 +140,20 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void buildUi() {
-        Label title = new Label("World: " + worldName, skin);
+        Label title = new Label("Save: " + saveName, skin);
         title.setFontScale(1.2f);
 
         String modeText = isSingleplayer()
                 ? "(integrated server)"
                 : "(remote server)";
         Label mode = new Label(modeText, skin, "muted");
+
+        TextButton worldsToggle = new TextButton("Worlds", skin);
+        worldsToggle.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                toggleWorldDropdown();
+            }
+        });
 
         TextButton settings = new TextButton("Settings", skin);
         settings.addListener(new ClickListener() {
@@ -131,11 +167,22 @@ public class GameScreen extends ScreenAdapter {
         topBar.top().pad(8f);
         Table topLeft = new Table();
         topLeft.add(title).left().row();
-        topLeft.add(mode).left();
+        topLeft.add(mode).left().row();
+        topLeft.add(selectedWorldLabel).left();
         topBar.add(topLeft).expandX().left();
         topBar.add(toolLabel).right().padRight(12f);
+        topBar.add(worldsToggle).width(90f).height(32f).padRight(6f).right();
         topBar.add(settings).width(100f).height(32f).right();
         uiStage.addActor(topBar);
+
+        // World dropdown: anchored to the right edge of the screen, descends below the top bar. Hidden
+        // until the "Worlds" toggle opens it. We position the panel absolutely (instead of via a
+        // setFillParent layout) because it overlays the world canvas and must sit above the palette.
+        worldDropdown.setBackground(skin.getDrawable("d_panel"));
+        worldDropdown.pad(8f);
+        worldDropdown.top();
+        worldDropdown.setVisible(false);
+        uiStage.addActor(worldDropdown);
 
         Table bottomBar = new Table();
         bottomBar.setFillParent(true);
@@ -164,11 +211,223 @@ public class GameScreen extends ScreenAdapter {
 
         rebuildPaletteTiles("");
         refreshToolLabel();
+        refreshSelectedWorldLabel();
 
         // Centre the camera so (0,0) is mid-screen at start.
         worldStage.getCamera().position.set(0f, 0f, 0f);
         worldStage.getCamera().update();
     }
+
+    // --- World dropdown ---
+
+    private void toggleWorldDropdown() {
+        worldDropdownOpen = !worldDropdownOpen;
+        worldDropdown.setVisible(worldDropdownOpen);
+        if (worldDropdownOpen) {
+            rebuildWorldDropdown();
+        }
+    }
+
+    private void closeWorldDropdown() {
+        if (!worldDropdownOpen) return;
+        worldDropdownOpen = false;
+        worldDropdown.setVisible(false);
+    }
+
+    /** Rebuilds the world list rows + the create footer; called every time the panel is shown. */
+    private void rebuildWorldDropdown() {
+        worldDropdown.clearChildren();
+
+        Label header = new Label("Worlds", skin);
+        header.setFontScale(1.1f);
+        Label hint = new Label("Click a name to select", skin, "muted");
+
+        worldDropdown.add(header).left().padBottom(2f).row();
+        worldDropdown.add(hint).left().padBottom(8f).row();
+
+        worldListBody.clearChildren();
+        List<World> worlds = new ArrayList<>(clientLevel.getWorlds());
+        if (worlds.isEmpty()) {
+            Label empty = new Label("(no worlds yet -- create one below)", skin, "muted");
+            worldListBody.add(empty).left().padBottom(6f).colspan(3).row();
+        } else {
+            for (World w : worlds) {
+                addWorldRow(w);
+            }
+        }
+        ScrollPane listScroll = new ScrollPane(worldListBody, skin);
+        listScroll.setFadeScrollBars(false);
+        listScroll.setScrollingDisabled(true, false);
+        // Cap the list height so very large saves still leave room for the "create" footer.
+        float maxListH = Math.max(80f, uiStage.getHeight() - 220f);
+        worldDropdown.add(listScroll).fillX().expandX().minWidth(280f).maxHeight(maxListH).row();
+
+        TextButton create = new TextButton("+ Create world", skin);
+        create.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                requestCreateWorld();
+            }
+        });
+        worldDropdown.add(create).fillX().padTop(8f).height(32f).row();
+
+        TextButton close = new TextButton("Close", skin);
+        close.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                closeWorldDropdown();
+            }
+        });
+        worldDropdown.add(close).fillX().padTop(4f).height(28f).row();
+
+        // Anchor to the top-right corner of the UI stage, below the top bar (~80 px).
+        worldDropdown.pack();
+        worldDropdown.setPosition(
+                uiStage.getWidth() - worldDropdown.getWidth() - 12f,
+                uiStage.getHeight() - 80f,
+                Align.topLeft);
+    }
+
+    private void addWorldRow(World w) {
+        boolean selected = w.getId().equals(selectedWorldId);
+        String name = (w.getName() != null && !w.getName().isEmpty())
+                ? w.getName()
+                : w.getId().toString().substring(0, 8);
+        // The select button shows the world name (and an ASCII active marker so users can tell at a
+        // glance which world the editor is currently targeting). Clicking it makes that world the
+        // placement target.
+        TextButton selectBtn = new TextButton((selected ? "[active] " : "         ") + name, skin);
+        selectBtn.getLabel().setAlignment(Align.left);
+        selectBtn.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                selectWorld(w.getId());
+            }
+        });
+        // Modify: rename popup.
+        TextButton modifyBtn = new TextButton("Rename", skin);
+        modifyBtn.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                openModifyWorldDialog(w);
+            }
+        });
+        // Trash: image button so it doesn't depend on emoji glyphs the default skin font can't draw.
+        ImageButton.ImageButtonStyle trashStyle = new ImageButton.ImageButtonStyle();
+        trashStyle.up = skin.getDrawable("d_button");
+        trashStyle.over = skin.getDrawable("d_button_h");
+        trashStyle.down = skin.getDrawable("d_button_d");
+        trashStyle.imageUp = new TextureRegionDrawable(new TextureRegion(uiIcons.trash()));
+        ImageButton trashBtn = new ImageButton(trashStyle);
+        trashBtn.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                openConfirmDeleteWorldDialog(w);
+            }
+        });
+        worldListBody.add(selectBtn).left().fillX().expandX().minWidth(180f).height(30f).padBottom(4f);
+        worldListBody.add(modifyBtn).padLeft(6f).padBottom(4f).width(80f).height(30f);
+        worldListBody.add(trashBtn).padLeft(6f).padBottom(4f).width(36f).height(30f).row();
+    }
+
+    private void selectWorld(UUID id) {
+        selectedWorldId = id;
+        World w = clientLevel.findWorld(id);
+        flashStatus("Selected world: " + (w != null && w.getName() != null ? w.getName() : id.toString().substring(0, 8)));
+        refreshSelectedWorldLabel();
+        if (worldDropdownOpen) rebuildWorldDropdown();
+    }
+
+    private void requestCreateWorld() {
+        String name = "World " + (clientLevel.getWorlds().size() + 1);
+        connection.send(new CreateWorldPayload(name));
+        flashStatus("Creating " + name + "...");
+        // Server replies asynchronously; close + clear the panel so the user sees the new entry next open.
+        closeWorldDropdown();
+    }
+
+    /** Two-step delete so a stray click doesn't nuke a world. */
+    private void openConfirmDeleteWorldDialog(World w) {
+        String label = (w.getName() != null && !w.getName().isEmpty()) ? w.getName() : w.getId().toString().substring(0, 8);
+        Dialog dialog = new Dialog("Delete world?", skin);
+        Table content = dialog.getContentTable();
+        content.pad(10f);
+        content.add(new Label("Permanently delete \"" + label + "\"?", skin)).left().row();
+        content.add(new Label("This cannot be undone.", skin, "muted")).left().padTop(4f).row();
+
+        Table buttons = dialog.getButtonTable();
+        buttons.pad(8f);
+        TextButton confirm = new TextButton("Delete", skin);
+        confirm.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                requestDeleteWorld(w.getId());
+                dialog.hide();
+            }
+        });
+        TextButton cancel = new TextButton("Cancel", skin);
+        cancel.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) { dialog.hide(); }
+        });
+        buttons.add(confirm).width(110f).height(36f).padRight(8f);
+        buttons.add(cancel).width(110f).height(36f);
+        dialog.show(uiStage);
+    }
+
+    private void requestDeleteWorld(UUID id) {
+        connection.send(new DeleteWorldPayload(id));
+        if (id.equals(selectedWorldId)) {
+            selectedWorldId = null;
+            refreshSelectedWorldLabel();
+        }
+        flashStatus("Deleting world...");
+        if (worldDropdownOpen) rebuildWorldDropdown();
+    }
+
+    private void openModifyWorldDialog(World w) {
+        Dialog dialog = new Dialog("Modify world", skin) {
+            @Override protected void result(Object obj) {
+                // No-op; explicit close below.
+            }
+        };
+        Table content = dialog.getContentTable();
+        content.pad(10f);
+        content.add(new Label("Rename:", skin)).left().padRight(8f);
+        TextField nameField = new TextField(w.getName() != null ? w.getName() : "", skin);
+        nameField.setMessageText("World name");
+        content.add(nameField).width(220f).row();
+
+        Table buttons = dialog.getButtonTable();
+        buttons.pad(8f);
+        TextButton apply = new TextButton("Apply", skin);
+        apply.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                String newName = nameField.getText().trim();
+                if (!newName.isEmpty() && !newName.equals(w.getName())) {
+                    connection.send(new RenameWorldPayload(w.getId(), newName));
+                    flashStatus("Renaming...");
+                }
+                dialog.hide();
+            }
+        });
+        TextButton cancel = new TextButton("Cancel", skin);
+        cancel.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) { dialog.hide(); }
+        });
+        buttons.add(apply).width(100f).height(36f).padRight(8f);
+        buttons.add(cancel).width(100f).height(36f);
+        dialog.show(uiStage);
+    }
+
+    private void refreshSelectedWorldLabel() {
+        if (selectedWorldId == null) {
+            selectedWorldLabel.setText("World: (none — pick one)");
+            return;
+        }
+        World w = clientLevel.findWorld(selectedWorldId);
+        if (w == null) {
+            selectedWorldLabel.setText("World: (gone)");
+            return;
+        }
+        String n = w.getName();
+        selectedWorldLabel.setText("World: " + (n != null && !n.isEmpty() ? n : selectedWorldId.toString().substring(0, 8)));
+    }
+
+    // --- Palette ---
 
     private void rebuildPaletteTiles(String filter) {
         paletteTilesTable.clearChildren();
@@ -214,6 +473,10 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void selectPaletteEntry(PaletteEntries.Entry entry) {
+        if (selectedWorldId == null || clientLevel.findWorld(selectedWorldId) == null) {
+            flashStatus("Select or create a world before picking a tool.");
+            return;
+        }
         EditorTool tool = switch (entry.kind()) {
             case NODE -> new EditorTool.PlaceNode(entry.type());
             case EDGE -> new EditorTool.ConnectEdge(entry.type(), null);
@@ -231,7 +494,7 @@ public class GameScreen extends ScreenAdapter {
         } else if (t instanceof EditorTool.PlaceNode pn) {
             toolLabel.setText("Tool: place node " + pn.type().getTypeId());
         } else if (t instanceof EditorTool.PlaceComponent pc) {
-            toolLabel.setText(String.format(Locale.ROOT, "Tool: place %s @%.0f°",
+            toolLabel.setText(String.format(Locale.ROOT, "Tool: place %s @%.0f\u00B0",
                     pc.type().getTypeId(), Math.toDegrees(pc.angle())));
         } else if (t instanceof EditorTool.ConnectEdge ce) {
             toolLabel.setText("Tool: connect " + ce.type().getTypeId()
@@ -304,16 +567,34 @@ public class GameScreen extends ScreenAdapter {
 
     // --- Settings dialog ---
 
+    /**
+     * Builds and shows the in-world settings dialog. The previous version cleared {@link #settingsDialog}
+     * only via {@link Dialog#result(Object)}, which only fires for buttons added with
+     * {@link Dialog#button(String, Object)}. Buttons added directly to {@link Dialog#getButtonTable()}
+     * called {@code dialog.hide()} without firing {@code result()}, so the field stayed non-null and the
+     * next {@link #openSettingsDialog()} call hit the early-return. Now we override {@link Dialog#hide()}
+     * (both no-arg and Action-arg overloads) to also clear the field, plus an {@code addListener} on
+     * removal as a belt-and-braces fallback.
+     */
     private void openSettingsDialog() {
-        if (settingsDialog != null) return;
+        if (settingsDialog != null && settingsDialog.getStage() != null) return;
+        settingsDialog = null; // stale reference if the previous one was already detached
         Dialog dialog = new Dialog("Settings", skin) {
+            @Override public void hide() {
+                settingsDialog = null;
+                super.hide();
+            }
+            @Override public void hide(com.badlogic.gdx.scenes.scene2d.Action action) {
+                settingsDialog = null;
+                super.hide(action);
+            }
             @Override protected void result(Object obj) {
                 settingsDialog = null;
             }
         };
         Table content = dialog.getContentTable();
         content.pad(10f);
-        content.add(new Label("World: " + worldName, skin)).left().row();
+        content.add(new Label("Save: " + saveName, skin)).left().row();
         if (isSingleplayer()) {
             content.add(new Label("Save dir: " + integrated.saveDir(), skin, "muted")).left().padTop(4f).row();
             content.add(new Label("Tick rate: " + integrated.level().getTickRate() + " s/tick", skin, "muted"))
@@ -375,7 +656,7 @@ public class GameScreen extends ScreenAdapter {
 
     @Override public void show() {
         InputMultiplexer mux = new InputMultiplexer();
-        // UI first so palette / settings clicks win.
+        // UI first so palette / dropdown / settings clicks win.
         mux.addProcessor(uiStage);
         // Camera (right/middle drag + scroll) before editor so editor only sees left clicks.
         mux.addProcessor(cameraController);
@@ -385,7 +666,9 @@ public class GameScreen extends ScreenAdapter {
         mux.addProcessor(new InputAdapter() {
             @Override public boolean keyDown(int keycode) {
                 if (keycode == Input.Keys.ESCAPE) {
-                    if (settingsDialog != null) {
+                    if (worldDropdownOpen) {
+                        closeWorldDropdown();
+                    } else if (settingsDialog != null && settingsDialog.getStage() != null) {
                         settingsDialog.hide();
                     } else {
                         openSettingsDialog();
@@ -411,6 +694,13 @@ public class GameScreen extends ScreenAdapter {
         clientLevel.tick();
         cameraController.update(dt);
         refreshToolLabel();
+        refreshSelectedWorldLabel();
+
+        if (worldDropdownOpen) {
+            // Cheap rebuild keeps the list in sync with server-pushed lifecycle events without us hooking
+            // events on the client mirror.
+            rebuildWorldDropdown();
+        }
 
         worldStage.act(dt);
         worldStage.draw();
@@ -431,5 +721,6 @@ public class GameScreen extends ScreenAdapter {
         worldStage.dispose();
         uiStage.dispose();
         textures.dispose();
+        uiIcons.dispose();
     }
 }

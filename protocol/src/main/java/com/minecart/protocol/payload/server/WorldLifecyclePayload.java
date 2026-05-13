@@ -22,26 +22,51 @@ public final class WorldLifecyclePayload implements Payload {
 
     public enum Kind {
         INSERT,
-        REMOVE
+        REMOVE,
+        /** Server announces a new {@link #name} for an existing world; clients update their mirror. */
+        RENAME
     }
 
     private UUID worldId;
     private Kind kind;
+    /** Optional human-readable label, set on INSERT to seed the client's mirror with the world's name. */
+    private String name;
 
     public WorldLifecyclePayload() {
     }
 
     public WorldLifecyclePayload(UUID worldId, Kind kind) {
+        this(worldId, kind, null);
+    }
+
+    public WorldLifecyclePayload(UUID worldId, Kind kind, String name) {
         this.worldId = worldId;
         this.kind = kind;
+        this.name = name;
     }
 
     public static WorldLifecyclePayload insert(UUID worldId) {
         return new WorldLifecyclePayload(worldId, Kind.INSERT);
     }
 
+    public static WorldLifecyclePayload insert(UUID worldId, String name) {
+        return new WorldLifecyclePayload(worldId, Kind.INSERT, name);
+    }
+
     public static WorldLifecyclePayload remove(UUID worldId) {
         return new WorldLifecyclePayload(worldId, Kind.REMOVE);
+    }
+
+    public static WorldLifecyclePayload rename(UUID worldId, String name) {
+        return new WorldLifecyclePayload(worldId, Kind.RENAME, name);
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     @Override
@@ -75,7 +100,14 @@ public final class WorldLifecyclePayload implements Payload {
         Payload.super.save(tag);
         TagUtil.putUUID(tag, ProtocolStrings.TAG_WORLD_ID, worldId);
         if (kind != null) {
-            tag.putString(ProtocolStrings.TAG_KIND, kind == Kind.INSERT ? ProtocolStrings.KIND_INSERT : ProtocolStrings.KIND_REMOVE);
+            tag.putString(ProtocolStrings.TAG_KIND, switch (kind) {
+                case INSERT -> ProtocolStrings.KIND_INSERT;
+                case REMOVE -> ProtocolStrings.KIND_REMOVE;
+                case RENAME -> ProtocolStrings.KIND_RENAME;
+            });
+        }
+        if (name != null && !name.isEmpty()) {
+            tag.putString(ProtocolStrings.TAG_WORLD_NAME, name);
         }
     }
 
@@ -91,8 +123,12 @@ public final class WorldLifecyclePayload implements Payload {
             kind = Kind.INSERT;
         } else if (ProtocolStrings.KIND_REMOVE.equalsIgnoreCase(k)) {
             kind = Kind.REMOVE;
+        } else if (ProtocolStrings.KIND_RENAME.equalsIgnoreCase(k)) {
+            kind = Kind.RENAME;
         } else {
             throw new IllegalArgumentException("Missing or invalid '" + ProtocolStrings.TAG_KIND + "'");
         }
+        String n = tag.getString(ProtocolStrings.TAG_WORLD_NAME);
+        name = (n == null || n.isEmpty()) ? null : n;
     }
 }

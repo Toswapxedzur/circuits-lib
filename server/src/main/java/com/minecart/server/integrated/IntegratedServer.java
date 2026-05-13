@@ -7,6 +7,7 @@ import com.minecart.foundation.World;
 import com.minecart.logic.ServerLevel;
 import com.minecart.protocol.codec.PayloadDecoder;
 import com.minecart.protocol.codec.PayloadEncoder;
+import com.minecart.protocol.payload.Payload;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
 import com.minecart.protocol.payload.server.WorldLifecyclePayload;
@@ -82,7 +83,9 @@ public class IntegratedServer {
         this.level = Objects.requireNonNull(level, "level");
         this.address = new LocalAddress("singleplayer-" + UUID.randomUUID());
         this.dispatcher = new ServerPayloadDispatcher(level);
-        StandardServerHandlers.register(dispatcher, level);
+        // World create/delete/rename handlers need a sink to push CLIENT-bound notifications back to every
+        // connected channel. We capture `this::broadcast` so the channel group is read at send time.
+        StandardServerHandlers.register(dispatcher, level, this::broadcast);
         this.tickThread = new ServerTickThread(level, "integrated-server-tick");
         this.saveDir = saveDir;
         Consumer<CircuitElementPayload> broadcastSink = payload -> {
@@ -92,6 +95,14 @@ public class IntegratedServer {
             channels.writeAndFlush(payload);
         };
         this.elementListener = new CircuitElementListener(level, broadcastSink);
+    }
+
+    /** Writes {@code payload} to every connected client channel. No-op when no client is connected. */
+    private void broadcast(Payload payload) {
+        if (channels.isEmpty()) {
+            return;
+        }
+        channels.writeAndFlush(payload);
     }
 
     public ServerLevel level() {
@@ -165,7 +176,7 @@ public class IntegratedServer {
             return;
         }
         for (World world : level.getWorlds()) {
-            ch.writeAndFlush(WorldLifecyclePayload.insert(world.getId()));
+            ch.writeAndFlush(WorldLifecyclePayload.insert(world.getId(), world.getName()));
             for (Circuit circuit : world.getCircuits()) {
                 ch.writeAndFlush(CircuitSnapshotPayload.capture(world, circuit));
             }

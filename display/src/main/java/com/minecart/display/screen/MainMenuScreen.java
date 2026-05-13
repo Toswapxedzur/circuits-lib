@@ -33,6 +33,7 @@ public class MainMenuScreen extends ScreenAdapter {
         TextButton singleplayer = new TextButton("Singleplayer", skin);
         TextButton multiplayer  = new TextButton("Multiplayer",  skin);
         TextButton settings     = new TextButton("Settings",     skin);
+        TextButton quit         = new TextButton("Quit",          skin);
 
         singleplayer.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) {
@@ -49,13 +50,21 @@ public class MainMenuScreen extends ScreenAdapter {
                 Gdx.app.log("Menu", "Settings (not yet implemented)");
             }
         });
+        // Closes the LibGDX application; on desktop this terminates the JVM via the Lwjgl3Application
+        // shutdown hook.
+        quit.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                Gdx.app.exit();
+            }
+        });
 
         Table root = new Table();
         root.setFillParent(true);
         root.add(title).padBottom(28f).row();
         root.add(singleplayer).width(260f).height(56f).padBottom(12f).row();
         root.add(multiplayer ).width(260f).height(56f).padBottom(12f).row();
-        root.add(settings    ).width(260f).height(56f).row();
+        root.add(settings    ).width(260f).height(56f).padBottom(12f).row();
+        root.add(quit        ).width(260f).height(56f).row();
         stage.addActor(root);
     }
 

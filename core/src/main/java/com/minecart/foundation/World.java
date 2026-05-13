@@ -19,6 +19,13 @@ public class World {
     /** Stable id for this electrical network (e.g. client/server routing, {@link com.minecart.client.ActionPayload}). */
     protected final UUID id;
 
+    /**
+     * Human-readable label shown in the editor's world dropdown. Optional metadata: never used for routing
+     * or simulation. Persisted alongside {@link #id} by {@link com.minecart.server.persistence.WorldStorage}
+     * and synced to clients via {@link com.minecart.protocol.payload.server.WorldLifecyclePayload}.
+     */
+    protected String name;
+
     protected final Set<Circuit> circuits = new LinkedHashSet<>();
 
     public World(Level level) {
@@ -35,6 +42,14 @@ public class World {
 
     public UUID getId() {
         return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public Level getLevel() {

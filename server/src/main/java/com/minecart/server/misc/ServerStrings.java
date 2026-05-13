@@ -17,6 +17,9 @@ public final class ServerStrings {
     /** Per-world key: stable {@link com.minecart.foundation.World#getId()} UUID. */
     public static final String TAG_WORLD_ID = "world_id";
 
+    /** Per-world key: optional human-readable {@link com.minecart.foundation.World#getName()}. */
+    public static final String TAG_WORLD_NAME = "world_name";
+
     /** Per-world key: list of {@link com.minecart.foundation.Circuit#save} tags. */
     public static final String TAG_CIRCUITS = "circuits";
 

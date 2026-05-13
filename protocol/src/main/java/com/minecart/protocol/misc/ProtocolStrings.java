@@ -18,6 +18,9 @@ public final class ProtocolStrings {
     public static final String PAYLOAD_PLACE_NODE = "minecart.place_node_payload";
     public static final String PAYLOAD_PLACE_COMPONENT = "minecart.place_component_payload";
     public static final String PAYLOAD_CONNECT_EDGE = "minecart.connect_edge_payload";
+    public static final String PAYLOAD_RENAME_WORLD = "minecart.rename_world_payload";
+    public static final String PAYLOAD_CREATE_WORLD = "minecart.create_world_payload";
+    public static final String PAYLOAD_DELETE_WORLD = "minecart.delete_world_payload";
 
     public static final String PAYLOAD_ENVELOPE_ID = "payload_id";
 
@@ -33,6 +36,7 @@ public final class ProtocolStrings {
     public static final String TAG_ANGLE = "angle";
     public static final String TAG_START_NODE_ID = "start_node_id";
     public static final String TAG_END_NODE_ID = "end_node_id";
+    public static final String TAG_WORLD_NAME = "world_name";
 
     /** Snapshot body: embedded circuit compound under the payload root. */
     public static final String SNAPSHOT_TAG_CIRCUIT = "circuit";
@@ -44,4 +48,5 @@ public final class ProtocolStrings {
     public static final String KIND_INSERT = "insert";
     public static final String KIND_REMOVE = "remove";
     public static final String KIND_CHANGE = "change";
+    public static final String KIND_RENAME = "rename";
 }

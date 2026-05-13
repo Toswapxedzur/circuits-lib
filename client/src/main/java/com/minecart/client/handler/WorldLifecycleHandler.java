@@ -27,13 +27,25 @@ public final class WorldLifecycleHandler implements PayloadHandler<WorldLifecycl
 
     public static void apply(WorldLifecyclePayload payload, ClientLevel level) {
         UUID wid = payload.getWorldId();
-        if (payload.getKind() == WorldLifecyclePayload.Kind.REMOVE) {
-            World w = level.findWorld(wid);
-            if (w != null) {
-                level.destroyWorld(w);
+        switch (payload.getKind()) {
+            case REMOVE -> {
+                World w = level.findWorld(wid);
+                if (w != null) {
+                    level.destroyWorld(w);
+                }
             }
-            return;
+            case INSERT -> {
+                World w = level.getOrCreateWorld(wid);
+                if (payload.getName() != null && !payload.getName().isEmpty()) {
+                    w.setName(payload.getName());
+                }
+            }
+            case RENAME -> {
+                World w = level.findWorld(wid);
+                if (w != null && payload.getName() != null && !payload.getName().isEmpty()) {
+                    w.setName(payload.getName());
+                }
+            }
         }
-        level.getOrCreateWorld(wid);
     }
 }

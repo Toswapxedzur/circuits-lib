@@ -59,6 +59,9 @@ public final class WorldStorage {
         for (World w : level.getWorlds()) {
             CompoundTag wt = new CompoundTag();
             TagUtil.putUUID(wt, ServerStrings.TAG_WORLD_ID, w.getId());
+            if (w.getName() != null && !w.getName().isEmpty()) {
+                wt.putString(ServerStrings.TAG_WORLD_NAME, w.getName());
+            }
             ListTag circuits = new ListTag();
             for (Circuit c : w.getCircuits()) {
                 CompoundTag ct = new CompoundTag();
@@ -108,6 +111,10 @@ public final class WorldStorage {
                     throw new IOException("Missing " + ServerStrings.TAG_WORLD_ID + " in " + ServerStrings.TAG_WORLDS + "[" + i + "]");
                 }
                 ServerWorld sw = level.getOrCreateWorld(worldId);
+                String name = wt.getString(ServerStrings.TAG_WORLD_NAME);
+                if (name != null && !name.isEmpty()) {
+                    sw.setName(name);
+                }
                 Tag circuitsTag = wt.get(ServerStrings.TAG_CIRCUITS);
                 if (circuitsTag instanceof ListTag circuits) {
                     for (int j = 0; j < circuits.size(); j++) {
@@ -134,7 +141,9 @@ public final class WorldStorage {
 
     /**
      * Convenience: write an empty save (one world with the given id, no circuits) into {@code worldDir}. Used
-     * when first creating a world from the UI so subsequent loads see a valid file.
+     * when first creating a save from the UI so subsequent loads see a valid file. The seeded world gets a
+     * default {@link com.minecart.foundation.World#getName() name} of {@code "World 1"} so it appears
+     * usefully in the in-game world dropdown.
      */
     public static void writeEmpty(Path worldDir, UUID worldId) throws IOException {
         Files.createDirectories(worldDir);
@@ -145,6 +154,7 @@ public final class WorldStorage {
         ListTag worlds = new ListTag();
         CompoundTag wt = new CompoundTag();
         TagUtil.putUUID(wt, ServerStrings.TAG_WORLD_ID, worldId);
+        wt.putString(ServerStrings.TAG_WORLD_NAME, "World 1");
         wt.put(ServerStrings.TAG_CIRCUITS, new ListTag());
         worlds.add(wt);
         root.put(ServerStrings.TAG_WORLDS, worlds);

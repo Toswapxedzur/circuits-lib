@@ -2,8 +2,11 @@ package com.minecart.protocol.payload;
 
 import com.minecart.protocol.payload.client.ActionPayload;
 import com.minecart.protocol.payload.client.ConnectEdgePayload;
+import com.minecart.protocol.payload.client.CreateWorldPayload;
+import com.minecart.protocol.payload.client.DeleteWorldPayload;
 import com.minecart.protocol.payload.client.PlaceComponentPayload;
 import com.minecart.protocol.payload.client.PlaceNodePayload;
+import com.minecart.protocol.payload.client.RenameWorldPayload;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
 import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
@@ -23,6 +26,9 @@ public final class AllPayloads {
     public static final PayloadType<PlaceNodePayload> PLACE_NODE = PlaceNodePayload.TYPE;
     public static final PayloadType<PlaceComponentPayload> PLACE_COMPONENT = PlaceComponentPayload.TYPE;
     public static final PayloadType<ConnectEdgePayload> CONNECT_EDGE = ConnectEdgePayload.TYPE;
+    public static final PayloadType<CreateWorldPayload> CREATE_WORLD = CreateWorldPayload.TYPE;
+    public static final PayloadType<DeleteWorldPayload> DELETE_WORLD = DeleteWorldPayload.TYPE;
+    public static final PayloadType<RenameWorldPayload> RENAME_WORLD = RenameWorldPayload.TYPE;
 
     private AllPayloads() {}
 }
