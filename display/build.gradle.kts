@@ -4,8 +4,8 @@ plugins {
 
 application {
     mainClass = "com.minecart.display.Main"
-    if (System.getProperty("os.name").lowercase().contains("mac")) {
-        applicationDefaultJvmArgs = listOf("-XstartOnFirstThread")
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        applicationDefaultJvmArgs = listOf("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
     }
 }
 

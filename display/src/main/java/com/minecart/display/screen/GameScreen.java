@@ -99,6 +99,27 @@ public class GameScreen extends ScreenAdapter {
     private final Table worldListBody;
     private boolean worldDropdownOpen;
 
+    // Persistent dropdown chrome -- built once in the constructor and re-added on rebuild instead of
+    // reallocating per frame. Recreating these every frame was killing click detection: a touchDown on a
+    // button would land on an actor that the next render-loop rebuild destroyed before the touchUp arrived,
+    // so ClickListener never fired.
+    private final Label dropdownHeader;
+    private final Label dropdownHint;
+    private final ScrollPane worldListScroll;
+    private final TextButton createWorldBtn;
+    private final TextButton closeDropdownBtn;
+    private final ImageButton.ImageButtonStyle trashStyle;
+    private final TextureRegionDrawable trashIconDrawable;
+
+    /**
+     * Snapshot of {@link com.minecart.client.logic.ClientLevel#worldsRevision()} at the last rebuild. The
+     * render loop only rebuilds the dropdown when this falls behind the live counter, so we avoid the old
+     * "60 rebuilds per second while open" pattern and -- crucially -- world-row actors live long enough for
+     * touchDown/touchUp pairs to find the same {@link ClickListener}. Starts at {@code -1} so the first
+     * open-triggered rebuild always runs.
+     */
+    private int lastSeenWorldsRevision = -1;
+
     /** Hides "Save & Quit" while the snapshot is flushing so the user can't double-click. */
     private boolean shuttingDown;
     /** The currently-open settings dialog, or {@code null}. */
@@ -126,6 +147,36 @@ public class GameScreen extends ScreenAdapter {
         this.paletteTilesTable = new Table();
         this.worldListBody = new Table();
         this.worldDropdown = new Table();
+
+        this.dropdownHeader = new Label("Worlds", skin);
+        this.dropdownHeader.setFontScale(1.1f);
+        this.dropdownHint = new Label("Click a name to select", skin, "muted");
+
+        this.worldListScroll = new ScrollPane(worldListBody, skin);
+        this.worldListScroll.setFadeScrollBars(false);
+        this.worldListScroll.setScrollingDisabled(true, false);
+
+        this.createWorldBtn = new TextButton("+ Create world", skin);
+        this.createWorldBtn.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                requestCreateWorld();
+            }
+        });
+
+        this.closeDropdownBtn = new TextButton("Close", skin);
+        this.closeDropdownBtn.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) {
+                closeWorldDropdown();
+            }
+        });
+
+        this.trashIconDrawable = new TextureRegionDrawable(new TextureRegion(uiIcons.trash()));
+        this.trashStyle = new ImageButton.ImageButtonStyle();
+        this.trashStyle.up = skin.getDrawable("d_button");
+        this.trashStyle.over = skin.getDrawable("d_button_h");
+        this.trashStyle.down = skin.getDrawable("d_button_d");
+        this.trashStyle.imageUp = trashIconDrawable;
+
         this.editor = new Editor(
                 clientLevel,
                 connection,
@@ -234,16 +285,19 @@ public class GameScreen extends ScreenAdapter {
         worldDropdown.setVisible(false);
     }
 
-    /** Rebuilds the world list rows + the create footer; called every time the panel is shown. */
+    /**
+     * Rebuilds the world list rows + the create footer. Called on dropdown open and whenever
+     * {@link com.minecart.client.logic.ClientLevel#worldsRevision()} advances past
+     * {@link #lastSeenWorldsRevision}. The chrome actors (header, hint, scroll pane, create/close buttons)
+     * are persistent fields -- only the per-world rows inside {@link #worldListBody} get reallocated, and
+     * even those only when the world set actually changed. {@link #lastSeenWorldsRevision} is updated as the
+     * last step so the render-loop gate naturally stays in sync.
+     */
     private void rebuildWorldDropdown() {
         worldDropdown.clearChildren();
 
-        Label header = new Label("Worlds", skin);
-        header.setFontScale(1.1f);
-        Label hint = new Label("Click a name to select", skin, "muted");
-
-        worldDropdown.add(header).left().padBottom(2f).row();
-        worldDropdown.add(hint).left().padBottom(8f).row();
+        worldDropdown.add(dropdownHeader).left().padBottom(2f).row();
+        worldDropdown.add(dropdownHint).left().padBottom(8f).row();
 
         worldListBody.clearChildren();
         List<World> worlds = new ArrayList<>(clientLevel.getWorlds());
@@ -255,28 +309,12 @@ public class GameScreen extends ScreenAdapter {
                 addWorldRow(w);
             }
         }
-        ScrollPane listScroll = new ScrollPane(worldListBody, skin);
-        listScroll.setFadeScrollBars(false);
-        listScroll.setScrollingDisabled(true, false);
         // Cap the list height so very large saves still leave room for the "create" footer.
         float maxListH = Math.max(80f, uiStage.getHeight() - 220f);
-        worldDropdown.add(listScroll).fillX().expandX().minWidth(280f).maxHeight(maxListH).row();
+        worldDropdown.add(worldListScroll).fillX().expandX().minWidth(280f).maxHeight(maxListH).row();
 
-        TextButton create = new TextButton("+ Create world", skin);
-        create.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent e, float x, float y) {
-                requestCreateWorld();
-            }
-        });
-        worldDropdown.add(create).fillX().padTop(8f).height(32f).row();
-
-        TextButton close = new TextButton("Close", skin);
-        close.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent e, float x, float y) {
-                closeWorldDropdown();
-            }
-        });
-        worldDropdown.add(close).fillX().padTop(4f).height(28f).row();
+        worldDropdown.add(createWorldBtn).fillX().padTop(8f).height(32f).row();
+        worldDropdown.add(closeDropdownBtn).fillX().padTop(4f).height(28f).row();
 
         // Anchor to the top-right corner of the UI stage, below the top bar (~80 px).
         worldDropdown.pack();
@@ -284,6 +322,8 @@ public class GameScreen extends ScreenAdapter {
                 uiStage.getWidth() - worldDropdown.getWidth() - 12f,
                 uiStage.getHeight() - 80f,
                 Align.topLeft);
+
+        lastSeenWorldsRevision = clientLevel.worldsRevision();
     }
 
     private void addWorldRow(World w) {
@@ -308,12 +348,8 @@ public class GameScreen extends ScreenAdapter {
                 openModifyWorldDialog(w);
             }
         });
-        // Trash: image button so it doesn't depend on emoji glyphs the default skin font can't draw.
-        ImageButton.ImageButtonStyle trashStyle = new ImageButton.ImageButtonStyle();
-        trashStyle.up = skin.getDrawable("d_button");
-        trashStyle.over = skin.getDrawable("d_button_h");
-        trashStyle.down = skin.getDrawable("d_button_d");
-        trashStyle.imageUp = new TextureRegionDrawable(new TextureRegion(uiIcons.trash()));
+        // Trash: image button so it doesn't depend on emoji glyphs the default skin font can't draw. The
+        // style + drawable are shared across all rows (built once in the constructor).
         ImageButton trashBtn = new ImageButton(trashStyle);
         trashBtn.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) {
@@ -696,9 +732,11 @@ public class GameScreen extends ScreenAdapter {
         refreshToolLabel();
         refreshSelectedWorldLabel();
 
-        if (worldDropdownOpen) {
-            // Cheap rebuild keeps the list in sync with server-pushed lifecycle events without us hooking
-            // events on the client mirror.
+        if (worldDropdownOpen && clientLevel.worldsRevision() != lastSeenWorldsRevision) {
+            // Rebuild only when the client mirror actually changed (server INSERT/REMOVE/RENAME applied).
+            // The old per-frame rebuild churned all row actors at 60fps, which prevented Scene2D's
+            // ClickListener from ever pairing a touchDown with the matching touchUp -- clicks on rows
+            // were silently dropped. Now the revision counter on ClientLevel acts as the dirty flag.
             rebuildWorldDropdown();
         }
 

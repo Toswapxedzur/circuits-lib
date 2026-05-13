@@ -16,6 +16,50 @@ public class ClientLevel extends Level {
     protected final ClientTickEvent.Level postTick = new ClientTickEvent.Level(ClientTickEvent.Phase.POST, this);
 
     /**
+     * Monotonically increasing counter bumped whenever the world set or any world's {@link World#getName() name}
+     * changes. UI code holding a "last seen" snapshot can compare against {@link #worldsRevision()} to detect
+     * whether a refresh is needed without subscribing to events or polling the worlds collection contents.
+     *
+     * <p>Plain {@code int} is safe here because all mutations go through the render thread (Netty I/O threads
+     * forward via {@code level.submit(...)}).
+     */
+    private int worldsRevision;
+
+    /**
+     * @return the current revision number for the worlds set + per-world names. Compare against a cached value
+     *         to cheaply decide whether downstream UI needs to rebuild.
+     */
+    public int worldsRevision() {
+        return worldsRevision;
+    }
+
+    /**
+     * Updates a world's name and bumps {@link #worldsRevision()} so observers (e.g. the editor's world dropdown)
+     * notice the change. No-op if the world is missing, the new name is null/empty, or the name is unchanged.
+     */
+    public boolean renameWorld(UUID worldId, String newName) {
+        if (newName == null || newName.isEmpty()) return false;
+        World w = findWorld(worldId);
+        if (w == null) return false;
+        if (newName.equals(w.getName())) return false;
+        w.setName(newName);
+        worldsRevision++;
+        return true;
+    }
+
+    @Override
+    protected void addWorld(World world) {
+        super.addWorld(world);
+        worldsRevision++;
+    }
+
+    @Override
+    protected void removeWorld(World world) {
+        super.removeWorld(world);
+        worldsRevision++;
+    }
+
+    /**
      * Creates a new client-side electrical network container.
      */
     public ClientWorld createWorld() {

@@ -35,17 +35,10 @@ public final class WorldLifecycleHandler implements PayloadHandler<WorldLifecycl
                 }
             }
             case INSERT -> {
-                World w = level.getOrCreateWorld(wid);
-                if (payload.getName() != null && !payload.getName().isEmpty()) {
-                    w.setName(payload.getName());
-                }
+                level.getOrCreateWorld(wid);
+                level.renameWorld(wid, payload.getName());
             }
-            case RENAME -> {
-                World w = level.findWorld(wid);
-                if (w != null && payload.getName() != null && !payload.getName().isEmpty()) {
-                    w.setName(payload.getName());
-                }
-            }
+            case RENAME -> level.renameWorld(wid, payload.getName());
         }
     }
 }
