@@ -14,7 +14,9 @@ import com.minecart.registry.ComponentAnchorRegistry;
 import com.minecart.variant.info.PositionInfo;
 import com.minecart.variant.info.RotationInfo;
 
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Server-side handler for {@link PlaceComponentPayload}: creates a fresh {@link CircuitComponent} of the
@@ -70,11 +72,13 @@ public final class PlaceComponentHandler implements PayloadHandler<PlaceComponen
         }
         rot.setAngle(payload.getAngle());
 
+        Set<CircuitNode> anchored = new HashSet<>();
         for (ComponentAnchorRegistry.Anchor anchor : ComponentAnchorRegistry.getAnchors(rawType)) {
             CircuitNode port = comp.getPort(anchor.portIndex());
             if (port == null) {
                 continue;
             }
+            anchored.add(port);
             double[] xy = ComponentAnchorRegistry.worldPositionOf(
                     anchor, payload.getX(), payload.getY(), payload.getAngle());
             PositionInfo portPos = port.getInfo(AllElementInfos.POSITION);
@@ -83,6 +87,20 @@ public final class PlaceComponentHandler implements PayloadHandler<PlaceComponen
                 port.setInfo(AllElementInfos.POSITION, portPos);
             }
             portPos.set(xy[0], xy[1]);
+        }
+        // Any internal node without a registered anchor (e.g. the BJTransistor's centre node) would
+        // otherwise be stranded at the world origin because nothing else ever stamps PositionInfo onto
+        // it. Default it to the component's centre so the renderer doesn't draw a spurious node at (0, 0).
+        for (CircuitNode internal : comp.getNodes()) {
+            if (anchored.contains(internal)) {
+                continue;
+            }
+            PositionInfo pos = internal.getInfo(AllElementInfos.POSITION);
+            if (pos == null) {
+                pos = new PositionInfo();
+                internal.setInfo(AllElementInfos.POSITION, pos);
+            }
+            pos.set(payload.getX(), payload.getY());
         }
     }
 }

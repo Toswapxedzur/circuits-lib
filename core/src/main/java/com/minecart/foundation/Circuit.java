@@ -1,5 +1,6 @@
 package com.minecart.foundation;
 
+import com.minecart.event.events.ElementCircuitChangedEvent;
 import com.minecart.event.events.ElementInfoInjectEvent;
 import com.minecart.misc.CoreStrings;
 import com.minecart.logic.*;
@@ -113,16 +114,24 @@ public class Circuit {
     }
 
     /**
-     * Merge all nodes and edges into {@code toMerge}; this circuit is left empty of those elements.
+     * Merge all nodes and edges into {@code toMerge}; this circuit is left empty of those elements. Posts
+     * one {@link ElementCircuitChangedEvent} per moved element so the server's replication listener can
+     * emit a corresponding {@code CHANGE} delta and keep the client mirror's circuit membership in sync.
      */
     public void mergeInto(Circuit toMerge) {
         for (CircuitNode node : nodes) {
             node.setCircuit(toMerge);
             toMerge.nodes().add(node);
+            if (world != null) {
+                world.post(new ElementCircuitChangedEvent(world, node, this, toMerge));
+            }
         }
         for (CircuitEdge edge : edges) {
             edge.setCircuit(toMerge);
             toMerge.edges().add(edge);
+            if (world != null) {
+                world.post(new ElementCircuitChangedEvent(world, edge, this, toMerge));
+            }
         }
     }
 
@@ -191,11 +200,17 @@ public class Circuit {
             circuitNode.setCircuit(newCircuit);
             newCircuit.addNode(circuitNode);
             this.nodes.remove(circuitNode);
+            if (world != null) {
+                world.post(new ElementCircuitChangedEvent(world, circuitNode, this, newCircuit));
+            }
         };
         Consumer<CircuitEdge> reassignEdge = circuitEdge -> {
             circuitEdge.setCircuit(newCircuit);
             newCircuit.addEdge(circuitEdge);
             this.edges.remove(circuitEdge);
+            if (world != null) {
+                world.post(new ElementCircuitChangedEvent(world, circuitEdge, this, newCircuit));
+            }
         };
 
         bfs(node2, reassignNode, reassignEdge);

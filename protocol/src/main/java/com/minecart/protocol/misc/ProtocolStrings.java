@@ -21,11 +21,19 @@ public final class ProtocolStrings {
     public static final String PAYLOAD_RENAME_WORLD = "minecart.rename_world_payload";
     public static final String PAYLOAD_CREATE_WORLD = "minecart.create_world_payload";
     public static final String PAYLOAD_DELETE_WORLD = "minecart.delete_world_payload";
+    public static final String PAYLOAD_MOVE_ELEMENT = "minecart.move_element_payload";
+    public static final String PAYLOAD_DELETE_ELEMENT = "minecart.delete_element_payload";
 
     public static final String PAYLOAD_ENVELOPE_ID = "payload_id";
 
     public static final String TAG_WORLD_ID = "world_id";
     public static final String TAG_CIRCUIT_ID = "circuit_id";
+    /**
+     * Optional on a {@link com.minecart.protocol.payload.server.CircuitElementChange CHANGE} op: id of the
+     * circuit the element was last in. When present, the client moves the element from this circuit into
+     * the payload's destination circuit before applying any sync data.
+     */
+    public static final String TAG_SOURCE_CIRCUIT_ID = "source_circuit_id";
     public static final String TAG_ELEMENT_ID = "element_id";
     public static final String TAG_ACTION = "action";
     public static final String TAG_CHANGES = "changes";

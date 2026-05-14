@@ -3,7 +3,9 @@ package com.minecart.protocol.payload;
 import com.minecart.protocol.payload.client.ActionPayload;
 import com.minecart.protocol.payload.client.ConnectEdgePayload;
 import com.minecart.protocol.payload.client.CreateWorldPayload;
+import com.minecart.protocol.payload.client.DeleteElementPayload;
 import com.minecart.protocol.payload.client.DeleteWorldPayload;
+import com.minecart.protocol.payload.client.MoveElementPayload;
 import com.minecart.protocol.payload.client.PlaceComponentPayload;
 import com.minecart.protocol.payload.client.PlaceNodePayload;
 import com.minecart.protocol.payload.client.RenameWorldPayload;
@@ -29,6 +31,8 @@ public final class AllPayloads {
     public static final PayloadType<CreateWorldPayload> CREATE_WORLD = CreateWorldPayload.TYPE;
     public static final PayloadType<DeleteWorldPayload> DELETE_WORLD = DeleteWorldPayload.TYPE;
     public static final PayloadType<RenameWorldPayload> RENAME_WORLD = RenameWorldPayload.TYPE;
+    public static final PayloadType<MoveElementPayload> MOVE_ELEMENT = MoveElementPayload.TYPE;
+    public static final PayloadType<DeleteElementPayload> DELETE_ELEMENT = DeleteElementPayload.TYPE;
 
     private AllPayloads() {}
 }

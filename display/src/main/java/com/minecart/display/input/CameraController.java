@@ -21,8 +21,11 @@ import com.minecart.display.render.WorldStage;
 public class CameraController extends InputAdapter {
 
     private static final float ZOOM_STEP = 1.15f;
-    private static final float MIN_ZOOM = 0.1f;
-    private static final float MAX_ZOOM = 8f;
+    // Scroll-wheel range matches the Settings slider: magnification 5% .. 1600%, i.e. camera.zoom in
+    // [100 / 1600, 100 / 5] = [0.0625, 20]. The free-form magnification text input in Settings bypasses
+    // this clamp so a user who wants to zoom further than the slider allows still has an escape hatch.
+    private static final float MIN_ZOOM = 100f / 1600f;
+    private static final float MAX_ZOOM = 100f / 5f;
     /** Higher = snappier zoom. 12 means we cover ~63% of the remaining distance per second. */
     private static final float ZOOM_LERP_PER_SEC = 12f;
 
@@ -40,6 +43,17 @@ public class CameraController extends InputAdapter {
         this.stage = stage;
         this.camera = stage.getCamera();
         this.targetZoom = camera.zoom;
+    }
+
+    /**
+     * Re-syncs the lerp target with the camera's current zoom. Call this whenever something outside the
+     * controller (per-world view restore on world switch, the Settings slider, the free-form text input)
+     * sets {@code camera.zoom} directly — otherwise {@link #update(float)} will animate back toward the
+     * stale {@link #targetZoom}.
+     */
+    public void syncTargetZoomToCamera() {
+        this.targetZoom = camera.zoom;
+        this.haveZoomAnchor = false;
     }
 
     public void update(float delta) {
@@ -69,7 +83,13 @@ public class CameraController extends InputAdapter {
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-        if (button == Input.Buttons.MIDDLE || button == Input.Buttons.RIGHT) {
+        // Left, middle, and right drags all pan now: the editor handles left-click placement upstream,
+        // and the DragController only claims left clicks that actually hit an element. So if a left
+        // click reaches us, we know it's on empty canvas with no active placement tool and the user
+        // intended to move the view around.
+        if (button == Input.Buttons.LEFT
+                || button == Input.Buttons.MIDDLE
+                || button == Input.Buttons.RIGHT) {
             panning = true;
             panButton = button;
             lastScreenX = screenX;

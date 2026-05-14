@@ -9,6 +9,7 @@ import com.minecart.protocol.payload.client.PlaceComponentPayload;
 import com.minecart.protocol.payload.client.PlaceNodePayload;
 import com.minecart.protocol.payload.server.CircuitElementChange;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
+import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
 import com.minecart.protocol.payload.server.WorldLifecyclePayload;
 import com.minecart.registry.AllComponents;
@@ -28,6 +29,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -36,7 +41,9 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * End-to-end coverage that the three new SERVER-bound placement payloads cause the matching state mutation on
@@ -168,6 +175,216 @@ class PlacementPayloadRoundTripTest {
             }
         }
         assertTrue(sawComponent, "Expected an INSERT change for the BJ_TRANSISTOR with position + rotation");
+    }
+
+    /**
+     * Regression: {@code ServerWorld.createNode} silently allocates a fresh circuit on every node placement,
+     * and prior to wiring {@link CircuitLifecyclePayload} broadcasting, the client received the resulting
+     * {@link CircuitElementPayload} for a circuit id it had never been told about and crashed with
+     * "No circuit for id ... in world ...". This test pins the fix: a CircuitLifecyclePayload(INSERT) for the
+     * new circuit must arrive BEFORE the CircuitElementPayload referencing it.
+     */
+    @Test
+    void placeNodePayload_announcesNewCircuitBeforeElementDelta() throws Exception {
+        UUID world = firstWorldId();
+        ch.writeAndFlush(new PlaceNodePayload(world, AllComponents.CONNECTION.getTypeId(), 0.0, 0.0)).sync();
+
+        CircuitLifecyclePayload lifecycle = null;
+        CircuitElementPayload element = null;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while ((lifecycle == null || element == null) && System.nanoTime() < deadline) {
+            Payload p = inbound.poll(100, TimeUnit.MILLISECONDS);
+            if (p == null) continue;
+            if (p instanceof CircuitLifecyclePayload clp && clp.getKind() == CircuitLifecyclePayload.Kind.INSERT) {
+                if (lifecycle == null) {
+                    assertNull(element, "Lifecycle INSERT must arrive BEFORE the element delta — the client "
+                            + "needs the circuit to exist before applying any change to it.");
+                    lifecycle = clp;
+                }
+            } else if (p instanceof CircuitElementPayload cep) {
+                if (element == null) element = cep;
+            }
+        }
+        assertNotNull(lifecycle, "Expected CircuitLifecyclePayload(INSERT) for the newly created circuit");
+        assertNotNull(element, "Expected CircuitElementPayload(INSERT) for the placed node");
+        assertEquals(world, lifecycle.getWorldId());
+        assertEquals(world, element.getWorldId());
+        assertEquals(lifecycle.getCircuitId(), element.getCircuitId(),
+                "Lifecycle and element messages must refer to the same circuit id");
+    }
+
+    /**
+     * Regression: when an edge is dropped between two nodes that live in different circuits, the server's
+     * {@code ServerWorld.connectInternal} merges the two circuits via {@code Circuit.mergeInto}, which
+     * silently moves nodes/edges from the secondary circuit into the primary. Before this fix, the client
+     * received the edge INSERT delta scoped to the destination circuit, but its endpoint nodes still lived
+     * in the original (now-empty) circuit on the client mirror — so {@code CircuitEdge.attachEndpointsFromTag}
+     * threw "Missing endpoint node for edge ...". This test pins the fix: the destination circuit's payload
+     * carries a CHANGE op with {@code sourceCircuitId} for each moved node, and the rebind ops sort BEFORE
+     * the edge INSERT.
+     */
+    @Test
+    void connectEdgePayload_emitsRebindBeforeEdgeInsertOnMerge() throws Exception {
+        UUID world = firstWorldId();
+
+        // Place two free nodes — each goes into its own freshly-allocated server-side circuit.
+        ch.writeAndFlush(new PlaceNodePayload(world, AllComponents.CONNECTION.getTypeId(), 0.0, 0.0)).sync();
+        ch.writeAndFlush(new PlaceNodePayload(world, AllComponents.CONNECTION.getTypeId(), 5.0, 0.0)).sync();
+        UUID firstNode = waitForInsertId(AllComponents.CONNECTION.getTypeId());
+        UUID secondNode = waitForInsertId(AllComponents.CONNECTION.getTypeId());
+        assertNotNull(firstNode);
+        assertNotNull(secondNode);
+
+        // Connect them. On the server this fuses the two circuits; the destination circuit's payload should
+        // carry rebind CHANGE ops (sourceCircuitId set) for the migrated endpoint(s) followed by the edge INSERT.
+        ch.writeAndFlush(new ConnectEdgePayload(world, AllComponents.RESISTOR.getTypeId(),
+                firstNode, secondNode)).sync();
+
+        boolean sawRebindThenInsert = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        outer:
+        while (System.nanoTime() < deadline) {
+            Payload p = inbound.poll(100, TimeUnit.MILLISECONDS);
+            if (!(p instanceof CircuitElementPayload reply)) continue;
+            int rebindIdx = -1;
+            int edgeInsertIdx = -1;
+            List<CircuitElementChange> changes = reply.getChanges();
+            for (int i = 0; i < changes.size(); i++) {
+                CircuitElementChange c = changes.get(i);
+                if (c.kind() == CircuitElementChange.Kind.CHANGE && c.sourceCircuitId() != null
+                        && (secondNode.equals(c.elementId()) || firstNode.equals(c.elementId()))) {
+                    if (rebindIdx == -1) rebindIdx = i;
+                }
+                if (c.kind() == CircuitElementChange.Kind.INSERT
+                        && AllComponents.RESISTOR.getTypeId().equals(c.registryTypeId())) {
+                    edgeInsertIdx = i;
+                }
+            }
+            if (rebindIdx >= 0 && edgeInsertIdx >= 0) {
+                assertTrue(rebindIdx < edgeInsertIdx,
+                        "Rebind CHANGE must precede edge INSERT inside the merged circuit's payload "
+                                + "(rebind=" + rebindIdx + ", insert=" + edgeInsertIdx + ")");
+                sawRebindThenInsert = true;
+                break outer;
+            }
+        }
+        assertTrue(sawRebindThenInsert,
+                "Expected a CircuitElementPayload containing a rebind CHANGE followed by the edge INSERT");
+    }
+
+    /**
+     * Regression for the BJT phantom-circuit crash:
+     * <p>{@code BJTransistor.generate()} allocates four nodes via {@code ServerWorld.createNodeForComponent},
+     * each in its own freshly-minted circuit (C1..C4), then connects them with three edges. Every
+     * {@code newEdge} merges two of those circuits and removes the now-empty one, so by tick end only one
+     * circuit survives. {@link com.minecart.server.listener.CircuitLifecycleListener} correctly coalesces the
+     * insert/remove pair for the transient circuits so the client never hears about C2/C3/C4.
+     *
+     * <p>Before per-element accumulation in {@link com.minecart.server.listener.CircuitElementListener}, the
+     * listener still queued a REBIND CHANGE referencing C2/C3/C4 as {@code sourceCircuitId} (because elements
+     * had briefly lived there), and a node INSERT keyed by a transient circuit id. The client received either
+     * and threw {@code IllegalArgumentException: REBIND: missing source circuit ...} or
+     * {@code No circuit for id ...}. This test pins the fix by checking the wire contract directly:
+     * <ul>
+     *   <li>No {@link CircuitElementChange#sourceCircuitId()} on any change in any payload — newly inserted
+     *       elements have no client-side history to rebind from.</li>
+     *   <li>Every {@link CircuitElementPayload#getCircuitId()} was previously announced via a
+     *       {@link CircuitLifecyclePayload}(INSERT) or {@link CircuitSnapshotPayload} for the same world.</li>
+     * </ul>
+     */
+    @Test
+    void placeComponentPayload_doesNotEmitRebindForTransientCircuits() throws Exception {
+        UUID world = firstWorldId();
+        ch.writeAndFlush(new PlaceComponentPayload(world, AllComponents.BJ_TRANSISTOR.getTypeId(),
+                0.0, 0.0, 0.0)).sync();
+
+        // Drain ~1.5s of server traffic; long enough for the lifecycle + element payloads to arrive but
+        // short enough to fail fast if the dispatcher stalls.
+        Set<UUID> announcedCircuits = new HashSet<>();
+        List<CircuitElementPayload> elementPayloads = new ArrayList<>();
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1500);
+        while (System.nanoTime() < deadline) {
+            Payload p = inbound.poll(100, TimeUnit.MILLISECONDS);
+            if (p == null) continue;
+            if (p instanceof CircuitLifecyclePayload clp
+                    && clp.getKind() == CircuitLifecyclePayload.Kind.INSERT
+                    && world.equals(clp.getWorldId())) {
+                announcedCircuits.add(clp.getCircuitId());
+            } else if (p instanceof CircuitSnapshotPayload csp && world.equals(csp.getWorldId())) {
+                // Snapshot embeds the circuit id inside the body tag rather than exposing it as a getter.
+                UUID snapCircuitId = TagUtil.getUUID(csp.getCircuitData(), CoreStrings.CIRCUIT_ID);
+                if (snapCircuitId != null) {
+                    announcedCircuits.add(snapCircuitId);
+                }
+            } else if (p instanceof CircuitElementPayload cep && world.equals(cep.getWorldId())) {
+                elementPayloads.add(cep);
+            }
+        }
+
+        assertTrue(!elementPayloads.isEmpty(),
+                "Expected at least one CircuitElementPayload from the BJT placement");
+
+        for (CircuitElementPayload payload : elementPayloads) {
+            // Every CircuitElementPayload must reference a circuit the client has been told about.
+            if (!announcedCircuits.contains(payload.getCircuitId())) {
+                fail("CircuitElementPayload references phantom circuit " + payload.getCircuitId()
+                        + " that was never announced via CircuitLifecyclePayload(INSERT) or "
+                        + "CircuitSnapshotPayload. Announced: " + announcedCircuits);
+            }
+            for (CircuitElementChange c : payload.getChanges()) {
+                // Newly-inserted elements (and the transient circuits they passed through) must never
+                // surface as a rebind CHANGE — the client wouldn't know the source circuit.
+                if (c.sourceCircuitId() != null) {
+                    fail("Unexpected rebind CHANGE for element " + c.elementId()
+                            + " carrying sourceCircuitId=" + c.sourceCircuitId()
+                            + " during component placement; per-element accumulation should drop it.");
+                }
+            }
+        }
+    }
+
+    /**
+     * Regression: before this fix, {@link com.minecart.server.handler.PlaceComponentHandler} only stamped
+     * {@link com.minecart.variant.info.PositionInfo} onto port nodes registered in the
+     * {@link com.minecart.registry.ComponentAnchorRegistry}. The BJT also owns an internal {@code center}
+     * node that has no anchor, so it stayed parked at the world origin and the renderer drew a spurious
+     * connection dot at (0, 0) whenever a transistor was placed away from origin. This test pins the new
+     * behaviour: every CONNECTION node insert that arrives during a BJT placement at (cx, cy) carries a
+     * position info equal to (cx, cy) for the unanchored centre, or to a rotated anchor offset for a port.
+     * Nothing lands at the origin.
+     */
+    @Test
+    void placeComponentPayload_internalNodesAreNotStrandedAtOrigin() throws Exception {
+        UUID world = firstWorldId();
+        double cx = 10.0;
+        double cy = 5.0;
+        ch.writeAndFlush(new PlaceComponentPayload(world, AllComponents.BJ_TRANSISTOR.getTypeId(),
+                cx, cy, 0.0)).sync();
+
+        // BJTransistor.generate() creates 4 internal CONNECTION nodes. Drain element payloads until we've
+        // seen at least four CONNECTION inserts (some may be spread across multiple payloads).
+        int seen = 0;
+        boolean centreAtComponentCentre = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (seen < 4 && System.nanoTime() < deadline) {
+            CircuitElementPayload reply = waitForElementPayload();
+            if (reply == null) break;
+            for (CircuitElementChange c : reply.getChanges()) {
+                if (c.kind() != CircuitElementChange.Kind.INSERT) continue;
+                if (!AllComponents.CONNECTION.getTypeId().equals(c.registryTypeId())) continue;
+                double[] pos = readPosition(c.data());
+                seen++;
+                assertTrue(pos[0] != 0.0 || pos[1] != 0.0,
+                        "Internal BJT node should not be left at the world origin: "
+                                + "x=" + pos[0] + " y=" + pos[1]);
+                if (Math.abs(pos[0] - cx) < 1e-9 && Math.abs(pos[1] - cy) < 1e-9) {
+                    centreAtComponentCentre = true;
+                }
+            }
+        }
+        assertTrue(seen >= 4, "Expected 4 internal CONNECTION nodes for BJ_TRANSISTOR, saw " + seen);
+        assertTrue(centreAtComponentCentre,
+                "Expected the BJT centre node to be parked at the component centre (" + cx + ", " + cy + ")");
     }
 
     @Test

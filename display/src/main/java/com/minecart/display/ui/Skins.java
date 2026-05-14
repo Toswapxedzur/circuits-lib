@@ -8,6 +8,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.List;
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.ui.Window;
@@ -44,6 +45,9 @@ public final class Skins {
         addDrawable(skin, "d_list_sel",  new Color(0.30f, 0.50f, 0.80f, 0.70f));
         addDrawable(skin, "d_scroll",    new Color(0.30f, 0.34f, 0.42f, 1f));
         addDrawable(skin, "d_row",       new Color(0.16f, 0.18f, 0.24f, 1f));
+        // Slider track is a thin pill-like strip; keep it lighter than the field background so the knob
+        // contrasts cleanly against it without needing dedicated artwork.
+        addDrawable(skin, "d_slider_bg", new Color(0.22f, 0.26f, 0.34f, 1f));
 
         BitmapFont font = new BitmapFont();
         skin.add("default-font", font);
@@ -97,6 +101,15 @@ public final class Skins {
         win.titleFont = font;
         win.titleFontColor = Color.WHITE;
         skin.add("default", win);
+
+        // Slider: reuse the field strip as the background and the standard button drawables as the knob so
+        // hover / press feedback comes for free without dedicated artwork.
+        Slider.SliderStyle slider = new Slider.SliderStyle();
+        slider.background = skin.getDrawable("d_slider_bg");
+        slider.knob = skin.getDrawable("d_button");
+        slider.knobOver = skin.getDrawable("d_button_h");
+        slider.knobDown = skin.getDrawable("d_button_d");
+        skin.add("default-horizontal", slider);
 
         return skin;
     }

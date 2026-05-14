@@ -1,5 +1,6 @@
 package com.minecart.logic;
 
+import com.minecart.event.events.CircuitLifecycleEvent;
 import com.minecart.event.events.ElementEvent;
 import com.minecart.event.events.ElementInfoInjectEvent;
 import com.minecart.event.events.ServerTickEvent;
@@ -46,6 +47,16 @@ public class ServerWorld extends World {
         if (circuit instanceof ServerCircuit sc) {
             sc.setWorld(this);
         }
+        post(new CircuitLifecycleEvent.CircuitInsertEvent(this, circuit));
+    }
+
+    @Override
+    public boolean removeCircuit(Circuit circuit) {
+        boolean removed = super.removeCircuit(circuit);
+        if (removed) {
+            post(new CircuitLifecycleEvent.CircuitRemoveEvent(this, circuit));
+        }
+        return removed;
     }
 
     public void tick() {
@@ -83,7 +94,7 @@ public class ServerWorld extends World {
         node.setCircuit(circuit);
         post(new ElementInfoInjectEvent(this, node));
         if (post(new ElementEvent.ElementInsertEvent(this, node))) {
-            circuits.remove(circuit);
+            removeCircuit(circuit);
             throw new IllegalStateException("Circuit element insert cancelled");
         }
         circuit.nodes().add(node);
@@ -141,7 +152,7 @@ public class ServerWorld extends World {
         circuit.addComponent(comp);
         post(new ElementInfoInjectEvent(this, comp));
         if (post(new ElementEvent.ElementInsertEvent(this, comp))) {
-            circuits.remove(circuit);
+            removeCircuit(circuit);
             throw new IllegalStateException("Component insert cancelled");
         }
         comp.generate();
@@ -151,8 +162,7 @@ public class ServerWorld extends World {
 
     protected ServerCircuit createCircuit() {
         ServerCircuit circuit = new ServerCircuit();
-        circuit.setWorld(this);
-        circuits.add(circuit);
+        addCircuit(circuit);
         return circuit;
     }
 
@@ -194,7 +204,7 @@ public class ServerWorld extends World {
         Circuit circuit2 = node2.getCircuit();
         if (circuit1 != circuit2) {
             circuit2.mergeInto(circuit1);
-            circuits.remove(circuit2);
+            removeCircuit(circuit2);
         }
         circuit1.addEdge(edge);
         ((ServerCircuit) circuit1).markDirty();
@@ -251,7 +261,7 @@ public class ServerWorld extends World {
         newCircuit.setWorld(this);
         boolean createCircuit = circuit.seperate(node1, node2, edge, newCircuit);
         if (createCircuit) {
-            this.circuits.add(newCircuit);
+            addCircuit(newCircuit);
         }
         return true;
     }
@@ -274,7 +284,7 @@ public class ServerWorld extends World {
         circuit.destroy(node, false);
 
         if (circuit.nodes().isEmpty()) {
-            this.circuits.remove(circuit);
+            removeCircuit(circuit);
         }
 
         return true;

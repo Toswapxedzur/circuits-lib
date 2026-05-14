@@ -116,7 +116,7 @@ public final class CircuitElementHandler implements PayloadHandler<CircuitElemen
             switch (op.kind()) {
                 case REMOVE -> removeOne(world, circuit, op.elementId());
                 case INSERT -> insertOne(world, circuit, op.registryTypeId(), op.data());
-                case CHANGE -> applySync(circuit, op);
+                case CHANGE -> applySync(world, circuit, op);
             }
         }
     }
@@ -142,10 +142,18 @@ public final class CircuitElementHandler implements PayloadHandler<CircuitElemen
         circuit.load(world, delta);
     }
 
-    private static void applySync(ClientCircuit circuit, CircuitElementChange op) {
-        CircuitElement el = circuit.findElement(op.elementId());
-        if (el == null) {
-            throw new IllegalArgumentException("CHANGE target not found: " + op.elementId());
+    private static void applySync(ClientWorld world, ClientCircuit destCircuit, CircuitElementChange op) {
+        CircuitElement el;
+        if (op.sourceCircuitId() != null) {
+            // Rebind: move element out of its previous circuit on the client before applying sync data.
+            // Mirrors Circuit.mergeInto / Circuit.seperate on the server, which silently rebind element
+            // ownership without firing insert/remove events.
+            el = rebindElement(world, destCircuit, op.elementId(), op.sourceCircuitId());
+        } else {
+            el = destCircuit.findElement(op.elementId());
+            if (el == null) {
+                throw new IllegalArgumentException("CHANGE target not found: " + op.elementId());
+            }
         }
         String expected = op.registryTypeId();
         String actual = CircuitElementChange.registryTypeIdOf(el);
@@ -153,7 +161,49 @@ public final class CircuitElementHandler implements PayloadHandler<CircuitElemen
             throw new IllegalArgumentException(
                     "CHANGE registry type mismatch: expected " + expected + ", element " + actual);
         }
-        SyncRegistry.readSyncData(el, op.data());
+        if (op.data() != null) {
+            SyncRegistry.readSyncData(el, op.data());
+        }
+    }
+
+    /**
+     * Moves an element from the circuit identified by {@code sourceCircuitId} into {@code destCircuit} on
+     * the client mirror. Returns the relocated element so the caller can apply any follow-up sync data.
+     */
+    private static CircuitElement rebindElement(
+            ClientWorld world, ClientCircuit destCircuit, UUID elementId, UUID sourceCircuitId) {
+        if (Objects.equals(destCircuit.getId(), sourceCircuitId)) {
+            // No-op rebind to the same circuit (defensive — server should not emit this).
+            CircuitElement el = destCircuit.findElement(elementId);
+            if (el == null) {
+                throw new IllegalArgumentException(
+                        "REBIND target not found in " + sourceCircuitId + ": " + elementId);
+            }
+            return el;
+        }
+        Circuit src = world.findCircuit(sourceCircuitId);
+        if (src == null) {
+            throw new IllegalArgumentException("REBIND: missing source circuit " + sourceCircuitId);
+        }
+        CircuitElement el = src.findElement(elementId);
+        if (el == null) {
+            throw new IllegalArgumentException(
+                    "REBIND: element " + elementId + " not in source circuit " + sourceCircuitId);
+        }
+        if (el instanceof CircuitNode n) {
+            src.nodes().remove(n);
+            destCircuit.nodes().add(n);
+        } else if (el instanceof CircuitEdge e) {
+            src.edges().remove(e);
+            destCircuit.edges().add(e);
+        } else if (el instanceof CircuitComponent c) {
+            src.components().remove(c);
+            destCircuit.components().add(c);
+        } else {
+            throw new IllegalArgumentException("REBIND: unknown element class " + el.getClass().getName());
+        }
+        el.setCircuit(destCircuit);
+        return el;
     }
 
     private static void removeOne(ClientWorld world, ClientCircuit circuit, UUID id) {

@@ -14,6 +14,7 @@ import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -120,6 +121,20 @@ public non-sealed class CircuitComponent extends CircuitElement {
     }
 
     /**
+     * Read-only view of every internal node owned by this component (ports <em>and</em> any auxiliary
+     * nodes such as a transistor's centre node). Used by placement / move handlers to stamp positions on
+     * non-port nodes too, otherwise anchor-less internals stay parked at world origin.
+     */
+    public Set<CircuitNode> getNodes() {
+        return Collections.unmodifiableSet(nodes);
+    }
+
+    /** Read-only view of internal edges owned by this component. */
+    public Set<CircuitEdge> getEdges() {
+        return Collections.unmodifiableSet(edges);
+    }
+
+    /**
      * Routes the external edge to the correct internal port node.
      */
     protected boolean connect(CircuitEdge edge, int index, boolean simulate){
@@ -222,6 +237,15 @@ public non-sealed class CircuitComponent extends CircuitElement {
         }
         for (CircuitNode n : nodes) {
             n.setComponent(this);
+        }
+        // Internal edges also need to know they belong to this component. Previously only nodes had
+        // their {@code component} pointer restored here, leaving every loaded edge with a {@code null}
+        // owner — and any client-side renderer using {@code edge.getComponent()} to hide internal wiring
+        // (e.g. a transistor's centre-to-port struts) would happily draw them on top of the body
+        // sprite. Mirrors the server-side {@code newEdge} path which already calls
+        // {@code edge.setComponent(this)} at creation.
+        for (CircuitEdge e : edges) {
+            e.setComponent(this);
         }
     }
 }

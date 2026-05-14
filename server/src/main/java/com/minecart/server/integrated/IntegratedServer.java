@@ -9,9 +9,11 @@ import com.minecart.protocol.codec.PayloadDecoder;
 import com.minecart.protocol.codec.PayloadEncoder;
 import com.minecart.protocol.payload.Payload;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
+import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
 import com.minecart.protocol.payload.server.WorldLifecyclePayload;
 import com.minecart.server.listener.CircuitElementListener;
+import com.minecart.server.listener.CircuitLifecycleListener;
 import com.minecart.server.network.ServerPayloadDispatcher;
 import com.minecart.server.network.ServerTickThread;
 import com.minecart.server.network.StandardServerHandlers;
@@ -65,6 +67,7 @@ public class IntegratedServer {
 
     private final ChannelGroup channels = new DefaultChannelGroup("integrated-server", GlobalEventExecutor.INSTANCE);
     private final CircuitElementListener elementListener;
+    private final CircuitLifecycleListener lifecycleListener;
 
     private EventLoopGroup loop;
     private Channel serverChannel;
@@ -95,6 +98,13 @@ public class IntegratedServer {
             channels.writeAndFlush(payload);
         };
         this.elementListener = new CircuitElementListener(level, broadcastSink);
+        Consumer<CircuitLifecyclePayload> lifecycleSink = payload -> {
+            if (channels.isEmpty()) {
+                return;
+            }
+            channels.writeAndFlush(payload);
+        };
+        this.lifecycleListener = new CircuitLifecycleListener(level, lifecycleSink);
     }
 
     /** Writes {@code payload} to every connected client channel. No-op when no client is connected. */
@@ -137,12 +147,22 @@ public class IntegratedServer {
         if (saveDir != null) {
             WorldStorage.load(saveDir, level);
         }
+        // Attach AFTER load so persisted circuits (loaded via addCircuit during WorldStorage.load) don't
+        // generate spurious CircuitLifecyclePayload INSERTs — those circuits are already published to new
+        // clients via sendInitialSnapshot.
+        lifecycleListener.attach();
         elementListener.attach();
-        // Flush element deltas at the end of every tick so the next inbound payload from the client sees
-        // an up-to-date mirror; runs on the tick thread because ServerTickEvent is posted from tick().
+        // Flush deltas at the end of every tick so the next inbound payload from the client sees an
+        // up-to-date mirror; runs on the tick thread because ServerTickEvent is posted from tick().
+        //
+        // Order matters: announce new circuits FIRST so element INSERT deltas can find them, apply element
+        // deltas, then drop dead circuits LAST so element REMOVE deltas resolved correctly. See
+        // CircuitLifecycleListener for the full rationale.
         level.register(ServerTickEvent.Level.class, evt -> {
             if (evt.getPhase() == ServerTickEvent.Phase.POST && evt.getLevel() == level) {
+                lifecycleListener.syncInserts();
                 elementListener.sync();
+                lifecycleListener.syncRemoves();
             }
         });
         loop = new DefaultEventLoopGroup(1, new DefaultThreadFactory("integrated-server-net", true));
@@ -152,14 +172,26 @@ public class IntegratedServer {
                 .childHandler(new ChannelInitializer<>() {
                     @Override
                     protected void initChannel(Channel ch) {
-                        channels.add(ch);
                         ch.pipeline()
                                 .addLast("decoder", new PayloadDecoder())
                                 .addLast("encoder", new PayloadEncoder())
                                 .addLast("dispatcher", dispatcher);
-                        // Catch-up snapshot. Marshal onto the tick thread so reads of `level` are
-                        // serialised against in-flight mutations.
-                        level.submit(() -> sendInitialSnapshot(ch));
+                        // Catch-up snapshot + broadcast-group registration MUST happen in this order on the
+                        // tick thread: if `channels.add(ch)` ran in initChannel (on the Netty I/O loop) the
+                        // channel could receive a CircuitElementPayload from the next postTick sync() before
+                        // its CircuitSnapshotPayload had been written. The client's CircuitElementHandler then
+                        // throws "No circuit for id ... in world ..." and the JVM aborts.
+                        //
+                        // By snapshotting first and joining the group second, any subsequent broadcast (which
+                        // runs later on the same tick thread) is queued on the channel's event loop AFTER the
+                        // snapshot writes, so the client always applies the snapshot before any delta.
+                        level.submit(() -> {
+                            if (!ch.isActive()) {
+                                return;
+                            }
+                            sendInitialSnapshot(ch);
+                            channels.add(ch);
+                        });
                     }
                 });
         serverChannel = b.bind(address).sync().channel();
@@ -222,6 +254,10 @@ public class IntegratedServer {
         }
         try {
             elementListener.detach();
+        } catch (Throwable ignored) {
+        }
+        try {
+            lifecycleListener.detach();
         } catch (Throwable ignored) {
         }
         try {
