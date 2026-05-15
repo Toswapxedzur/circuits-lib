@@ -201,6 +201,14 @@ public non-sealed class CircuitComponent extends CircuitElement {
         if (c == null) {
             throw new IllegalStateException("CircuitComponent has no circuit");
         }
+        // Internal nodes/edges live in whichever circuit they ended up merged into during server-side
+        // generate(): each {@code newNode} starts in its own freshly-created circuit, then every
+        // {@code newEdge} merges those circuits together. The component itself stays in its original
+        // circuit. So a strict {@code c.findNode}/{@code c.findEdge} (only this component's circuit)
+        // returns null for every internal id, leaving {@link #nodes} and {@link #edges} empty and the
+        // {@code setComponent(this)} backlinks unset on the client. Search world-wide instead so the
+        // mirror correctly matches the server's component<->internals topology.
+        World w = c.getWorld();
         nodes.clear();
         edges.clear();
         Tag nodeIdsTag = tag.get(CoreStrings.NODE_IDS);
@@ -213,7 +221,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
                 if (nu == null) {
                     continue;
                 }
-                CircuitNode n = c.findNode(nu);
+                CircuitNode n = w != null ? w.findNode(nu) : c.findNode(nu);
                 if (n != null) {
                     nodes.add(n);
                 }
@@ -229,7 +237,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
                 if (eu == null) {
                     continue;
                 }
-                CircuitEdge e = c.findEdge(eu);
+                CircuitEdge e = w != null ? w.findEdge(eu) : c.findEdge(eu);
                 if (e != null) {
                     edges.add(e);
                 }

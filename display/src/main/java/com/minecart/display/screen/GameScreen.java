@@ -36,6 +36,7 @@ import com.minecart.display.input.DragController;
 import com.minecart.display.render.AxisLabelsActor;
 import com.minecart.display.render.Textures;
 import com.minecart.display.render.UiIcons;
+import com.minecart.display.render.WireTextureRegistry;
 import com.minecart.display.render.WorldStage;
 import com.minecart.display.render.WorldViewState;
 import com.minecart.foundation.World;
@@ -156,6 +157,12 @@ public class GameScreen extends ScreenAdapter {
         this.integrated = integrated;
         this.textures = new Textures();
         this.uiIcons = new UiIcons();
+        // Seed the wire texture registry with a single catch-all rule so every edge's bridge segments
+        // tile the same default wire sprite. Cleared first so reopening this screen during the same JVM
+        // run doesn't accumulate duplicate rules. Future per-type / per-ElectricalInfo rules should be
+        // registered BEFORE this catch-all (lookup walks rules in registration order).
+        WireTextureRegistry.get().clear();
+        WireTextureRegistry.get().register(null, null, WireTextureRegistry.DEFAULT_WIRE_ID);
         // Pass a supplier so WorldStage always sees the latest selection without having to be rebuilt when
         // the user picks a different world (or when the auto-recover logic below switches selection).
         this.worldStage = new WorldStage(clientLevel, textures, () -> selectedWorldId);
@@ -261,7 +268,7 @@ public class GameScreen extends ScreenAdapter {
         // with no opaque background, so we leave the same tight 18px inset there as on the left/right
         // edges. The bottom inset stays large (~25% above the bare palette height) so the X-tick row
         // floats above the palette panel rather than colliding with it.
-        axisLabels.setInsets(/*top*/ 18f, /*bottom*/ 120f, /*left*/ 18f, /*right*/ 18f);
+        axisLabels.setInsets(/*top*/ 8f, /*bottom*/ 108f, /*left*/ 8f, /*right*/ 8f);
         uiStage.addActor(axisLabels);
 
         Label title = new Label("Save: " + saveName, skin);
@@ -1060,6 +1067,25 @@ public class GameScreen extends ScreenAdapter {
 
     @Override public void show() {
         InputMultiplexer mux = new InputMultiplexer();
+        // Scroll-wheel router sits ahead of everything else: routes the wheel event to the world
+        // camera whenever the cursor is over empty canvas, but lets uiStage handle it when over an
+        // actual UI actor. Without this, clicking a palette tile (or merely hovering the palette
+        // ScrollPane) sets scroll-focus on the ScrollPane and the focus stays there even after the
+        // mouse moves back to the canvas, so wheel events get consumed by the (vertically disabled)
+        // ScrollPane and never reach the camera — leaving the user unable to zoom after picking the
+        // Cursor tool.
+        mux.addProcessor(new InputAdapter() {
+            private final com.badlogic.gdx.math.Vector2 stageScratch = new com.badlogic.gdx.math.Vector2();
+            @Override
+            public boolean scrolled(float amountX, float amountY) {
+                stageScratch.set(Gdx.input.getX(), Gdx.input.getY());
+                uiStage.screenToStageCoordinates(stageScratch);
+                if (uiStage.hit(stageScratch.x, stageScratch.y, true) == null) {
+                    return cameraController.scrolled(amountX, amountY);
+                }
+                return false;
+            }
+        });
         // UI first so palette / dropdown / settings clicks win.
         mux.addProcessor(uiStage);
         // Drag controller next: claims left clicks that actually hit a draggable element, and owns the

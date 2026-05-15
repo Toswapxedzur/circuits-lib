@@ -87,6 +87,7 @@ public final class PlaceComponentHandler implements PayloadHandler<PlaceComponen
                 port.setInfo(AllElementInfos.POSITION, portPos);
             }
             portPos.set(xy[0], xy[1]);
+            lockToParent(portPos);
         }
         // Any internal node without a registered anchor (e.g. the BJTransistor's centre node) would
         // otherwise be stranded at the world origin because nothing else ever stamps PositionInfo onto
@@ -101,6 +102,20 @@ public final class PlaceComponentHandler implements PayloadHandler<PlaceComponen
                 internal.setInfo(AllElementInfos.POSITION, pos);
             }
             pos.set(payload.getX(), payload.getY());
+            lockToParent(pos);
         }
+    }
+
+    /**
+     * Marks {@code pos} as not user-movable and disables further toggling. Component internal nodes are
+     * tied to their parent's pose by anchor offsets that participate in the device's electrical model;
+     * the editor must always route their motion through the parent, never let the user drag a single port
+     * off its anchor. {@code canChangeFix=false} means even a future settings panel can't unlock them.
+     */
+    private static void lockToParent(PositionInfo pos) {
+        // setFixed first while canChangeFix is still its default (true), then lock the toggle so the lock
+        // itself can't be undone.
+        pos.setFixed(true);
+        pos.setCanChangeFix(false);
     }
 }

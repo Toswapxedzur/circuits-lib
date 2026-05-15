@@ -252,12 +252,10 @@ public class WorldStage extends Stage {
                 }
                 for (Circuit circuit : world.getCircuits()) {
                     for (CircuitNode node : circuit.nodes()) {
-                        // Skip internal port / centre nodes — they live inside their parent component's
-                        // sprite and shouldn't draw a separate dot. Without this filter the BJT (and any
-                        // future multi-port component) shows its private star graph on top of the body.
-                        if (node.getComponent() != null) {
-                            continue;
-                        }
+                        // Internal port / centre nodes are kept visible: users need the port dots to be
+                        // visible affordances for connecting wires. We hide the internal *edges* of a
+                        // component (the star-graph struts inside e.g. a transistor body) but leave the
+                        // ports themselves on the canvas.
                         UUID id = node.getId();
                         seenNodes.add(id);
                         if (!nodeActors.containsKey(id)) {
@@ -267,8 +265,9 @@ public class WorldStage extends Stage {
                         }
                     }
                     for (CircuitEdge edge : circuit.edges()) {
-                        // Same idea for edges: an edge tagged with a component is part of that component's
-                        // internal wiring and should be invisible to the user.
+                        // Hide internal wiring edges: a wire tagged with a component is part of that
+                        // component's private star graph and shouldn't draw on top of the component's
+                        // body sprite.
                         if (edge.getComponent() != null) {
                             continue;
                         }

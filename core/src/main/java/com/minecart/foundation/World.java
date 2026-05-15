@@ -1,6 +1,9 @@
 package com.minecart.foundation;
 
 import com.minecart.event.events.Event;
+import com.minecart.logic.CircuitEdge;
+import com.minecart.logic.CircuitElement;
+import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerCircuit;
 import com.minecart.logic.ServerWorld;
 
@@ -87,6 +90,47 @@ public class World {
     /** Removes a circuit from this world without destroying element references (caller replaces via snapshot). */
     public boolean removeCircuit(Circuit circuit) {
         return circuits.remove(circuit);
+    }
+
+    /**
+     * Walks every {@link Circuit} in this world looking for a node with the given id. Useful when an
+     * element's owning circuit isn't known up-front — e.g. a {@link com.minecart.logic.CircuitComponent}
+     * loading its internal port list, where the ports may have been merged into a different circuit than
+     * the component itself.
+     */
+    public CircuitNode findNode(UUID id) {
+        if (id == null) {
+            return null;
+        }
+        for (Circuit c : circuits) {
+            CircuitNode n = c.findNode(id);
+            if (n != null) return n;
+        }
+        return null;
+    }
+
+    /** Cross-circuit edge lookup; see {@link #findNode(UUID)}. */
+    public CircuitEdge findEdge(UUID id) {
+        if (id == null) {
+            return null;
+        }
+        for (Circuit c : circuits) {
+            CircuitEdge e = c.findEdge(id);
+            if (e != null) return e;
+        }
+        return null;
+    }
+
+    /** Cross-circuit element lookup (node, edge, or component). */
+    public CircuitElement findElement(UUID id) {
+        if (id == null) {
+            return null;
+        }
+        for (Circuit c : circuits) {
+            CircuitElement el = c.findElement(id);
+            if (el != null) return el;
+        }
+        return null;
     }
 
     public boolean post(Event event) {

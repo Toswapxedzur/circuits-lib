@@ -24,7 +24,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
  */
 public class AxisLabelsActor extends Actor {
 
-    private static final float DEFAULT_EDGE_PADDING_PX = 18f;
+    private static final float DEFAULT_EDGE_PADDING_PX = 8f;
     private static final float TEXT_NUDGE_PX = 3f;
 
     private final WorldStage worldStage;
@@ -60,6 +60,9 @@ public class AxisLabelsActor extends Actor {
         this.insetRight = right;
     }
 
+    /** Reusable projection scratch so the per-label loops don't allocate a new Vector3 every tick. */
+    private final Vector3 proj = new Vector3();
+
     @Override
     public void draw(Batch batch, float parentAlpha) {
         OrthographicCamera cam = worldStage.getCamera();
@@ -80,64 +83,94 @@ public class AxisLabelsActor extends Actor {
         // Use the same step picker as the grid so labels always match the brightest lines on screen.
         float majorStep = GridBackgroundActor.pickMajorStep(Math.min(2 * halfW, 2 * halfH));
 
-        // Project the world origin to screen space. When y=0 is off-screen, the projected y is outside
-        // [0, screenH]; we clamp to a padding band so the row of X-tick labels stays parked at whichever
-        // edge the axis exited (top vs bottom). Same idea for the Y-axis labels in X.
-        Vector3 origin = new Vector3(0f, 0f, 0f);
-        cam.project(origin);
-        // Remember whether the y-axis was clamped against the right edge (origin off-screen to the right)
-        // BEFORE the clamp() call mutates the value — used below to flip the Y-tick label anchor so the
-        // glyphs stay inside the viewport instead of running past the right edge.
-        boolean yAxisClampedRight = origin.x > screenW - insetRight;
-        float xAxisLabelY = clamp(origin.y, insetBottom, screenH - insetTop);
-        float yAxisLabelX = clamp(origin.x, insetLeft, screenW - insetRight);
+        // Project the world origin once — gives us the raw, unclamped screen positions of the y-axis
+        // (axisX) and x-axis (axisY) lines. Each label below uses these directly without ever sharing
+        // a single clamped row/column position; that way per-label clamping can only ever affect that
+        // label, never piling neighbours on top of one another.
+        proj.set(0f, 0f, 0f);
+        cam.project(proj);
+        float axisX = proj.x;
+        float axisY = proj.y;
+
+        // Inner rectangle the labels prefer to stay inside.
+        float safeL = insetLeft;
+        float safeR = screenW - insetRight;
+        float safeB = insetBottom;
+        float safeT = screenH - insetTop;
 
         font.setColor(Color.WHITE);
 
-        // X axis: numbers labelled at major world x ticks.
+        // X-axis tick labels. All labels in this row share the same y (= axisY). The y is clamped to
+        // the safe band so the whole row stays sticky to the closest edge when the x-axis itself
+        // scrolls off-screen. That's safe because the clamp value is identical for every label in the
+        // row — it shifts them together, not on top of each other. No horizontal clamp: a single
+        // tick straddling the right inset is allowed to overflow slightly rather than being pulled
+        // back to where it could collide with its neighbour.
         double startX = Math.ceil(left / majorStep) * majorStep;
         for (double x = startX; x <= right + 1e-6; x += majorStep) {
             if (Math.abs(x) < majorStep * 1e-3) {
                 continue;
             }
-            Vector3 v = new Vector3((float) x, 0f, 0f);
-            cam.project(v);
-            font.draw(batch, formatTick(x, majorStep), v.x + TEXT_NUDGE_PX, xAxisLabelY - TEXT_NUDGE_PX);
+            proj.set((float) x, 0f, 0f);
+            cam.project(proj);
+            layout.setText(font, formatTick(x, majorStep));
+            float w = layout.width;
+            float h = layout.height;
+            float lx = proj.x + TEXT_NUDGE_PX;
+            float ly = axisY - TEXT_NUDGE_PX;
+            if (ly > safeT) ly = safeT;
+            if (ly - h < safeB) ly = safeB + h;
+            // Cheap visibility skip — the loop bound already filters off-screen ticks in most zoom
+            // levels, this catches the residual edge cases without a draw call cost.
+            if (lx > screenW || lx + w < 0f) {
+                continue;
+            }
+            font.draw(batch, layout, lx, ly);
         }
 
-        // Y axis: numbers labelled at major world y ticks.
-        // When the axis is clamped to the right edge we right-align the labels (anchor at the right side
-        // of the text instead of the left) so the glyphs sit *inside* the viewport. Without this they
-        // would draw rightward from a column that's only ~insetRight away from the screen edge and the
-        // last few characters of multi-digit labels (e.g. "-100") would fall off-screen.
+        // Y-axis tick labels. Vertical position is left at the tick's natural projected y so each
+        // label sits next to its own tick; clamping vertically would map every off-band tick onto the
+        // same band-edge pixel and stack them (the "lower-half stacking" bug). Horizontally, however,
+        // the whole column shares one x (= axisX + nudge), so a clamp can never produce stacking —
+        // it slides the entire column toward the safe edge together. We clamp here so labels stay
+        // inside the right/left safe band as the y-axis approaches the edges (matches the "0"
+        // origin label). This is NOT a mirror: the label keeps sliding along its own side of the
+        // axis rather than flipping across it.
         double startY = Math.ceil(bottom / majorStep) * majorStep;
         for (double y = startY; y <= top + 1e-6; y += majorStep) {
             if (Math.abs(y) < majorStep * 1e-3) {
                 continue;
             }
-            Vector3 v = new Vector3(0f, (float) y, 0f);
-            cam.project(v);
-            String s = formatTick(y, majorStep);
-            float lx;
-            if (yAxisClampedRight) {
-                layout.setText(font, s);
-                lx = yAxisLabelX - TEXT_NUDGE_PX - layout.width;
-            } else {
-                lx = yAxisLabelX + TEXT_NUDGE_PX;
+            proj.set(0f, (float) y, 0f);
+            cam.project(proj);
+            layout.setText(font, formatTick(y, majorStep));
+            float w = layout.width;
+            float h = layout.height;
+            float lx = axisX + TEXT_NUDGE_PX;
+            if (lx + w > safeR) lx = safeR - w;
+            if (lx < safeL) lx = safeL;
+            float ly = proj.y - TEXT_NUDGE_PX;
+            // Skip labels whose rectangle is entirely outside the safe band vertically — hidden
+            // behind chrome (top bar / palette).
+            if (ly < safeB || ly - h > safeT) {
+                continue;
             }
-            font.draw(batch, s, lx, v.y - TEXT_NUDGE_PX);
+            font.draw(batch, layout, lx, ly);
         }
 
-        // Single "0" at the (clamped) origin for orientation. Drawn once instead of twice so the two axes
-        // don't double-up labels at the same pixel. Mirror its anchor too when the y-axis is clamped right.
-        float zeroX;
-        if (yAxisClampedRight) {
-            layout.setText(font, "0");
-            zeroX = yAxisLabelX - TEXT_NUDGE_PX - layout.width;
-        } else {
-            zeroX = yAxisLabelX + TEXT_NUDGE_PX;
-        }
-        font.draw(batch, "0", zeroX, xAxisLabelY - TEXT_NUDGE_PX);
+        // Single "0" at the origin. Only one of these exists, so we *can* clamp both dimensions
+        // (sticky-corner behaviour) without ever risking a stack with neighbours. Stays right of the
+        // y-axis like the other Y-tick labels — no mirror.
+        layout.setText(font, "0");
+        float w0 = layout.width;
+        float h0 = layout.height;
+        float lx0 = axisX + TEXT_NUDGE_PX;
+        if (lx0 + w0 > safeR) lx0 = safeR - w0;
+        if (lx0 < safeL) lx0 = safeL;
+        float ly0 = axisY - TEXT_NUDGE_PX;
+        if (ly0 > safeT) ly0 = safeT;
+        if (ly0 - h0 < safeB) ly0 = safeB + h0;
+        font.draw(batch, layout, lx0, ly0);
     }
 
     /**
@@ -159,11 +192,5 @@ public class AxisLabelsActor extends Actor {
             s = "0";
         }
         return s;
-    }
-
-    private static float clamp(float v, float lo, float hi) {
-        if (v < lo) return lo;
-        if (v > hi) return hi;
-        return v;
     }
 }

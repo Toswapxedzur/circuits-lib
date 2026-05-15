@@ -129,9 +129,13 @@ public class DragController extends InputAdapter {
         if (el instanceof CircuitNode node) {
             // Internal port nodes belong to their component's pose; route drag through the parent instead so
             // anchor offsets stay correct. If the user clicks an internal port directly, fall back to its
-            // component.
+            // component. Belt-and-braces: also honour PositionInfo.isFixed() so a port whose component
+            // pointer somehow didn't get linked client-side (stale mirror, replication race) still resists
+            // being dragged off — no parent to redirect to in that case, so just swallow the click.
             if (node.getComponent() != null) {
                 beginDrag(node.getComponent());
+            } else if (isPositionFixed(node)) {
+                return true;
             } else {
                 beginDragFreeNode(node);
             }
@@ -140,6 +144,11 @@ public class DragController extends InputAdapter {
             return true;
         }
         return false;
+    }
+
+    private static boolean isPositionFixed(CircuitNode node) {
+        PositionInfo p = node.getInfo(AllElementInfos.POSITION);
+        return p != null && p.isFixed();
     }
 
     private void beginDrag(CircuitComponent comp) {

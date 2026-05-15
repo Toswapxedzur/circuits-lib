@@ -106,6 +106,7 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
                     port.setInfo(AllElementInfos.POSITION, p);
                 }
                 p.set(xy[0], xy[1]);
+                lockToParent(p);
                 notifyChanged(port);
             }
         }
@@ -119,6 +120,7 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
                 internal.setInfo(AllElementInfos.POSITION, p);
             }
             p.set(x, y);
+            lockToParent(p);
             notifyChanged(internal);
         }
         notifyChanged(comp);
@@ -132,11 +134,23 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
             return;
         }
         PositionInfo p = node.getInfo(AllElementInfos.POSITION);
+        // Defensive: even if the parent linkage was somehow lost, refuse to move a position that's been
+        // explicitly fixed (e.g. component internals stamped by the place / move-component path). Pairs
+        // with the client-side DragController guard so a stale mirror can't trick the server into dragging
+        // a port off its anchor.
+        if (p != null && p.isFixed()) {
+            return;
+        }
         if (p == null) {
             p = new PositionInfo();
             node.setInfo(AllElementInfos.POSITION, p);
         }
         p.set(x, y);
         notifyChanged(node);
+    }
+
+    private static void lockToParent(PositionInfo pos) {
+        pos.setFixed(true);
+        pos.setCanChangeFix(false);
     }
 }

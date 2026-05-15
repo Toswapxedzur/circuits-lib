@@ -151,11 +151,19 @@ public class ServerWorld extends World {
         ServerCircuit circuit = createCircuit();
         circuit.addComponent(comp);
         post(new ElementInfoInjectEvent(this, comp));
+        // Generate internal nodes/edges BEFORE posting the component's own InsertEvent. Each
+        // newNode/newEdge inside generate() fires its own InsertEvent which the network listener
+        // batches into the outgoing payload; emitting them before the component's InsertEvent means
+        // the client sees the internals first, so the subsequent component INSERT's load() call can
+        // successfully look them up via findNode/findEdge and apply setComponent(this). With the old
+        // order the component arrived first, load() couldn't find any of the still-pending internals,
+        // and they were never linked back — leaving them visible (no component owner) on the client
+        // canvas.
+        comp.generate();
         if (post(new ElementEvent.ElementInsertEvent(this, comp))) {
             removeCircuit(circuit);
             throw new IllegalStateException("Component insert cancelled");
         }
-        comp.generate();
         circuit.markDirty();
         return comp;
     }

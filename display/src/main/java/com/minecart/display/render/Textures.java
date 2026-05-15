@@ -21,7 +21,6 @@ public final class Textures implements Disposable {
 
     private final Map<String, Texture> byTypeId = new HashMap<>();
     private Texture missing;
-    private Texture white;
 
     /**
      * @return the texture for {@code type}, loading it from the classpath if needed. Always non-null
@@ -69,22 +68,6 @@ public final class Textures implements Disposable {
         return null;
     }
 
-    /**
-     * Shared 1×1 opaque-white texture, lazily created. Used by {@link EdgeActor} (and anyone else who
-     * needs to draw thin coloured rectangles through the sprite batch) to bridge "extra" segment length
-     * without the texture-stretching artefacts you get from re-using the edge sprite itself.
-     */
-    public Texture white() {
-        if (white == null) {
-            Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-            pm.setColor(1f, 1f, 1f, 1f);
-            pm.fill();
-            white = new Texture(pm);
-            pm.dispose();
-        }
-        return white;
-    }
-
     private Texture missingTexture() {
         if (missing == null) {
             Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
@@ -107,10 +90,6 @@ public final class Textures implements Disposable {
         if (missing != null) {
             missing.dispose();
             missing = null;
-        }
-        if (white != null) {
-            white.dispose();
-            white = null;
         }
     }
 
