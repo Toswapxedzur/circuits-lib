@@ -16,6 +16,15 @@ public final class CoreStrings {
     public static final String COMPONENTS = "components";
     public static final String NODE_IDS = "node_ids";
     public static final String EDGE_IDS = "edge_ids";
+    /**
+     * Subtag list on a {@link com.minecart.logic.CircuitComponent} that records each public port's
+     * {@code (portIndex, nodeId)} binding so {@link com.minecart.logic.CircuitComponent#getPort(int)}
+     * can be restored from save without per-subclass boilerplate. Each list entry is a {@code CompoundTag}
+     * with {@link #PORT_INDEX} (int) and {@link #PORT_NODE_ID} (uuid).
+     */
+    public static final String PORT_BINDINGS = "port_bindings";
+    public static final String PORT_INDEX = "i";
+    public static final String PORT_NODE_ID = "u";
 
     public static final String ELEMENT_ID = "id";
     public static final String ELEMENT_TYPE = "type";

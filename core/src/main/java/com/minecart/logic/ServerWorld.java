@@ -274,14 +274,29 @@ public class ServerWorld extends World {
         return true;
     }
 
+    /**
+     * Removes a free {@link CircuitNode} from its circuit, plus every non-component wire incident to it.
+     *
+     * <p>Each incident wire gets its own {@link ElementRemoveEvent} so the client mirror sees a REMOVE
+     * delta for the wire instead of inheriting an orphan reference. We deliberately bypass
+     * {@link #disconnectWithoutRemoveEvent(CircuitEdge)} for those wires: that path triggers
+     * {@link com.minecart.foundation.Circuit#seperate} which would shuffle {@code node} into a freshly
+     * created circuit between the REMOVE event and the actual {@code nodes.remove}, leaving the node
+     * stranded on the server (and {@code lastKnownCircuitId} pointing at the original circuit while the
+     * element actually lives somewhere else). Direct removal keeps node and circuit identities aligned
+     * with whatever the listener captured at REMOVE time.
+     *
+     * <p>Edges that are part of a {@link com.minecart.logic.CircuitComponent}'s internal star graph are
+     * skipped here — those are owned by the component and only {@link CircuitComponent#destroy} is
+     * authorised to take them out (see the hasComponent guards on {@link CircuitEdge#disconnect}).
+     */
     public boolean destroy(CircuitNode node) {
         if (node.getWorld() != this) {
             throw new IllegalArgumentException("Can't connect node that doesn't belong to the current ServerWorld");
         }
 
         ServerCircuit circuit = (ServerCircuit) node.getCircuit();
-
-        if (!circuit.destroy(node, true)) {
+        if (circuit == null || !circuit.nodes().contains(node)) {
             return false;
         }
 
@@ -289,9 +304,30 @@ public class ServerWorld extends World {
             return false;
         }
 
-        circuit.destroy(node, false);
+        for (CircuitEdge edge : new ArrayList<>(node.getConnection())) {
+            if (edge.hasComponent()) {
+                continue;
+            }
+            post(new ElementEvent.ElementRemoveEvent(this, edge));
+            Circuit ec = edge.getCircuit();
+            if (ec != null) {
+                ec.edges().remove(edge);
+            }
+            CircuitNode start = edge.getStart();
+            CircuitNode end = edge.getEnd();
+            if (start != null) {
+                start.disconnect(edge, false);
+            }
+            if (end != null && end != start) {
+                end.disconnect(edge, false);
+            }
+            edge.disconnect(false);
+        }
 
-        if (circuit.nodes().isEmpty()) {
+        circuit.nodes().remove(node);
+        circuit.markDirty();
+
+        if (circuit.nodes().isEmpty() && circuit.edges().isEmpty() && circuit.components().isEmpty()) {
             removeCircuit(circuit);
         }
 

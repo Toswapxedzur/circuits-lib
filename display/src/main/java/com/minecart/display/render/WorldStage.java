@@ -252,10 +252,16 @@ public class WorldStage extends Stage {
                 }
                 for (Circuit circuit : world.getCircuits()) {
                     for (CircuitNode node : circuit.nodes()) {
-                        // Internal port / centre nodes are kept visible: users need the port dots to be
-                        // visible affordances for connecting wires. We hide the internal *edges* of a
-                        // component (the star-graph struts inside e.g. a transistor body) but leave the
-                        // ports themselves on the canvas.
+                        // Render rule for nodes owned by a component: only the public ports are drawn,
+                        // because users need the port dots as affordances for dropping wires. Hidden
+                        // internal nodes (e.g. a BJT's centre junction used solely for the
+                        // constitutive equation) are skipped so they neither show through the body
+                        // sprite nor become unintended click targets. Free nodes (no owning component)
+                        // are always rendered.
+                        CircuitComponent owner = node.getComponent();
+                        if (owner != null && !owner.isPort(node)) {
+                            continue;
+                        }
                         UUID id = node.getId();
                         seenNodes.add(id);
                         if (!nodeActors.containsKey(id)) {

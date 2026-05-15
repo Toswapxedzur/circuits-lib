@@ -47,12 +47,33 @@ public final class ConnectEdgeHandler implements PayloadHandler<ConnectEdgePaylo
         if (start == null || end == null || start == end) {
             return;
         }
+        // Ports of a component are the only nodes external wires are allowed to attach to. Reject
+        // anything else even if a stale or hand-rolled client hands us the UUID of a hidden internal
+        // node (e.g. a BJT's centre junction). Without this check, a client could short-circuit a
+        // component's private constitutive graph by connecting to its junction, breaking the
+        // electrical model.
+        if (isExternallyConnectable(start) == false || isExternallyConnectable(end) == false) {
+            return;
+        }
         try {
             @SuppressWarnings("unchecked")
             CircuitElementType<? extends CircuitEdge> edgeType = (CircuitElementType<? extends CircuitEdge>) rawType;
             serverWorld.connect(edgeType, start, end);
         } catch (ClassCastException | IllegalArgumentException ignored) {
         }
+    }
+
+    /**
+     * Free-floating nodes (no owning component) are always wireable; a node owned by a component is
+     * wireable iff the component itself reports it as a port. Mirrors the renderer's visibility rule
+     * (see {@code WorldStage.reconcile}) so the server's enforcement matches what the user can see.
+     */
+    private static boolean isExternallyConnectable(CircuitNode node) {
+        var owner = node.getComponent();
+        if (owner == null) {
+            return true;
+        }
+        return owner.isPort(node);
     }
 
     private static CircuitNode findNode(ServerWorld world, UUID id) {

@@ -79,37 +79,64 @@ public class ClientWorld extends World {
     }
 
     /**
-     * Disconnects an edge and splits {@link Circuit}s; no {@link com.minecart.event.events.ElementEvent}s (replication apply).
+     * Drops {@code edge} from its circuit, detaches both endpoints, and clears its {@code start}/{@code end}.
+     * Used when the server has told us — via a REMOVE delta — that this edge is gone.
+     *
+     * <p><b>Differs from {@link com.minecart.logic.ServerWorld#disconnectWithoutRemoveEvent} on purpose.</b>
+     * On the server, disconnecting a wire may legitimately split the circuit into two and the seperate
+     * pass moves stranded sub-graphs into a fresh circuit. Replication-side, we never run that pass:
+     * any membership change is announced explicitly via a CircuitLifecycle insert plus an element
+     * REBIND-CHANGE delta, so a local seperate would invent a client-only circuit UUID that never
+     * matches the server's, leading to "REBIND: element not in source circuit" failures the next time
+     * the server tells us the same element moved.
+     *
+     * <p>The hasComponent guard on {@link CircuitEdge#disconnect(boolean)} is also intentionally
+     * ignored here — when this method runs, the server has already authorised the removal and the
+     * client has no business second-guessing it.
      */
     public boolean disconnectWithoutRemoveEvent(CircuitEdge edge) {
-        CircuitNode node1 = edge.getConnection(0);
-        CircuitNode node2 = edge.getConnection(1);
-        if (node1.getCircuit() != node2.getCircuit()) {
+        if (edge == null) {
             return false;
         }
-        ClientCircuit circuit = (ClientCircuit) node1.getCircuit();
-        if (!node1.disconnect(edge, true) || !node2.disconnect(edge, true) || !edge.disconnect(true)) {
-            return false;
+        edge.setComponent(null); // bypass disconnect()'s hasComponent gate
+        CircuitNode node1 = edge.getStart();
+        CircuitNode node2 = edge.getEnd();
+        Circuit circuit = edge.getCircuit();
+        if (node1 != null) {
+            node1.disconnect(edge, false);
         }
-        ClientCircuit newCircuit = new ClientCircuit();
-        newCircuit.setWorld(this);
-        boolean createCircuit = circuit.seperate(node1, node2, edge, newCircuit);
-        if (createCircuit) {
-            this.circuits.add(newCircuit);
+        if (node2 != null && node2 != node1) {
+            node2.disconnect(edge, false);
+        }
+        edge.disconnect(false);
+        if (circuit != null) {
+            circuit.edges().remove(edge);
         }
         return true;
     }
 
     /**
-     * Removes a node from the client mirror graph; no element events (replication apply).
+     * Removes a node from the client mirror without cascading into incident edges (those arrive as
+     * their own REMOVE deltas). The node is detached from any edge's connection set so a half-removed
+     * frame doesn't render an edge pointing at a now-orphaned position.
+     *
+     * <p>Like {@link #disconnectWithoutRemoveEvent}, this skips the seperate-on-disconnect pass that
+     * the server runs — the server is authoritative about circuit membership and will REBIND any
+     * remaining elements via a separate delta when needed.
      */
     public boolean destroy(CircuitNode node) {
         if (node.getWorld() != this) {
             throw new IllegalArgumentException("Node does not belong to this ClientWorld");
         }
         ClientCircuit circuit = (ClientCircuit) node.getCircuit();
-        circuit.destroy(node);
-        if (circuit.nodes().isEmpty()) {
+        if (circuit == null) {
+            return false;
+        }
+        for (CircuitEdge edge : new java.util.ArrayList<>(node.getConnection())) {
+            node.disconnect(edge, false);
+        }
+        circuit.nodes().remove(node);
+        if (circuit.nodes().isEmpty() && circuit.edges().isEmpty() && circuit.components().isEmpty()) {
             this.circuits.remove(circuit);
         }
         return true;

@@ -85,6 +85,10 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
 
     /**
      * Builds internal nodes and edges. Idempotent; skips if already generated or restored from tags.
+     * {@code base}, {@code collector}, and {@code emitter} are registered as public ports 0/1/2 via
+     * the {@code (type, portIndex)} overload so external wires can attach to them; {@code center} is
+     * an auxiliary internal junction (only the constitutive equation in {@link #collectRule} touches
+     * it) and goes through the un-indexed {@code newNode} so it stays hidden + unwireable.
      */
     @Override
     public void generate() {
@@ -92,9 +96,9 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
             return;
         }
         center = newNode(AllComponents.CONNECTION);
-        base = newNode(AllComponents.CONNECTION);
-        collector = newNode(AllComponents.CONNECTION);
-        emitter = newNode(AllComponents.CONNECTION);
+        base = newNode(AllComponents.CONNECTION, 0);
+        collector = newNode(AllComponents.CONNECTION, 1);
+        emitter = newNode(AllComponents.CONNECTION, 2);
         edgeBase = newEdge(AllComponents.WIRE, center, base);
         edgeCollector = newEdge(AllComponents.CIRCUIT_EDGE, center, collector);
         edgeEmitter = newEdge(AllComponents.RESISTOR, center, emitter);
@@ -111,15 +115,7 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
         equations.endRelation();
     }
 
-    @Override
-    public CircuitNode getPort(int index) {
-        return switch (index) {
-            case 0 -> base;
-            case 1 -> collector;
-            case 2 -> emitter;
-            default -> null;
-        };
-    }
+    // getPort(int) is inherited from CircuitComponent and reads portsByIndex, populated above.
 
     public CircuitNode getCenter() {
         return center;
@@ -128,19 +124,14 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
     @Override
     public void save(CompoundTag tag) {
         super.save(tag);
+        // Port nodes (base / collector / emitter) are persisted by the base class via the port_bindings
+        // tag, so they don't need their own per-name UUID slots here. Only auxiliary internals (the
+        // hidden junction `center`) and the typed internal edges still need to be saved by name so
+        // {@link #load} can rebind the typed handles {@link #collectRule} reads.
         CompoundTag sub = new CompoundTag();
         info.save(sub);
         if (center != null) {
             TagUtil.putUUID(sub, "center", center.getId());
-        }
-        if (base != null) {
-            TagUtil.putUUID(sub, "base", base.getId());
-        }
-        if (collector != null) {
-            TagUtil.putUUID(sub, "collector", collector.getId());
-        }
-        if (emitter != null) {
-            TagUtil.putUUID(sub, "emitter", emitter.getId());
         }
         if (edgeBase != null) {
             TagUtil.putUUID(sub, "edge_base", edgeBase.getId());
@@ -157,19 +148,41 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
+        // Rebind the typed port handles from the now-populated port map. {@link #collectRule} doesn't
+        // touch them today (it uses the typed edges), but downstream code that reaches into BJT for
+        // base/collector/emitter directly still expects them populated post-load.
+        base = getPort(0);
+        collector = getPort(1);
+        emitter = getPort(2);
         if (tag.get(CoreStrings.COMPONENT_BJT_INFO) instanceof CompoundTag sub) {
             info.load(sub);
             Circuit c = getCircuit();
             if (c == null) {
                 throw new IllegalStateException("BJTransistor has no circuit");
             }
-            center = c.findNode(TagUtil.getUUID(sub, "center"));
-            base = c.findNode(TagUtil.getUUID(sub, "base"));
-            collector = c.findNode(TagUtil.getUUID(sub, "collector"));
-            emitter = c.findNode(TagUtil.getUUID(sub, "emitter"));
-            edgeBase = (Wire) c.findEdge(TagUtil.getUUID(sub, "edge_base"));
-            edgeCollector = c.findEdge(TagUtil.getUUID(sub, "edge_collector"));
-            edgeEmitter = (Resistor) c.findEdge(TagUtil.getUUID(sub, "edge_emitter"));
+            // Internal nodes/edges may have been merged into a different circuit than this component
+            // during {@code generate()}, so resolve through the world rather than this circuit alone.
+            // (Mirrors the world-scoped lookup the base class added to {@link CircuitComponent#load}.)
+            center = findInWorld(c, TagUtil.getUUID(sub, "center"));
+            edgeBase = (Wire) findEdgeInWorld(c, TagUtil.getUUID(sub, "edge_base"));
+            edgeCollector = findEdgeInWorld(c, TagUtil.getUUID(sub, "edge_collector"));
+            edgeEmitter = (Resistor) findEdgeInWorld(c, TagUtil.getUUID(sub, "edge_emitter"));
+            // Backward compatibility: legacy saves wrote "base"/"collector"/"emitter" UUIDs in this
+            // sub-tag instead of the new port_bindings list. If the new map didn't restore the typed
+            // handles (port map empty for old files), fall back to the legacy keys.
+            if (base == null) base = findInWorld(c, TagUtil.getUUID(sub, "base"));
+            if (collector == null) collector = findInWorld(c, TagUtil.getUUID(sub, "collector"));
+            if (emitter == null) emitter = findInWorld(c, TagUtil.getUUID(sub, "emitter"));
         }
+    }
+
+    private static CircuitNode findInWorld(Circuit c, java.util.UUID id) {
+        if (id == null) return null;
+        return c.getWorld() != null ? c.getWorld().findNode(id) : c.findNode(id);
+    }
+
+    private static com.minecart.logic.CircuitEdge findEdgeInWorld(Circuit c, java.util.UUID id) {
+        if (id == null) return null;
+        return c.getWorld() != null ? c.getWorld().findEdge(id) : c.findEdge(id);
     }
 }

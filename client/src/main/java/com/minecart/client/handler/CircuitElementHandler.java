@@ -212,11 +212,21 @@ public final class CircuitElementHandler implements PayloadHandler<CircuitElemen
             throw new IllegalArgumentException("Unknown or unresolved element id: " + id);
         }
         if (el instanceof CircuitEdge e) {
+            // Edge may be one of a component's internal struts on the client (load() restored the
+            // backlink). The hasComponent guard on CircuitEdge.disconnect would refuse normal removal,
+            // so the disconnect path explicitly nulls the component pointer first — the server has
+            // already authorised this REMOVE so the client just executes it.
             world.disconnectWithoutRemoveEvent(e);
             return;
         }
         if (el instanceof CircuitComponent c) {
-            c.destroyForTopologyMirror(circuit);
+            // Just unlink the component shell from its master circuit. Each internal node and edge has
+            // its own REMOVE delta in the same tick (emitted by the server's CircuitComponent.destroy);
+            // letting the cascade run here would invent client-local circuits via a parallel seperate
+            // pass and the subsequent REMOVE/REBIND deltas for those internals would point at circuits
+            // the server never told us about. Reconcile() picks up the disappearance from
+            // circuit.components() on the next frame.
+            circuit.components().remove(c);
             return;
         }
         if (el instanceof CircuitNode n) {
