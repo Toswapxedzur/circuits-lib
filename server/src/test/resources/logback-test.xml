@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test-time Logback config for the server module. Kept quiet so test output is readable; the
+  production `logback.xml` with its FileAppender is intentionally NOT used during tests to avoid
+  spraying `logs/server-<ts>.log` files into the repo on every `./gradlew test`.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

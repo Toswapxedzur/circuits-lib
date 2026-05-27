@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test-time Logback config. Picked up automatically when `logback-test.xml` is on the test classpath,
+  shadowing the production `logback.xml`. Kept deliberately quiet (WARN at the root) so JUnit output
+  isn't flooded by DEBUG/INFO chatter from the same code under test. Tests that need richer logging
+  can either tweak this file locally or use the SLF4J test logger of their choice.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

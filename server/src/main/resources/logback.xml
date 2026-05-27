@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logback configuration for the dedicated server binary (`com.minecart.server.dedicated.DedicatedServerMain`).
+
+  Each process run is one logical "session" so the file appender uses a context-birth timestamp:
+  `logs/server-<yyyy-MM-dd_HHmmss>.log` is created exactly once per JVM start. No rolling policy —
+  one file per run keeps it trivial to correlate a crash report with the producing process.
+-->
+<configuration>
+    <!--
+      timeReference="contextBirth" pins the timestamp to JVM start instead of evaluating it each time
+      a logger is requested; otherwise two log statements emitted in different seconds during boot
+      would resolve to different file paths and Logback would spray two near-empty files.
+    -->
+    <timestamp key="bySecond" datePattern="yyyy-MM-dd_HHmmss" timeReference="contextBirth"/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>logs/server-${bySecond}.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.minecart" level="DEBUG"/>
+    <logger name="io.netty" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

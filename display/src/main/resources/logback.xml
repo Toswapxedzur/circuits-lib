@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logback configuration for the desktop client binary (`com.minecart.display.Main`).
+
+  Only a console appender is declared statically. The per-game-session file appender is attached
+  programmatically by `com.minecart.display.log.SessionLog` when the user joins a world and detached
+  when they quit, so log files appear under `data/logs/` exactly once per join/quit cycle.
+
+  Level policy:
+    - Project code (`com.minecart`) defaults to DEBUG so we keep the rich diagnostic stream we already
+      write today even after migrating away from `Gdx.app.log`.
+    - `io.netty` is pinned to WARN because Netty's internal logging is chatty (DEBUG of every channel
+      handshake floods the console during a normal save load).
+    - Everything else stays at INFO via the root logger.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.minecart" level="DEBUG"/>
+    <logger name="io.netty" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>
