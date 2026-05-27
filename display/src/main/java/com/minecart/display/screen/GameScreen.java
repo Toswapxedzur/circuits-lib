@@ -33,6 +33,7 @@ import com.minecart.display.editor.EditorTool;
 import com.minecart.display.editor.PaletteEntries;
 import com.minecart.display.input.CameraController;
 import com.minecart.display.input.DragController;
+import com.minecart.display.log.SessionLog;
 import com.minecart.display.render.AxisLabelsActor;
 import com.minecart.display.render.Textures;
 import com.minecart.display.render.UiIcons;
@@ -44,6 +45,8 @@ import com.minecart.protocol.payload.client.CreateWorldPayload;
 import com.minecart.protocol.payload.client.DeleteWorldPayload;
 import com.minecart.protocol.payload.client.RenameWorldPayload;
 import com.minecart.server.integrated.IntegratedServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -78,6 +81,8 @@ import java.util.UUID;
  * label.
  */
 public class GameScreen extends ScreenAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(GameScreen.class);
 
     private final DisplayApp app;
     private final Skin skin;
@@ -731,7 +736,7 @@ public class GameScreen extends ScreenAdapter {
             integrated.save();
             flashStatus("Saved.");
         } catch (Throwable t) {
-            Gdx.app.log("GameScreen", "Save failed: " + t.getMessage(), t);
+            log.error("Save failed", t);
             flashStatus("Save failed.");
         }
     }
@@ -744,20 +749,20 @@ public class GameScreen extends ScreenAdapter {
             try {
                 if (connection != null) connection.close();
             } catch (Throwable t) {
-                Gdx.app.log("GameScreen", "Error closing client connection", t);
+                log.warn("Error closing client connection", t);
             }
             try {
                 integrated.saveAndStop();
             } catch (IOException ex) {
-                Gdx.app.log("GameScreen", "Final save failed: " + ex.getMessage(), ex);
+                log.error("Final save failed", ex);
                 integrated.stop();
             } catch (Throwable t) {
-                Gdx.app.log("GameScreen", "Error during save & quit", t);
+                log.error("Error during save & quit", t);
                 integrated.stop();
             }
         } else {
             try { if (connection != null) connection.close(); }
-            catch (Throwable t) { Gdx.app.log("GameScreen", "Error closing client connection", t); }
+            catch (Throwable t) { log.warn("Error closing client connection", t); }
         }
         navigateBack();
     }
@@ -777,12 +782,12 @@ public class GameScreen extends ScreenAdapter {
         try {
             if (connection != null) connection.close();
         } catch (Throwable t) {
-            Gdx.app.log("GameScreen", "Error closing client connection", t);
+            log.warn("Error closing client connection", t);
         }
         try {
             if (integrated != null) integrated.stop();
         } catch (Throwable t) {
-            Gdx.app.log("GameScreen", "Error stopping integrated server", t);
+            log.warn("Error stopping integrated server", t);
         }
     }
 
@@ -1184,6 +1189,14 @@ public class GameScreen extends ScreenAdapter {
         }
     }
 
+    @Override public void hide() {
+        // Game.setScreen calls hide() on the outgoing screen but does NOT call dispose() until app
+        // exit, so this is the right hook for "session ended" - the moment the user clicks Save & Quit,
+        // Quit Without Saving, or Disconnect. SessionLog.end() is idempotent so calling it again from
+        // dispose() (e.g. on app shutdown without a prior screen swap) is harmless.
+        SessionLog.end();
+    }
+
     @Override public void dispose() {
         if (!shuttingDown) {
             shutdownSessionNoSave();
@@ -1192,5 +1205,8 @@ public class GameScreen extends ScreenAdapter {
         uiStage.dispose();
         textures.dispose();
         uiIcons.dispose();
+        // Belt-and-braces - in case dispose() runs without hide() (e.g. JVM shutdown), still close
+        // the session file appender so its buffer flushes.
+        SessionLog.end();
     }
 }

@@ -1,7 +1,9 @@
 package com.minecart.display;
 
 import com.badlogic.gdx.Game;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.minecart.display.log.Slf4jApplicationLogger;
 import com.minecart.display.screen.MainMenuScreen;
 import com.minecart.display.server.ServerManager;
 import com.minecart.display.ui.Skins;
@@ -20,6 +22,10 @@ public class DisplayApp extends Game {
 
     @Override
     public void create() {
+        // Re-route libGDX's own log/error/debug calls (and anything else inside libGDX that uses
+        // Gdx.app.log such as AssetManager) through SLF4J so everything ends up in the same console
+        // pattern and session log file. Must run before any other Gdx.app.* logging fires.
+        Gdx.app.setApplicationLogger(new Slf4jApplicationLogger());
         skin = Skins.build();
         worlds = new WorldManager();
         servers = new ServerManager();

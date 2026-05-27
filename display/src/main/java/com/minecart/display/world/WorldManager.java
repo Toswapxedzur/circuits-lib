@@ -3,6 +3,8 @@ package com.minecart.display.world;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import com.minecart.server.persistence.WorldStorage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -20,6 +22,8 @@ import java.util.regex.Pattern;
  * job once that wiring exists.
  */
 public final class WorldManager {
+
+    private static final Logger log = LoggerFactory.getLogger(WorldManager.class);
 
     private static final String ROOT = "data/worlds";
     private static final Pattern VALID_NAME = Pattern.compile("[A-Za-z0-9 _\\-]{1,48}");
@@ -68,7 +72,7 @@ public final class WorldManager {
         try {
             WorldStorage.writeEmpty(dir.file().toPath(), UUID.randomUUID());
         } catch (IOException e) {
-            Gdx.app.log("WorldManager", "Failed to write initial level.dat for '" + trimmed + "': " + e.getMessage());
+            log.error("Failed to write initial level.dat for '{}'", trimmed, e);
             return null;
         }
         return new WorldEntry(trimmed, dir, dir.lastModified());

@@ -61,4 +61,23 @@ public class AllComponents {
                 new ComponentAnchorRegistry.Anchor(2, 1.0, -1.0)
         ));
     }
+
+    /**
+     * Force the JVM to run this class's {@code <clinit>}, which is where every built-in
+     * {@link CircuitElementType} is registered with {@link CircuitElementRegistry}.
+     *
+     * <p>This method LOOKS like a no-op and is tempting to delete — don't. The whole point is the
+     * <em>invocation</em>: per JLS §12.4.1, invoking a static method declared on a class triggers
+     * that class's static field initializers. Without this, the registration side-effects in the
+     * field initializers above never run, and {@link CircuitElementRegistry#getType(String)}
+     * throws "Unknown component ID: ..." for any saved element on a cold start.
+     *
+     * <p>Historical trap: the equivalent {@code AllComponents.class} class-literal does
+     * <strong>not</strong> trigger initialization (it only resolves the {@link Class} object), so an
+     * earlier version of the bootstrap code silently failed to register anything when the first
+     * action on a fresh JVM was loading an existing save.
+     */
+    public static void init() {
+        // Intentionally empty. See javadoc.
+    }
 }

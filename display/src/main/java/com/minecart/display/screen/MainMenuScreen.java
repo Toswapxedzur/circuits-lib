@@ -12,8 +12,12 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.display.DisplayApp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MainMenuScreen extends ScreenAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(MainMenuScreen.class);
 
     private final DisplayApp app;
     private final Skin skin;
@@ -47,7 +51,7 @@ public class MainMenuScreen extends ScreenAdapter {
         });
         settings.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) {
-                Gdx.app.log("Menu", "Settings (not yet implemented)");
+                log.info("Settings (not yet implemented)");
             }
         });
         // Closes the LibGDX application; on desktop this terminates the JVM via the Lwjgl3Application

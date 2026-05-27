@@ -73,10 +73,20 @@ public class WorldStage extends Stage {
     private UUID draggedElementId;
     /** Set when a drag is currently positioned over the trashcan; turns the dragged actor red. */
     private boolean draggedOverTrash;
+    /**
+     * During a node drag, the id of the node currently underneath the cursor that the drop would
+     * combine into (or {@code null} when no candidate is under the cursor). Painted green or red on
+     * that actor depending on {@link #combineTargetValid} so the user can see at a glance whether
+     * releasing the mouse will trigger a successful combine. Cleared automatically when the drag ends.
+     */
+    private UUID combineTargetId;
+    private boolean combineTargetValid;
 
     private static final Color HOVER_TINT = new Color(1.25f, 1.25f, 0.6f, 1f);
     private static final Color DRAG_TINT = new Color(0.8f, 1.1f, 1.6f, 1f);
     private static final Color TRASH_TINT = new Color(1.6f, 0.6f, 0.6f, 1f);
+    private static final Color COMBINE_OK_TINT = new Color(0.6f, 1.6f, 0.6f, 1f);
+    private static final Color COMBINE_BAD_TINT = new Color(1.6f, 0.6f, 0.6f, 1f);
     private static final Color RESET_TINT = new Color(1f, 1f, 1f, 1f);
 
     public WorldStage(ClientLevel level, Textures textures) {
@@ -180,6 +190,17 @@ public class WorldStage extends Stage {
         this.draggedOverTrash = overTrash;
     }
 
+    /**
+     * Updates the combine-target affordance on the node the cursor is currently over (during a node
+     * drag). Pass {@code null} to clear; pass a non-null id with {@code valid=true} to paint green or
+     * {@code valid=false} to paint red. The tint is applied each frame in
+     * {@link #applyHighlightTints()} alongside hover / drag / trash highlights.
+     */
+    public void setCombineTarget(UUID id, boolean valid) {
+        this.combineTargetId = id;
+        this.combineTargetValid = valid;
+    }
+
     public UUID getHoveredElementId() {
         return hoveredElementId;
     }
@@ -204,7 +225,16 @@ public class WorldStage extends Stage {
             Color c = draggedOverTrash ? TRASH_TINT : DRAG_TINT;
             tint(draggedElementId, c);
         }
-        if (hoveredElementId != null && !hoveredElementId.equals(draggedElementId)) {
+        // Combine target paints over hover so the green/red affordance wins when the cursor is over a
+        // valid drop target — the user shouldn't see "yellow hover" on a node that's about to absorb
+        // the dragged one. Skip if the combine target IS the dragged actor (defensive: shouldn't
+        // happen, but keeps drag tint priority intact).
+        if (combineTargetId != null && !combineTargetId.equals(draggedElementId)) {
+            tint(combineTargetId, combineTargetValid ? COMBINE_OK_TINT : COMBINE_BAD_TINT);
+        }
+        if (hoveredElementId != null
+                && !hoveredElementId.equals(draggedElementId)
+                && !hoveredElementId.equals(combineTargetId)) {
             tint(hoveredElementId, HOVER_TINT);
         }
     }
@@ -328,6 +358,12 @@ public class WorldStage extends Stage {
     /**
      * @return the topmost {@link CircuitElement} whose actor's bounds contain {@code (worldX, worldY)},
      *         or {@code null} if nothing is hit. Components → nodes → edges in that priority.
+     *
+     * <p>Edges are tested last so a click on a junction (node sprite straddling an edge endpoint)
+     * picks the node, not the edge underneath. Edge hit-testing uses
+     * {@link #pointToSegmentDistance} with a tolerance of {@link EdgeActor#THICKNESS} (the visible wire
+     * thickness in world units) so the click area matches the painted wire and the user doesn't have
+     * to land on a sub-pixel line. Edges with missing endpoints / positions are skipped.
      */
     public CircuitElement hitTestWorld(float worldX, float worldY) {
         for (ComponentActor a : componentActors.values()) {
@@ -340,7 +376,74 @@ public class WorldStage extends Stage {
                 return a.getNode();
             }
         }
+        EdgeActor edgeHit = hitTestEdge(worldX, worldY);
+        if (edgeHit != null) {
+            return edgeHit.getEdge();
+        }
         return null;
+    }
+
+    /**
+     * @return the topmost rendered {@link EdgeActor} whose painted wire passes within
+     *         {@link EdgeActor#THICKNESS} world units of {@code (worldX, worldY)}, or {@code null} if
+     *         no edge is close enough. Used by the editor's drag controller so dragging the wire (not
+     *         just one of its endpoint nodes) translates both endpoints together.
+     */
+    public EdgeActor hitTestEdge(float worldX, float worldY) {
+        float bestDist = Float.MAX_VALUE;
+        EdgeActor best = null;
+        for (EdgeActor a : edgeActors.values()) {
+            CircuitEdge e = a.getEdge();
+            CircuitNode n1 = e.getConnection(0);
+            CircuitNode n2 = e.getConnection(1);
+            if (n1 == null || n2 == null) {
+                continue;
+            }
+            com.minecart.variant.info.PositionInfo p1 =
+                    n1.getInfo(com.minecart.registry.AllElementInfos.POSITION);
+            com.minecart.variant.info.PositionInfo p2 =
+                    n2.getInfo(com.minecart.registry.AllElementInfos.POSITION);
+            if (p1 == null || p2 == null) {
+                continue;
+            }
+            float ax = (float) p1.getX();
+            float ay = (float) p1.getY();
+            float bx = (float) p2.getX();
+            float by = (float) p2.getY();
+            float d = pointToSegmentDistance(worldX, worldY, ax, ay, bx, by);
+            if (d <= EdgeActor.THICKNESS && d < bestDist) {
+                bestDist = d;
+                best = a;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Standard point-to-line-segment distance, parameterised in world units. Returns the perpendicular
+     * distance when the foot of the perpendicular falls between the segment endpoints, otherwise the
+     * distance to the nearer endpoint. Degenerate (zero-length) segments fall back to the
+     * distance-to-A reading.
+     */
+    private static float pointToSegmentDistance(float px, float py,
+                                                float ax, float ay,
+                                                float bx, float by) {
+        float dx = bx - ax;
+        float dy = by - ay;
+        float lenSq = dx * dx + dy * dy;
+        if (lenSq < 1e-8f) {
+            float ex = px - ax;
+            float ey = py - ay;
+            return (float) Math.sqrt(ex * ex + ey * ey);
+        }
+        float t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+        if (t < 0f) t = 0f;
+        else if (t > 1f) t = 1f;
+        float fx = ax + t * dx;
+        float fy = ay + t * dy;
+        float ex = px - fx;
+        float ey = py - fy;
+        return (float) Math.sqrt(ex * ex + ey * ey);
     }
 
     private static boolean contains(com.badlogic.gdx.scenes.scene2d.Actor a, float wx, float wy) {
@@ -359,11 +462,39 @@ public class WorldStage extends Stage {
     }
 
     public NodeActor findNodeActorAt(float worldX, float worldY) {
+        return findNodeActorAt(worldX, worldY, null);
+    }
+
+    /**
+     * Same as {@link #findNodeActorAt(float, float)} but skips the actor whose node id matches
+     * {@code excludeId} and, when multiple actors overlap the cursor, returns the one whose centre is
+     * closest. The exclusion is needed for combine-target detection during a node drag: the dragged
+     * actor follows the cursor and its bounds therefore contain the cursor point, so without skipping
+     * it the HashMap iteration order would sometimes return the dragged actor and the caller would
+     * never see the actual drop target underneath. Closest-centre tiebreaking handles the case where
+     * the cursor sits over two stacked candidate nodes — we want the visually-intended target, not
+     * whichever happened to be inserted first.
+     */
+    public NodeActor findNodeActorAt(float worldX, float worldY, UUID excludeId) {
+        NodeActor best = null;
+        float bestDistSq = Float.MAX_VALUE;
         for (NodeActor a : nodeActors.values()) {
-            if (contains(a, worldX, worldY)) {
-                return a;
+            if (excludeId != null && excludeId.equals(a.getNode().getId())) {
+                continue;
+            }
+            if (!contains(a, worldX, worldY)) {
+                continue;
+            }
+            float cx = a.getX() + a.getWidth() * 0.5f;
+            float cy = a.getY() + a.getHeight() * 0.5f;
+            float dx = worldX - cx;
+            float dy = worldY - cy;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                best = a;
             }
         }
-        return null;
+        return best;
     }
 }

@@ -23,6 +23,8 @@ public final class ProtocolStrings {
     public static final String PAYLOAD_DELETE_WORLD = "minecart.delete_world_payload";
     public static final String PAYLOAD_MOVE_ELEMENT = "minecart.move_element_payload";
     public static final String PAYLOAD_DELETE_ELEMENT = "minecart.delete_element_payload";
+    public static final String PAYLOAD_EDGE_ENDPOINT_CHANGE = "minecart.edge_endpoint_change_payload";
+    public static final String PAYLOAD_REPLACE_COMPONENT_NODE = "minecart.replace_component_node_payload";
 
     public static final String PAYLOAD_ENVELOPE_ID = "payload_id";
 
@@ -45,6 +47,18 @@ public final class ProtocolStrings {
     public static final String TAG_START_NODE_ID = "start_node_id";
     public static final String TAG_END_NODE_ID = "end_node_id";
     public static final String TAG_WORLD_NAME = "world_name";
+    /** Combine payload: id of the {@link com.minecart.logic.CircuitComponent} hosting the port being replaced. */
+    public static final String TAG_COMPONENT_ID = "component_id";
+    /** Combine payload: id of the existing port {@link com.minecart.logic.CircuitNode} that is being absorbed. */
+    public static final String TAG_OLD_NODE_ID = "old_node_id";
+    /** Combine payload: id of the new {@link com.minecart.logic.CircuitNode} taking over the port slot. */
+    public static final String TAG_NEW_NODE_ID = "new_node_id";
+    /** Edge-endpoint-change payload: id of the {@link com.minecart.logic.CircuitEdge} being repointed. */
+    public static final String TAG_EDGE_ID = "edge_id";
+    /** Edge-endpoint-change payload: id of the new {@code start} node. */
+    public static final String TAG_NEW_START_NODE_ID = "new_start_node_id";
+    /** Edge-endpoint-change payload: id of the new {@code end} node. */
+    public static final String TAG_NEW_END_NODE_ID = "new_end_node_id";
 
     /** Snapshot body: embedded circuit compound under the payload root. */
     public static final String SNAPSHOT_TAG_CIRCUIT = "circuit";

@@ -16,11 +16,16 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.display.DisplayApp;
+import com.minecart.display.log.SessionLog;
 import com.minecart.display.server.ServerEntry;
 import com.minecart.display.server.ServerManager;
 import com.minecart.display.session.Sessions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MultiplayerScreen extends ScreenAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(MultiplayerScreen.class);
 
     private final DisplayApp app;
     private final Skin skin;
@@ -141,11 +146,15 @@ public class MultiplayerScreen extends ScreenAdapter {
      * is started for multiplayer.
      */
     private void joinServer(ServerEntry entry) {
+        // Open the session log BEFORE the network connect so any handshake failure ends up in the
+        // session file alongside subsequent in-game logs.
+        SessionLog.begin("mp_" + entry.address());
         Sessions.Session session;
         try {
             session = Sessions.multiplayer(entry.host, entry.port);
         } catch (Exception ex) {
-            Gdx.app.log("Multiplayer", "Failed to connect to " + entry.address() + ": " + ex.getMessage());
+            log.warn("Failed to connect to {}", entry.address(), ex);
+            SessionLog.end();
             return;
         }
         app.setScreen(new GameScreen(app, entry.name, session.level(), session.connection(), session.integrated()));
@@ -200,14 +209,14 @@ public class MultiplayerScreen extends ScreenAdapter {
                 try {
                     port = Integer.parseInt(portField.getText().trim());
                 } catch (NumberFormatException ex) {
-                    Gdx.app.log("Multiplayer", "Invalid port: " + portField.getText());
+                    log.warn("Invalid port: {}", portField.getText());
                     return;
                 }
                 if (servers.add(nameField.getText(), hostField.getText(), port)) {
                     rebuildRows();
                     servers.pingAsync(servers.list().get(servers.list().size() - 1));
                 } else {
-                    Gdx.app.log("Multiplayer", "Failed to add server (validation)");
+                    log.warn("Failed to add server (validation)");
                 }
             }
         };

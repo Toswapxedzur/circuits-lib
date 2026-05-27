@@ -5,6 +5,8 @@ import com.minecart.event.info.InfoInjectors;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.ServerLevel;
+import com.minecart.registry.AllComponents;
+import com.minecart.registry.AllElementInfos;
 import com.minecart.protocol.codec.PayloadDecoder;
 import com.minecart.protocol.codec.PayloadEncoder;
 import com.minecart.protocol.payload.Payload;
@@ -29,6 +31,8 @@ import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalServerChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.GlobalEventExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -57,6 +61,8 @@ import java.util.function.Consumer;
  * starts in sync with the authoritative state.
  */
 public class IntegratedServer {
+
+    private static final Logger log = LoggerFactory.getLogger(IntegratedServer.class);
 
     private final ServerLevel level;
     private final LocalAddress address;
@@ -140,6 +146,20 @@ public class IntegratedServer {
         if (started) {
             throw new IllegalStateException("IntegratedServer already started");
         }
+        // Force-initialise the core element-type and element-info registries before anything tries
+        // to use them. The CircuitElementType / ElementInfoType entries are registered as a side-
+        // effect of each class's <clinit>; until <clinit> has run, CircuitElementRegistry.getType
+        // throws "Unknown component ID: ..." for any saved element. The display module triggers
+        // these initializers via PaletteEntries (which references AllComponents.* static fields)
+        // but only AFTER GameScreen is built — too late for a cold-start "join existing world"
+        // flow because WorldStorage.load below runs first.
+        //
+        // IMPORTANT: must be an actual method invocation, NOT `AllComponents.class`. Per JLS §12.4.1
+        // a class literal does not trigger initialisation; only static method invocation, static
+        // field access (non-constant), instance creation, or Class.forName do. An earlier version
+        // of this code used `.class` and silently failed on cold-start saved-world loads.
+        AllComponents.init();
+        AllElementInfos.init();
         // Default-info injection must be attached before any element exists, so loaded elements
         // get their PositionInfo/RotationInfo defaults applied before save data overrides them.
         InfoInjectors.attach(level);
@@ -233,7 +253,7 @@ public class IntegratedServer {
             try {
                 WorldStorage.save(level, saveDir);
             } catch (IOException e) {
-                e.printStackTrace();
+                log.error("Async save to {} failed", saveDir, e);
             }
         });
     }

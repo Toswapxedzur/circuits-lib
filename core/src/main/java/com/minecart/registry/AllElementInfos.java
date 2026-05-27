@@ -17,4 +17,16 @@ public final class AllElementInfos {
             ElementInfoRegistry.register("core:rotation", RotationInfo::new);
 
     private AllElementInfos() {}
+
+    /**
+     * Force this class's {@code <clinit>} to run. Same rationale as
+     * {@link AllComponents#init()} — the {@link ElementInfoRegistry#register(String, java.util.function.Supplier)}
+     * calls above happen as a side-effect of initialization, so something has to actually
+     * <em>invoke</em> a member of this class (not just reference {@code AllElementInfos.class}) to
+     * make them happen. Per JLS §12.4.1, invoking a static method qualifies; a class literal does
+     * not.
+     */
+    public static void init() {
+        // Intentionally empty. See javadoc.
+    }
 }

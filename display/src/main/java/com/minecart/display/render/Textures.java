@@ -6,6 +6,8 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.utils.Disposable;
 import com.minecart.registry.CircuitElementType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -18,6 +20,8 @@ import java.util.Map;
  * textures.
  */
 public final class Textures implements Disposable {
+
+    private static final Logger log = LoggerFactory.getLogger(Textures.class);
 
     private final Map<String, Texture> byTypeId = new HashMap<>();
     private Texture missing;
@@ -62,7 +66,7 @@ public final class Textures implements Disposable {
             try {
                 return new Texture(file);
             } catch (Throwable t) {
-                Gdx.app.log("Textures", "Failed to load " + file.path() + ": " + t.getMessage());
+                log.warn("Failed to load {}", file.path(), t);
             }
         }
         return null;

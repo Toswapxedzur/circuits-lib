@@ -16,13 +16,18 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.display.DisplayApp;
+import com.minecart.display.log.SessionLog;
 import com.minecart.display.session.Sessions;
 import com.minecart.display.world.WorldEntry;
 import com.minecart.display.world.WorldManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
 public class WorldListScreen extends ScreenAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(WorldListScreen.class);
 
     private final DisplayApp app;
     private final Skin skin;
@@ -121,11 +126,16 @@ public class WorldListScreen extends ScreenAdapter {
      * {@link GameScreen}. Failures show a log entry; the user stays on the world list.
      */
     private void joinWorld(WorldEntry world) {
+        // Open the session log BEFORE booting the integrated server so the load path
+        // (WorldStorage.load, listener attach, initial-snapshot send) is captured. If the session
+        // setup fails we still want the failure in the file.
+        SessionLog.begin("sp_" + world.name());
         Sessions.Session session;
         try {
             session = Sessions.singleplayer(world);
         } catch (Exception ex) {
-            Gdx.app.log("WorldList", "Failed to start singleplayer session for '" + world.name() + "': " + ex.getMessage());
+            log.error("Failed to start singleplayer session for '{}'", world.name(), ex);
+            SessionLog.end();
             return;
         }
         app.setScreen(new GameScreen(app, world.name(), session.level(), session.connection(), session.integrated()));
@@ -143,7 +153,7 @@ public class WorldListScreen extends ScreenAdapter {
                     if (worlds.create(entered) != null) {
                         refresh();
                     } else {
-                        Gdx.app.log("WorldList", "Invalid or duplicate world name: '" + entered + "'");
+                        log.warn("Invalid or duplicate world name: '{}'", entered);
                     }
                 }
             }

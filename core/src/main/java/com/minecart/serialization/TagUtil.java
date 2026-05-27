@@ -1,11 +1,15 @@
 package com.minecart.serialization;
 
 import com.minecart.serialization.tag.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.UUID;
 
 public class TagUtil {
+
+    private static final Logger log = LoggerFactory.getLogger(TagUtil.class);
     public static int getInt(Tag numberTag) {
         if(numberTag instanceof IntTag tag)
             return tag.getAsInt();
@@ -63,7 +67,7 @@ public class TagUtil {
             return new UUID(most, least);
 
         } catch (ClassCastException e) {
-            System.err.println("Malformed UUID Tag: List did not contain IntTags.");
+            log.warn("Malformed UUID Tag: List did not contain IntTags.", e);
             return null;
         }
     }

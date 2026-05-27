@@ -1,6 +1,8 @@
 package com.minecart.server.network;
 
 import com.minecart.logic.ServerLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.concurrent.locks.LockSupport;
@@ -15,6 +17,8 @@ import java.util.concurrent.locks.LockSupport;
  * Lifecycle: {@link #start()} once, {@link #stop()} once. Not restartable.
  */
 public class ServerTickThread {
+
+    private static final Logger log = LoggerFactory.getLogger(ServerTickThread.class);
 
     private final ServerLevel level;
     private final String name;
@@ -67,7 +71,7 @@ public class ServerTickThread {
             try {
                 level.tick();
             } catch (Throwable t) {
-                t.printStackTrace();
+                log.error("Tick failed; continuing", t);
             }
             next += stepNs;
             long sleep = next - System.nanoTime();

@@ -5,10 +5,12 @@ import com.minecart.protocol.payload.client.ConnectEdgePayload;
 import com.minecart.protocol.payload.client.CreateWorldPayload;
 import com.minecart.protocol.payload.client.DeleteElementPayload;
 import com.minecart.protocol.payload.client.DeleteWorldPayload;
+import com.minecart.protocol.payload.client.EdgeEndpointChangePayload;
 import com.minecart.protocol.payload.client.MoveElementPayload;
 import com.minecart.protocol.payload.client.PlaceComponentPayload;
 import com.minecart.protocol.payload.client.PlaceNodePayload;
 import com.minecart.protocol.payload.client.RenameWorldPayload;
+import com.minecart.protocol.payload.client.ReplaceComponentNodePayload;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
 import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
@@ -33,6 +35,8 @@ public final class AllPayloads {
     public static final PayloadType<RenameWorldPayload> RENAME_WORLD = RenameWorldPayload.TYPE;
     public static final PayloadType<MoveElementPayload> MOVE_ELEMENT = MoveElementPayload.TYPE;
     public static final PayloadType<DeleteElementPayload> DELETE_ELEMENT = DeleteElementPayload.TYPE;
+    public static final PayloadType<EdgeEndpointChangePayload> EDGE_ENDPOINT_CHANGE = EdgeEndpointChangePayload.TYPE;
+    public static final PayloadType<ReplaceComponentNodePayload> REPLACE_COMPONENT_NODE = ReplaceComponentNodePayload.TYPE;
 
     private AllPayloads() {}
 }

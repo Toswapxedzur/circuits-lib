@@ -134,6 +134,68 @@ public non-sealed class CircuitComponent extends CircuitElement {
         }
     }
 
+    /**
+     * Atomically swaps {@code oldPort} for {@code newPort} at {@code portIndex} on this component:
+     * the new node takes over the port slot, joins {@link #nodes}, and gains a back-pointer to this
+     * component while the old node is unlinked from both. Used by the node-combine path when the
+     * absorbed node was a registered port (the editor hands off the slot to the dragged "survivor"
+     * node so external wires remain pinned to the same anchor without needing per-edge re-routing).
+     *
+     * <p>Edge re-routing is intentionally NOT done here — callers (server-side combine handler / test
+     * harness) issue per-edge {@code changeEdgeEndpoint} calls explicitly so the protocol stays a flat
+     * sequence of granular events instead of one composite "replace + rewire" op the client would have
+     * to reconstruct in pieces. The order is also caller-controlled: do this first so {@code newPort}
+     * is part of {@code this} before any internal-edge endpoint change moves an internal-junction wire
+     * to it; otherwise that wire would briefly connect a junction in {@code this} to a node outside it.
+     *
+     * <p>Throws if {@code oldPort} isn't actually the port at {@code portIndex} or {@code newPort}
+     * is already a port (different index) of this component — those would silently corrupt the
+     * port-by-index map.
+     */
+    public void replacePort(int portIndex, CircuitNode oldPort, CircuitNode newPort) {
+        if (oldPort == null || newPort == null) {
+            throw new IllegalArgumentException("oldPort and newPort must be non-null");
+        }
+        if (oldPort == newPort) {
+            return;
+        }
+        CircuitNode existing = portsByIndex.get(portIndex);
+        if (existing != oldPort) {
+            throw new IllegalStateException(
+                    "Port " + portIndex + " on component " + getRegistryTypeId()
+                            + " is bound to a different node than oldPort");
+        }
+        for (Map.Entry<Integer, CircuitNode> e : portsByIndex.entrySet()) {
+            if (e.getKey() != portIndex && e.getValue() == newPort) {
+                throw new IllegalStateException(
+                        "newPort is already bound to port " + e.getKey()
+                                + " on component " + getRegistryTypeId());
+            }
+        }
+        portsByIndex.put(portIndex, newPort);
+        nodes.remove(oldPort);
+        nodes.add(newPort);
+        oldPort.setComponent(null);
+        newPort.setComponent(this);
+    }
+
+    /**
+     * @return the port index {@code node} occupies on this component, or {@code -1} if {@code node}
+     *         isn't a port. Iteration over {@link #portsByIndex} is in registration order so the
+     *         first-match semantics align with {@link #getPort(int)} lookup.
+     */
+    public int portIndexOf(CircuitNode node) {
+        if (node == null) {
+            return -1;
+        }
+        for (Map.Entry<Integer, CircuitNode> e : portsByIndex.entrySet()) {
+            if (e.getValue() == node) {
+                return e.getKey();
+            }
+        }
+        return -1;
+    }
+
     // 3. Basic Edge Creation
     protected <T extends CircuitEdge> T newEdge(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2){
         ServerWorld serverWorld = (ServerWorld) getWorld();

@@ -5,6 +5,8 @@ import com.badlogic.gdx.files.FileHandle;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
@@ -22,6 +24,8 @@ import java.util.concurrent.Executors;
  * The status field itself is {@code volatile} so the render thread always sees the latest value.
  */
 public final class ServerManager {
+
+    private static final Logger log = LoggerFactory.getLogger(ServerManager.class);
 
     private static final String PATH = "data/servers.json";
     private static final int PING_TIMEOUT_MS = 1500;
@@ -102,7 +106,7 @@ public final class ServerManager {
                 }
             }
         } catch (Exception ex) {
-            Gdx.app.error("ServerManager", "Failed to read " + PATH, ex);
+            log.error("Failed to read {}", PATH, ex);
         }
     }
 
@@ -112,7 +116,7 @@ public final class ServerManager {
             f.parent().mkdirs();
             f.writeString(GSON.toJson(servers, LIST_TYPE), false, "UTF-8");
         } catch (Exception ex) {
-            Gdx.app.error("ServerManager", "Failed to write " + PATH, ex);
+            log.error("Failed to write {}", PATH, ex);
         }
     }
 }

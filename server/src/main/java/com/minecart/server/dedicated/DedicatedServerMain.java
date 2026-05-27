@@ -13,6 +13,10 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.util.internal.logging.InternalLoggerFactory;
+import io.netty.util.internal.logging.Slf4JLoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Headless server entry point. Binds a TCP {@link NioServerSocketChannel} on a port, runs the same pipeline as
@@ -25,15 +29,22 @@ public final class DedicatedServerMain {
 
     public static final int DEFAULT_PORT = 25565;
 
+    private static final Logger log = LoggerFactory.getLogger(DedicatedServerMain.class);
+
     private DedicatedServerMain() {}
 
     public static void main(String[] args) throws Exception {
+        // Pin Netty's logging backend before any Netty class is touched (the static initializer of
+        // InternalLoggerFactory caches whatever provider is configured at first reference). Setting
+        // this explicitly removes the implicit "find SLF4J on classpath" detection step.
+        InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
+
         int port = DEFAULT_PORT;
         if (args.length > 0) {
             try {
                 port = Integer.parseInt(args[0]);
             } catch (NumberFormatException e) {
-                System.err.println("Invalid port '" + args[0] + "', falling back to " + DEFAULT_PORT);
+                log.warn("Invalid port '{}', falling back to {}", args[0], DEFAULT_PORT);
             }
         }
 
@@ -70,10 +81,10 @@ public final class DedicatedServerMain {
         }
 
         tick.start();
-        System.out.println("Dedicated server listening on port " + port);
+        log.info("Dedicated server listening on port {}", port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutting down dedicated server...");
+            log.info("Shutting down dedicated server...");
             try {
                 tick.stop();
                 serverChannel.close().syncUninterruptibly();

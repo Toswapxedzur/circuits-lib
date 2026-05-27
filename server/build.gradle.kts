@@ -18,4 +18,8 @@ dependencies {
     implementation("io.netty:netty-codec:4.2.12.Final")
     // Source: https://mvnrepository.com/artifact/io.netty/netty-transport
     implementation("io.netty:netty-transport:4.2.12.Final")
+
+    // Logback is the chosen SLF4J implementation for the dedicated server binary.
+    // Source: https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
+    runtimeOnly("ch.qos.logback:logback-classic:1.5.18")
 }

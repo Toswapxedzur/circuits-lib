@@ -164,14 +164,94 @@ public non-sealed class CircuitEdge extends CircuitElement {
     }
 
     /**
-     * Restores id and electrical state from {@code tag}. Does not attach endpoints; for a full circuit restore
-     * after nodes exist, use {@link #load(CompoundTag, Circuit)}.
+     * Restores id and electrical state from {@code tag}. Two modes:
+     *
+     * <ol>
+     *     <li><b>Initial load</b> (called from {@link Circuit#load} via {@link #load(CompoundTag, Circuit)})
+     *         — at this point {@link #start} and {@link #end} are still {@code null}, so the reattach branch
+     *         below short-circuits and {@link #attachEndpointsFromTag} (called separately by the
+     *         {@code (tag, circuit)} overload) does the actual wiring.</li>
+     *     <li><b>Sync reattach</b> (called from
+     *         {@link com.minecart.protocol.sync.SyncRegistry#readSyncData} when a server CHANGE op carries
+     *         updated endpoint UUIDs) — endpoints are already wired but the {@link CoreStrings#EDGE_START} /
+     *         {@link CoreStrings#EDGE_END} ids in {@code tag} differ. Detach from the old endpoints (bypassing
+     *         the {@code hasComponent} guard since the server has already authorised this rebind) and attach
+     *         to the new ones via the world's cross-circuit {@link com.minecart.foundation.World#findNode
+     *         findNode}, which handles the case where the new endpoint lives in a different circuit than the
+     *         edge.</li>
+     * </ol>
+     *
+     * <p>The single-method dual mode keeps the {@link com.minecart.protocol.sync.SyncRegistry} default path
+     * (which dispatches to {@link CircuitElement#save}/{@link CircuitElement#load}) working for every edge
+     * subclass without needing per-class custom handlers.
      */
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
         getCurrent().setValue(tag.getDouble(CoreStrings.EDGE_CURRENT));
         overpowered = tag.getBoolean(CoreStrings.EDGE_OVERPOWERED);
+        if (start == null && end == null) {
+            return;
+        }
+        UUID startId = TagUtil.getUUID(tag, CoreStrings.EDGE_START);
+        UUID endId = TagUtil.getUUID(tag, CoreStrings.EDGE_END);
+        if (startId == null || endId == null) {
+            return;
+        }
+        UUID currStartId = start != null ? start.getId() : null;
+        UUID currEndId = end != null ? end.getId() : null;
+        if (startId.equals(currStartId) && endId.equals(currEndId)) {
+            return;
+        }
+        World w = getWorld();
+        if (w == null) {
+            return;
+        }
+        CircuitNode newStart = w.findNode(startId);
+        CircuitNode newEnd = w.findNode(endId);
+        if (newStart == null || newEnd == null) {
+            return;
+        }
+        replaceEndpointsBypassingGuards(newStart, newEnd);
+    }
+
+    /**
+     * Direct {@code start}/{@code end} swap that bypasses the {@code hasComponent} guard on
+     * {@link #connect}/{@link #disconnect}. Used by:
+     *
+     * <ul>
+     *     <li>The sync-reattach branch in {@link #load(CompoundTag)} when the client mirror applies a
+     *         server-issued endpoint change.</li>
+     *     <li>{@link com.minecart.logic.ServerWorld#changeEdgeEndpoint} when the editor / a test moves an
+     *         edge from one node to another (e.g. as part of {@code combineNodes}).</li>
+     * </ul>
+     *
+     * <p>The guard exists to prevent user-driven wiring tools from severing a component's internal star
+     * graph; authoritative replication and explicit endpoint-mutation API calls have already validated the
+     * transition, so they're permitted to push past it. Connection-set membership on the involved nodes is
+     * updated here too so {@link CircuitNode#getConnection()} stays consistent in both directions.
+     *
+     * <p>{@code newStart} / {@code newEnd} must be non-null. To clear endpoints during a teardown use
+     * {@link #disconnect(boolean)} instead.
+     */
+    void replaceEndpointsBypassingGuards(CircuitNode newStart, CircuitNode newEnd) {
+        if (newStart == null || newEnd == null) {
+            throw new IllegalArgumentException("newStart and newEnd must be non-null");
+        }
+        CircuitNode oldStart = this.start;
+        CircuitNode oldEnd = this.end;
+        if (oldStart != null && oldStart != newStart && oldStart != newEnd) {
+            oldStart.disconnect(this, false);
+        }
+        if (oldEnd != null && oldEnd != oldStart && oldEnd != newStart && oldEnd != newEnd) {
+            oldEnd.disconnect(this, false);
+        }
+        this.start = newStart;
+        this.end = newEnd;
+        newStart.connectEdge(this, false);
+        if (newEnd != newStart) {
+            newEnd.connectEdge(this, false);
+        }
     }
 
     /**

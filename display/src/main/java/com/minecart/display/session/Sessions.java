@@ -85,8 +85,11 @@ public final class Sessions {
 
     private static ClientLevel newClientLevel() {
         ClientLevel level = new ClientLevel();
-        // Touch AllElementInfos so its types are registered before any payload is decoded.
-        Class<?> ignored = AllElementInfos.class;
+        // Force ElementInfo types to register before any payload is decoded. Must be a method
+        // invocation — class literals (`AllElementInfos.class`) do NOT trigger <clinit> per
+        // JLS §12.4.1, so the static field initializers that call ElementInfoRegistry.register
+        // would silently never run. See AllElementInfos#init().
+        AllElementInfos.init();
         // Inject default PositionInfo / RotationInfo on the client mirror; loaded payloads override these.
         InfoInjectors.attach(level);
         return level;

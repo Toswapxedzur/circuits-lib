@@ -107,6 +107,24 @@ public non-sealed class CircuitNode extends CircuitElement {
         return adjacent;
     }
 
+    /**
+     * Whether this node will accept being merged with {@code other} via
+     * {@link com.minecart.foundation.World#combineNodes(CircuitNode, CircuitNode)}.
+     *
+     * <p>Both endpoints' {@code canCombine} must return {@code true} for a combine to proceed — vetoes are
+     * symmetric so neither side can be silently overridden by the other. The default rule rejects
+     * <em>intrinsic</em> internals (a component-owned node that isn't a registered port) because those are
+     * hidden affordances that the rest of the system isn't supposed to interact with at all; everything
+     * else (free nodes and exposed ports) opts in. Subclasses with stricter electrical invariants — e.g. a
+     * polarised junction that can only merge with its own kind — should override and tighten this.
+     */
+    public boolean canCombine(CircuitNode other) {
+        if (component != null && !component.isPort(this)) {
+            return false;
+        }
+        return true;
+    }
+
     public DoubleVar getVoltage() {
         return voltage;
     }

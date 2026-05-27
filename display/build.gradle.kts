@@ -28,4 +28,13 @@ dependencies {
     implementation("com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion")
     // Source: https://mvnrepository.com/artifact/com.badlogicgames.gdx/gdx-platform
     runtimeOnly("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop")
+
+    // Logback is the chosen SLF4J implementation for the desktop client binary. runtimeOnly keeps it off
+    // the compile classpath so application code can't accidentally reach into Logback APIs (except
+    // SessionLog, which deliberately does — see its file for the rationale).
+    // Source: https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
+    runtimeOnly("ch.qos.logback:logback-classic:1.5.18")
+    // SessionLog programmatically builds a FileAppender, which needs Logback types at compile time.
+    // compileOnly avoids double-jaring at runtime (the runtimeOnly above already provides it).
+    compileOnly("ch.qos.logback:logback-classic:1.5.18")
 }

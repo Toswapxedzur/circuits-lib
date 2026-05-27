@@ -227,8 +227,22 @@ public class CircuitElementListener implements IncrementPayloadListener<CircuitE
     }
 
     /**
-     * Picks the destination {@link CircuitKey} for an entry: current circuit for inserts and live elements,
-     * {@code lastKnownCircuitId} for removals (since {@code element.getCircuit()} may be null after destroy).
+     * Picks the destination {@link CircuitKey} for an entry.
+     *
+     * <p>Live elements route to their current circuit. Removed elements route to the FIRST circuit the
+     * client saw the element in this tick (firstSourceCircuitId), falling back to lastKnownCircuitId.
+     *
+     * <p>Why not always {@code lastKnownCircuitId}? An element can hop through transient circuits during
+     * a tick — most often the throwaway {@link com.minecart.logic.ServerCircuit} that
+     * {@link com.minecart.logic.ServerWorld#splitOffIfDisconnected} peels off mid-{@code combineNodes} and
+     * then immediately empties when the element is deleted. {@link CircuitLifecycleListener} coalesces
+     * the matching INSERT/REMOVE pair into nothing (no point telling the client about a circuit that's
+     * gone again next tick), but if we then routed the element's REMOVE op to that vanished circuit the
+     * client would throw "No circuit for id ... in world ..." because the lifecycle never reached it.
+     *
+     * <p>Routing to {@code firstSourceCircuitId} fixes that: the client knew the element in its original
+     * circuit and finds it there to apply REMOVE. The original circuit's own REMOVE lifecycle (if any)
+     * is queued for after the element-sync pass via {@link CircuitLifecycleListener#syncRemoves}.
      */
     private CircuitKey destinationKeyFor(ElementState s) {
         UUID worldId = s.element.getWorld() != null ? s.element.getWorld().getId() : null;
@@ -237,7 +251,7 @@ public class CircuitElementListener implements IncrementPayloadListener<CircuitE
         }
         UUID circuitId;
         if (s.removed) {
-            circuitId = s.lastKnownCircuitId;
+            circuitId = s.firstSourceCircuitId != null ? s.firstSourceCircuitId : s.lastKnownCircuitId;
         } else {
             Circuit c = currentCircuit(s.element);
             circuitId = c != null ? c.getId() : null;
