@@ -26,6 +26,10 @@ public final class ProtocolStrings {
     public static final String PAYLOAD_EDGE_ENDPOINT_CHANGE = "minecart.edge_endpoint_change_payload";
     public static final String PAYLOAD_REPLACE_COMPONENT_NODE = "minecart.replace_component_node_payload";
     public static final String PAYLOAD_ELEMENT_INFO_UPDATE = "minecart.element_info_update_payload";
+    public static final String PAYLOAD_COMBINE_CASCADE = "minecart.combine_cascade_payload";
+    public static final String PAYLOAD_ROTATE_ELEMENT = "minecart.rotate_element_payload";
+    public static final String PAYLOAD_DRAG_BEGIN = "minecart.drag_begin_payload";
+    public static final String PAYLOAD_DRAG_END = "minecart.drag_end_payload";
 
     public static final String PAYLOAD_ENVELOPE_ID = "payload_id";
 
@@ -63,6 +67,38 @@ public final class ProtocolStrings {
 
     /** Element-info-update payload: snapshot of user-edited field values, encoded as a sub-compound. */
     public static final String TAG_PANEL_SNAPSHOT = "panel_snapshot";
+
+    /**
+     * Combine-cascade payload: pair list of {@code (survivor_node_id, absorbed_node_id)} per merge
+     * request. Encoded as a {@link com.minecart.serialization.tag.ListTag} of compounds with the
+     * two id fields below. The server walks each request through the cascade engine in order; the
+     * whole batch is atomic.
+     */
+    public static final String TAG_COMBINE_PAIRS = "combine_pairs";
+    public static final String TAG_SURVIVOR_NODE_ID = "survivor_node_id";
+    public static final String TAG_ABSORBED_NODE_ID = "absorbed_node_id";
+    /**
+     * Combine-cascade payload: optional drag gesture id so the server can correlate the merge
+     * with an active drag lease (Phase 2c). Absent on combines not initiated from a drag (e.g.
+     * panel-driven port edits).
+     */
+    public static final String TAG_GESTURE_ID = "gesture_id";
+
+    /**
+     * Rotate-element payload tags. {@code pivot_x/y} is the world-space rotation pivot (cursor
+     * position for scroll / hold gestures, component centre for panel-driven rotates);
+     * {@code delta_radians} is the rotation amount around that pivot.
+     */
+    public static final String TAG_PIVOT_X = "pivot_x";
+    public static final String TAG_PIVOT_Y = "pivot_y";
+    public static final String TAG_DELTA_RADIANS = "delta_radians";
+
+    /**
+     * Drag-lease payload tags. {@code element_ids} is the list of element UUIDs the gesture wants
+     * to lease (component / free node / edge ids — whatever the client identifies as "I'm moving
+     * this"). {@code TAG_GESTURE_ID} is reused from the combine-cascade family.
+     */
+    public static final String TAG_ELEMENT_IDS = "element_ids";
 
     /** Snapshot body: embedded circuit compound under the payload root. */
     public static final String SNAPSHOT_TAG_CIRCUIT = "circuit";

@@ -2,16 +2,26 @@ package com.minecart.logic;
 
 import com.minecart.math.LinearSystem;
 import com.minecart.misc.CoreStrings;
+import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.ElectricalInfo;
+import com.minecart.variant.info.LockInfo;
+import com.minecart.variant.info.LockMode;
+import com.minecart.variant.info.LockState;
+import com.minecart.variant.info.PositionInfo;
 import com.minecart.event.events.ElementEvent;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
+import com.minecart.logic.cascade.CombineCascadeEngine;
 import com.minecart.registry.CircuitElementType;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.fields.DropdownSpec;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
+import com.minecart.variant.info.RotationInfo;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -310,6 +320,83 @@ public non-sealed class CircuitComponent extends CircuitElement {
     }
 
     /**
+     * Soft lock state derived from internal port node lock counts. Walks {@link #portsByIndex}
+     * (only registered ports, not intrinsic non-port internals which have their positions stamped
+     * from anchor offsets unconditionally) and counts how many carry {@link PositionInfo#isFixed()}.
+     *
+     * <ul>
+     *   <li>0 locked → {@link LockMode#FREE}; the returned pivot defaults to the component centre
+     *       (so a rotation gesture on a fully-free component has a sensible default pivot without
+     *       the caller having to recompute it).</li>
+     *   <li>1 locked → {@link LockMode#ROTATION_FREE} pivoted at that port's world position.</li>
+     *   <li>≥2 locked → {@link LockMode#LOCKED}; pivot fields are inert.</li>
+     * </ul>
+     *
+     * <p>This is the SOFT half of the effective lock — combine via {@link #effectiveLockState(double)}
+     * with the strict {@link LockInfo}.
+     */
+    public LockState getSoftLockState() {
+        int lockedCount = 0;
+        double lockedX = 0.0;
+        double lockedY = 0.0;
+        for (CircuitNode port : portsByIndex.values()) {
+            if (port == null) {
+                continue;
+            }
+            PositionInfo p = port.getInfo(AllElementInfos.POSITION);
+            if (p != null && p.isFixed()) {
+                lockedCount++;
+                if (lockedCount == 1) {
+                    lockedX = p.getX();
+                    lockedY = p.getY();
+                }
+                if (lockedCount > 1) {
+                    return LockState.LOCKED;
+                }
+            }
+        }
+        if (lockedCount == 0) {
+            PositionInfo centre = getInfo(AllElementInfos.POSITION);
+            if (centre != null) {
+                return new LockState(LockMode.FREE, centre.getX(), centre.getY(), true);
+            }
+            return LockState.FREE;
+        }
+        return LockState.rotationFree(lockedX, lockedY);
+    }
+
+    /**
+     * Effective lock state = {@link LockState#and AND} of strict ({@link LockInfo}) and soft. When
+     * no strict {@link LockInfo} is attached the strict half defaults to {@link LockMode#FREE}, so
+     * the soft state alone drives the result. {@code epsilon} is the pivot-coincidence tolerance
+     * used when both inputs are {@link LockMode#ROTATION_FREE} — typically a small fraction of a
+     * world unit (e.g. {@code 1e-6}).
+     */
+    public LockState effectiveLockState(double epsilon) {
+        LockState soft = getSoftLockState();
+        LockInfo strict = getInfo(AllElementInfos.LOCK);
+        LockState strictState;
+        if (strict == null) {
+            strictState = LockState.FREE;
+        } else if (strict.getMode() == LockMode.ROTATION_FREE && strict.isPivotSet()) {
+            strictState = LockState.rotationFree(strict.getPivotX(), strict.getPivotY());
+        } else if (strict.getMode() == LockMode.ROTATION_FREE) {
+            // ROTATION_FREE without an authored pivot — treat as "no constraint" on the strict side
+            // so the soft side's pivot (if any) wins. Equivalent to LockMode FREE for the AND
+            // computation since LockMode.and(FREE, soft) = soft.
+            strictState = LockState.FREE;
+        } else {
+            strictState = switch (strict.getMode()) {
+                case FREE -> LockState.FREE;
+                case POSITION_FREE -> LockState.positionFree();
+                case LOCKED -> LockState.LOCKED;
+                default -> LockState.FREE;
+            };
+        }
+        return LockState.and(strictState, soft, epsilon);
+    }
+
+    /**
      * Routes the external edge to the correct internal port node.
      */
     protected boolean connect(CircuitEdge edge, int index, boolean simulate){
@@ -569,5 +656,121 @@ public non-sealed class CircuitComponent extends CircuitElement {
                 }
             }
         }
+    }
+
+    /** Snapshot keys for the component's centre position, rotation, and strict lock. */
+    public static final String FIELD_POSITION_X = "core:position.x";
+    public static final String FIELD_POSITION_Y = "core:position.y";
+    public static final String FIELD_ROTATION = "core:rotation.angle";
+    public static final String FIELD_LOCK_MODE = "core:lock.mode";
+    public static final String FIELD_LOCK_PIVOT_X = "core:lock.pivotX";
+    public static final String FIELD_LOCK_PIVOT_Y = "core:lock.pivotY";
+
+    static {
+        InfoPanelRegistry.registerComponentFragment((component, builder) -> {
+            PositionInfo centre = component.getInfo(AllElementInfos.POSITION);
+            if (centre != null) {
+                builder.add(new NumberFieldSpec(FIELD_POSITION_X, "X", centre.getX()));
+                builder.add(new NumberFieldSpec(FIELD_POSITION_Y, "Y", centre.getY()));
+            }
+            RotationInfo rotation = component.getInfo(AllElementInfos.ROTATION);
+            if (rotation != null) {
+                builder.add(new NumberFieldSpec(FIELD_ROTATION, "Rotation (rad)", rotation.getAngle()));
+            }
+            LockInfo lock = component.getInfo(AllElementInfos.LOCK);
+            boolean lockEditable = lock == null || lock.isMutableByPlayer();
+            if (lockEditable) {
+                LockMode current = lock != null ? lock.getMode() : LockMode.FREE;
+                java.util.List<String> options = java.util.List.of(
+                        LockMode.FREE.name(),
+                        LockMode.POSITION_FREE.name(),
+                        LockMode.ROTATION_FREE.name(),
+                        LockMode.LOCKED.name());
+                builder.add(new DropdownSpec(FIELD_LOCK_MODE, "Lock", options, current.name()));
+                double pivotX = 0.0, pivotY = 0.0;
+                if (lock != null && lock.isPivotSet()) {
+                    pivotX = lock.getPivotX();
+                    pivotY = lock.getPivotY();
+                } else if (centre != null) {
+                    // Default rotation pivot for a free component = its centre.
+                    pivotX = centre.getX();
+                    pivotY = centre.getY();
+                }
+                builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_X, "Pivot X", pivotX));
+                builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_Y, "Pivot Y", pivotY));
+            }
+        });
+
+        InfoPanelRegistry.registerComponentFragmentSaveHandler((component, snapshot, evt) -> {
+            boolean mutated = false;
+
+            // Lock mode + pivot first so subsequent translate / rotate edits see the new state and
+            // refuse if the user just locked the component.
+            String modeName = snapshot.getString(FIELD_LOCK_MODE).orElse(null);
+            Double pivotX = snapshot.getDouble(FIELD_LOCK_PIVOT_X).orElse(null);
+            Double pivotY = snapshot.getDouble(FIELD_LOCK_PIVOT_Y).orElse(null);
+            if (modeName != null) {
+                LockMode parsed;
+                try { parsed = LockMode.valueOf(modeName); }
+                catch (IllegalArgumentException e) { parsed = null; }
+                if (parsed != null) {
+                    LockInfo lock = component.getInfo(AllElementInfos.LOCK);
+                    if (lock == null && parsed != LockMode.FREE) {
+                        lock = new LockInfo();
+                        component.setInfo(AllElementInfos.LOCK, lock);
+                        mutated = true;
+                    }
+                    if (lock != null && lock.isMutableByPlayer()) {
+                        if (lock.setMode(parsed)) mutated = true;
+                        if (pivotX != null && pivotY != null
+                                && Double.isFinite(pivotX) && Double.isFinite(pivotY)
+                                && (!lock.isPivotSet() || pivotX != lock.getPivotX() || pivotY != lock.getPivotY())) {
+                            lock.setPivot(pivotX, pivotY);
+                            mutated = true;
+                        }
+                    }
+                }
+            }
+
+            // Translate + rotate go through the cascade engine — same atomicity / preflight /
+            // rollback story as cross-component combines. The engine internally consults
+            // effectiveLockState and refuses motion that the effective lock doesn't allow, so the
+            // strict-lock-just-applied → translate-refused interaction works the same as before.
+            ServerWorld sw = component.getWorld() instanceof ServerWorld w ? w : null;
+
+            // Component position: convert "new centre" to a translation delta.
+            PositionInfo centre = component.getInfo(AllElementInfos.POSITION);
+            Double newX = snapshot.getDouble(FIELD_POSITION_X).orElse(null);
+            Double newY = snapshot.getDouble(FIELD_POSITION_Y).orElse(null);
+            if (sw != null && centre != null && newX != null && newY != null
+                    && Double.isFinite(newX) && Double.isFinite(newY)) {
+                double dx = newX - centre.getX();
+                double dy = newY - centre.getY();
+                if (dx != 0.0 || dy != 0.0) {
+                    if (CombineCascadeEngine.tryTranslateComponent(sw, component, dx, dy)) {
+                        mutated = true;
+                    }
+                }
+            }
+
+            // Component rotation: convert "new angle" to a delta, rotate around the current centre
+            // (the panel doesn't author a separate rotation pivot — that's the gesture surface).
+            RotationInfo rotation = component.getInfo(AllElementInfos.ROTATION);
+            Double newAngle = snapshot.getDouble(FIELD_ROTATION).orElse(null);
+            if (sw != null && rotation != null && centre != null
+                    && newAngle != null && Double.isFinite(newAngle)) {
+                double delta = newAngle - rotation.getAngle();
+                if (delta != 0.0) {
+                    if (CombineCascadeEngine.tryRotateComponent(sw, component, centre.getX(),
+                            centre.getY(), delta)) {
+                        mutated = true;
+                    }
+                }
+            }
+
+            if (mutated && component.getWorld() != null) {
+                component.getWorld().getLevel().notifyElementChanged(component);
+            }
+        });
     }
 }

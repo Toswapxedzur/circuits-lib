@@ -10,10 +10,12 @@ import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
+import com.minecart.protocol.payload.client.CombineCascadePayload;
 import com.minecart.protocol.payload.client.DeleteElementPayload;
-import com.minecart.protocol.payload.client.EdgeEndpointChangePayload;
+import com.minecart.protocol.payload.client.DragBeginPayload;
+import com.minecart.protocol.payload.client.DragEndPayload;
 import com.minecart.protocol.payload.client.MoveElementPayload;
-import com.minecart.protocol.payload.client.ReplaceComponentNodePayload;
+import com.minecart.protocol.payload.client.RotateElementPayload;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.info.PositionInfo;
 
@@ -101,11 +103,40 @@ public class DragController extends InputAdapter {
     /** Set after a drag actually moves so a stationary click doesn't generate a no-op MoveElement. */
     private boolean movedSinceDown;
     /**
+     * Gesture id allocated at drag start and threaded through every payload the drag emits
+     * (DragBegin / DragEnd, and as the {@code gestureId} on any CombineCascadePayload fired from
+     * touchUp). Multi-client correlation handle for the server's
+     * {@link com.minecart.logic.cascade.DragLeaseRegistry}: while this id holds leases, other
+     * clients trying to drag the same elements are refused. {@code null} when no drag is active.
+     */
+    private UUID dragGestureId;
+    /** The world the active drag belongs to — captured at begin so end can route to the same world. */
+    private UUID dragWorldId;
+    /** Element ids registered with the active drag's lease, kept so end can release the same set. */
+    private final java.util.List<UUID> leasedElementIds = new java.util.ArrayList<>();
+    /**
      * When dragging a free node, the id of the other node currently under the cursor (if any) — used
      * to render a "combine target" hint and to dispatch the combine payload sequence on touchUp. Reset
      * each frame in {@link #touchDragged}.
      */
     private UUID combineTargetId;
+
+    // --- Phase 3c gesture state ---------------------------------------------------------------
+
+    /** Per-notch rotation in radians for the scroll-rotate gesture (7.5°). */
+    private static final double SCROLL_ROTATION_STEP = Math.PI / 24.0;
+    /** How long the right mouse button must be held over an element before pivot-rotate activates. */
+    private static final long RIGHT_PRESS_ACTIVATION_MS = 1000L;
+
+    /** Element targeted by the active right-press gesture (component, or null when not gesturing). */
+    private UUID rightGestureElementId;
+    /** Millis at which the current right-press began, or 0 when no right-press is being tracked. */
+    private long rightPressStartMs;
+    /** Once the 1-second threshold has been crossed, becomes {@code true} and cursor motion rotates. */
+    private boolean rightPressActive;
+    /** Previous cursor world position used to derive per-frame angular delta during pivot-rotate. */
+    private float rightPressPrevWorldX;
+    private float rightPressPrevWorldY;
 
     /**
      * Invoked on a stationary click on a draggable element (touchDown + touchUp without any
@@ -113,6 +144,14 @@ public class DragController extends InputAdapter {
      * controller itself doesn't know about that subsystem, just emits the signal.
      */
     private final java.util.function.BiConsumer<UUID, UUID> onElementClicked;
+    /**
+     * Returns the id of the element whose info panel is currently open, or {@code null} when no
+     * panel is open. The drag controller polls this every {@code touchDown} to refuse starting a
+     * drag on the actively-edited element — that's the client-side enforcement of "an element is
+     * forcibly locked while editing". Multi-client enforcement still goes through the server's
+     * drag-lease registry; this supplier just keeps the local user from racing themselves.
+     */
+    private final Supplier<UUID> editingElementId;
 
     public DragController(WorldStage stage,
                           ClientConnection connection,
@@ -130,6 +169,18 @@ public class DragController extends InputAdapter {
                           TrashBoundsSupplier trashBounds,
                           java.util.function.Consumer<Boolean> onDragStateChanged,
                           java.util.function.BiConsumer<UUID, UUID> onElementClicked) {
+        this(stage, connection, editor, selectedWorldId, trashBounds, onDragStateChanged,
+                onElementClicked, null);
+    }
+
+    public DragController(WorldStage stage,
+                          ClientConnection connection,
+                          Editor editor,
+                          Supplier<UUID> selectedWorldId,
+                          TrashBoundsSupplier trashBounds,
+                          java.util.function.Consumer<Boolean> onDragStateChanged,
+                          java.util.function.BiConsumer<UUID, UUID> onElementClicked,
+                          Supplier<UUID> editingElementId) {
         this.stage = stage;
         this.connection = connection;
         this.editor = editor;
@@ -137,6 +188,7 @@ public class DragController extends InputAdapter {
         this.trashBounds = trashBounds;
         this.onDragStateChanged = onDragStateChanged != null ? onDragStateChanged : v -> {};
         this.onElementClicked = onElementClicked != null ? onElementClicked : (w, e) -> {};
+        this.editingElementId = editingElementId != null ? editingElementId : () -> null;
     }
 
     public boolean isDragging() {
@@ -176,6 +228,14 @@ public class DragController extends InputAdapter {
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        if (button == Input.Buttons.RIGHT) {
+            // Right-press starts the pivot-rotate gesture: hold for 1s over a component, then any
+            // cursor motion rotates it around the cursor. We only claim the event when the press
+            // lands on a component so right-click on empty canvas still falls through to the
+            // camera's pan behaviour. The actual rotation doesn't fire until the threshold passes
+            // AND the cursor moves — see {@link #touchDragged}.
+            return beginRightPress(screenX, screenY);
+        }
         if (button != Input.Buttons.LEFT) {
             return false;
         }
@@ -188,6 +248,15 @@ public class DragController extends InputAdapter {
         CircuitElement el = stage.hitTestWorld(w[0], w[1]);
         if (el == null) {
             return false;
+        }
+        // Forcibly-locked-while-editing: if the click would start a drag on the element whose info
+        // panel is open (directly, or on a port redirecting to its parent component), refuse the
+        // drag entirely. Returning true consumes the event so the camera doesn't pan either —
+        // clicking on a locked element should feel like clicking on a wall. We deliberately do
+        // NOT record this as a click target (no clickedId) so touchUp doesn't try to reopen the
+        // panel; the panel is already open and stays open until Save / Cancel.
+        if (isEditingTarget(el)) {
+            return true;
         }
         if (el instanceof CircuitComponent comp) {
             beginDrag(comp);
@@ -261,6 +330,9 @@ public class DragController extends InputAdapter {
         combineTargetId = null;
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
+        // Lease the component id — the server-side combine handler also walks owning-components, so
+        // any cross-component cascade that touches this one will detect the conflict.
+        openDragLease(java.util.List.of(comp.getId()));
         onDragStateChanged.accept(Boolean.TRUE);
     }
 
@@ -278,6 +350,7 @@ public class DragController extends InputAdapter {
         combineTargetId = null;
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
+        openDragLease(java.util.List.of(node.getId()));
         onDragStateChanged.accept(Boolean.TRUE);
     }
 
@@ -349,11 +422,25 @@ public class DragController extends InputAdapter {
 
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
+        // Lease the edge + every movable. Edge id keeps another client from grabbing the same wire;
+        // each movable id (component centre or free node) blocks parallel translates of the same
+        // backing element.
+        java.util.List<UUID> ids = new java.util.ArrayList<>(edgeMovableIds.size() + 1);
+        ids.add(edge.getId());
+        ids.addAll(edgeMovableIds);
+        openDragLease(ids);
         onDragStateChanged.accept(Boolean.TRUE);
     }
 
     @Override
     public boolean touchDragged(int screenX, int screenY, int pointer) {
+        // Right-press pivot-rotate gesture has priority over the normal drag path: a single
+        // physical pointer can't be doing both at once anyway, and the right-press timer + drag
+        // codepaths use completely independent state machines.
+        if (rightGestureElementId != null) {
+            processRightPressDrag(screenX, screenY);
+            return true;
+        }
         if (draggingId == null) {
             return false;
         }
@@ -514,6 +601,9 @@ public class DragController extends InputAdapter {
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+        if (button == Input.Buttons.RIGHT) {
+            return endRightPress();
+        }
         if (button != Input.Buttons.LEFT || draggingId == null) {
             return false;
         }
@@ -530,6 +620,7 @@ public class DragController extends InputAdapter {
         java.util.Map<UUID, double[]> movableOrigins = new java.util.HashMap<>(edgeMovableOrigins);
         java.util.Map<UUID, Boolean> movableIsComp = new java.util.HashMap<>(edgeMovableIsComponent);
 
+        UUID gestureId = dragGestureId;
         // Clear local drag state before sending so the trashcan + tint disappear immediately.
         draggingId = null;
         clickedId = null;
@@ -541,6 +632,10 @@ public class DragController extends InputAdapter {
         onDragStateChanged.accept(Boolean.FALSE);
 
         if (worldId == null) {
+            // No world to send into — still release the lease defensively so a future world
+            // selection doesn't see stale lease state on the server. The Begin payload would have
+            // been sent under the now-cleared dragWorldId anyway.
+            closeDragLease();
             return true;
         }
         if (overTrash) {
@@ -550,6 +645,7 @@ public class DragController extends InputAdapter {
             if (kind != DragKind.EDGE) {
                 connection.send(new DeleteElementPayload(worldId, id));
             }
+            closeDragLease();
             return true;
         }
         if (!moved) {
@@ -561,17 +657,32 @@ public class DragController extends InputAdapter {
             // footprint small (no UI Stage, no Skin, no payload imports). Swallow either way so
             // the click doesn't propagate to other input processors.
             onElementClicked.accept(worldId, click != null ? click : id);
+            closeDragLease();
             return true;
         }
         switch (kind) {
-            case COMPONENT -> sendComponentMove(worldId, id);
+            case COMPONENT -> {
+                sendComponentMove(worldId, id);
+                closeDragLease();
+            }
             case NODE -> {
-                if (combineTarget != null && trySendCombine(worldId, id, combineTarget)) {
+                if (combineTarget != null && trySendCombine(worldId, gestureId, id, combineTarget)) {
+                    // Combine succeeded — close the lease AFTER sending the cascade so the
+                    // server processes "cascade with active lease" then "release". Sequence
+                    // matters: if release went first, the cascade would arrive after the lease
+                    // is gone, which (a) makes the lease check trivially pass anyway (no lease
+                    // held) but (b) breaks the multi-client guarantee that "this combine was
+                    // serialised inside the drag's lease window".
+                    closeDragLease();
                     return true;
                 }
                 sendFreeNodeMove(worldId, id);
+                closeDragLease();
             }
-            case EDGE -> sendEdgeMovableMoves(worldId, movables, movableOrigins, movableIsComp);
+            case EDGE -> {
+                sendEdgeMovableMoves(worldId, movables, movableOrigins, movableIsComp);
+                closeDragLease();
+            }
         }
         return true;
     }
@@ -642,32 +753,34 @@ public class DragController extends InputAdapter {
     }
 
     /**
-     * Attempts to dispatch the granular sequence of payloads that combines the dragged "survivor"
-     * node into the {@code absorbedId} target. Returns {@code true} if the sequence was sent (and the
-     * caller therefore must NOT also send a fallback move payload), {@code false} if the combine was
-     * rejected.
+     * Dispatches a single atomic {@link CombineCascadePayload} for the dragged "survivor" node into
+     * the {@code absorbedId} target. Returns {@code true} when the payload was sent (and the caller
+     * therefore must NOT also send a fallback move payload), {@code false} when the combine was
+     * pre-rejected on the client.
      *
-     * <p>Validation mirrors the server's: both sides must {@code canCombine}, and if the absorbed
-     * node is a port of a component its registry type must match the survivor's. We re-check on the
-     * client to avoid pushing a payload sequence the server would silently drop — drift between the
-     * mirror and the authoritative state is rare but possible during a busy tick.
+     * <p>Before Phase 2c this method dispatched a granular three-way sequence
+     * ({@code ReplaceComponentNodePayload} → {@code EdgeEndpointChangePayload}s →
+     * {@code DeleteElementPayload}) that the server replayed step-by-step. The new cascade payload
+     * lets the server plan-then-apply atomically through {@link com.minecart.logic.cascade.CombineCascadeEngine},
+     * which gives us:
+     * <ul>
+     *     <li>Server-side direction policy (port wins) — the client doesn't have to swap survivor /
+     *         absorbed before sending; the cascade engine normalises.</li>
+     *     <li>Cross-component port-on-port handling (translate one component to bring its port to
+     *         the other) — impossible to express in the granular protocol.</li>
+     *     <li>Atomic rollback on lock conflict / geometry impossibility — partial granular sequences
+     *         could previously leave the world in an inconsistent intermediate state if one of the
+     *         three payloads was refused.</li>
+     *     <li>A single payload to gate on the (future) drag lease, rather than three.</li>
+     * </ul>
      *
-     * <p>Payload order:
-     * <ol>
-     *     <li>{@link ReplaceComponentNodePayload} (if the absorbed node is a port) — runs first so
-     *         the survivor becomes part of the component before any internal-strut endpoint change
-     *         repoints onto it.</li>
-     *     <li>For each non-self-loop edge incident to {@code absorbed}: an
-     *         {@link EdgeEndpointChangePayload} that swaps {@code absorbed} for {@code survivor} on
-     *         that edge. Self-loop edges (other endpoint == survivor) are dispatched as
-     *         {@link DeleteElementPayload} since "an edge from a node to itself" isn't a meaningful
-     *         circuit element.</li>
-     *     <li>{@link DeleteElementPayload} for {@code absorbed} itself, after every edge has been
-     *         repointed off it. By this point its component pointer (if any) was cleared by the
-     *         port replace, so the standard free-node delete path applies.</li>
-     * </ol>
+     * <p>We still run the cheap mutual {@code canCombine} pre-check locally so an obviously-rejected
+     * combine doesn't even hit the wire — same forgiving-client policy as the rest of the editor
+     * payloads. The {@code gestureId} is currently {@code null}; Phase 2c drag-lease will populate
+     * it with the active drag's id so the server can correlate the cascade with the held lease.
      */
-    private boolean trySendCombine(UUID worldId, UUID survivorId, UUID absorbedId) {
+    private boolean trySendCombine(UUID worldId, UUID gestureId,
+                                   UUID survivorId, UUID absorbedId) {
         CircuitNode survivor = findAnyNode(survivorId);
         CircuitNode absorbed = findAnyNode(absorbedId);
         if (survivor == null || absorbed == null || survivor == absorbed) {
@@ -676,80 +789,47 @@ public class DragController extends InputAdapter {
         if (!survivor.canCombine(absorbed) || !absorbed.canCombine(survivor)) {
             return false;
         }
-
-        // Direction policy (mirrored on the server in ServerWorld.combineNodes): the drag source
-        // is always a free node — port nodes route their drag to the parent component instead of
-        // entering this code path — but the drop target may be a free node OR a port. When it's
-        // a port, the port wins: anchor offsets are rigid and letting a free node take the slot
-        // would yank the port off its anchor (the bug that prompted this rewrite). Swap roles
-        // locally so the rest of the routine always rerouters edges OFF the free node ONTO the
-        // surviving port.
-        CircuitComponent survivorComp = survivor.getComponent();
-        boolean survivorIsPort = survivorComp != null && survivorComp.isPort(survivor);
-        CircuitComponent absorbedComp = absorbed.getComponent();
-        boolean absorbedIsPort = absorbedComp != null && absorbedComp.isPort(absorbed);
-        if (absorbedIsPort && !survivorIsPort) {
-            CircuitNode tmpNode = survivor;
-            survivor = absorbed;
-            absorbed = tmpNode;
-            UUID tmpId = survivorId;
-            survivorId = absorbedId;
-            absorbedId = tmpId;
-            survivorComp = absorbedComp;
-            absorbedComp = null;
-            survivorIsPort = true;
-            absorbedIsPort = false;
-        }
-
-        // Exotic port-on-port-on-same-component leg (preserved from earlier behaviour for editor
-        // flows that walk two ports of one BJT into each other). Cross-component port-on-port is
-        // still rejected here — the Phase 2b cascade engine is where that case will eventually
-        // land. The unused-variable suppression silences javac when only one branch reads
-        // {@code survivorComp}.
-        if (absorbedIsPort) {
-            if (!Objects.equals(survivor.getRegistryTypeId(), absorbed.getRegistryTypeId())) {
-                return false;
-            }
-            if (survivorComp != null && survivorComp != absorbedComp) {
-                return false;
-            }
-        }
-
-        // Snapshot incident edges BEFORE sending anything — the server's confirmation will trigger
-        // local mirror updates that mutate the connection set as the deltas land, and walking a
-        // mutating set is undefined behaviour on most Java collections.
-        List<CircuitEdge> incident = new ArrayList<>(absorbed.getConnection());
-
-        if (absorbedIsPort) {
-            connection.send(new ReplaceComponentNodePayload(
-                    worldId, absorbedComp.getId(), absorbedId, survivorId));
-        }
-
-        Set<UUID> seenEdges = new LinkedHashSet<>();
-        for (CircuitEdge e : incident) {
-            UUID eid = e.getId();
-            if (!seenEdges.add(eid)) {
-                continue;
-            }
-            CircuitNode other = e.getOther(absorbed);
-            if (other == survivor) {
-                // Would collapse into a self-loop on survivor — drop the wire instead. Lines up with
-                // the server-side combineNodes branch that treats the same case as a delete.
-                connection.send(new DeleteElementPayload(worldId, eid));
-                continue;
-            }
-            UUID newStart = e.getStart() == absorbed ? survivorId
-                    : (e.getStart() != null ? e.getStart().getId() : null);
-            UUID newEnd = e.getEnd() == absorbed ? survivorId
-                    : (e.getEnd() != null ? e.getEnd().getId() : null);
-            if (newStart == null || newEnd == null || newStart.equals(newEnd)) {
-                continue;
-            }
-            connection.send(new EdgeEndpointChangePayload(worldId, eid, newStart, newEnd));
-        }
-
-        connection.send(new DeleteElementPayload(worldId, absorbedId));
+        connection.send(new CombineCascadePayload(
+                worldId,
+                gestureId,
+                List.of(new CombineCascadePayload.CombinePair(survivorId, absorbedId))));
         return true;
+    }
+
+    // --- Phase 2c drag-lease wiring -----------------------------------------------------------
+
+    /**
+     * Allocates a fresh {@link #dragGestureId} and dispatches a {@link DragBeginPayload} for the
+     * given element ids. Called from every {@code beginDrag*()} entry point. Silent no-op when
+     * {@link #selectedWorldId} returns {@code null} — we don't have a world to lease into, but the
+     * drag still happens locally (the server will simply ignore the eventual Move payload too).
+     */
+    private void openDragLease(java.util.List<UUID> elementIds) {
+        UUID worldId = selectedWorldId.get();
+        dragWorldId = worldId;
+        dragGestureId = UUID.randomUUID();
+        leasedElementIds.clear();
+        leasedElementIds.addAll(elementIds);
+        if (worldId != null && !elementIds.isEmpty()) {
+            connection.send(new DragBeginPayload(worldId, dragGestureId, leasedElementIds));
+        }
+    }
+
+    /**
+     * Releases the current drag lease, if any, by sending {@link DragEndPayload} and clearing the
+     * local tracking fields. Idempotent — calling repeatedly is harmless (the second call just
+     * sends nothing because {@code dragGestureId} is already null).
+     */
+    private void closeDragLease() {
+        if (dragGestureId == null) {
+            return;
+        }
+        if (dragWorldId != null) {
+            connection.send(new DragEndPayload(dragWorldId, dragGestureId));
+        }
+        dragGestureId = null;
+        dragWorldId = null;
+        leasedElementIds.clear();
     }
 
     private boolean isOverTrash(int screenX, int screenY) {
@@ -783,5 +863,182 @@ public class DragController extends InputAdapter {
      */
     private CircuitNode findAnyNode(UUID id) {
         return findFreeNode(id);
+    }
+
+    // --- Phase 3c gestures --------------------------------------------------------------------
+
+    /**
+     * Scroll over a component → rotate it around the cursor pivot by {@link #SCROLL_ROTATION_STEP}
+     * per notch. We only handle the over-element case (claiming the event) so empty-canvas scroll
+     * still falls through to {@link CameraController#scrolled} for zoom. Sign convention: scrolling
+     * up (negative {@code amountY} in libGDX) rotates counter-clockwise, matching most editor tools.
+     *
+     * <p>Edges aren't supported this phase — they need an endpoint-by-endpoint rotation cascade
+     * which the engine doesn't yet expose. The event still falls through to camera zoom when the
+     * cursor is over an edge, so the user just zooms; not ideal but doesn't break anything.
+     */
+    @Override
+    public boolean scrolled(float amountX, float amountY) {
+        if (Math.abs(amountY) < 1e-4f) {
+            return false;
+        }
+        UUID worldId = selectedWorldId.get();
+        if (worldId == null) {
+            return false;
+        }
+        int sx = com.badlogic.gdx.Gdx.input.getX();
+        int sy = com.badlogic.gdx.Gdx.input.getY();
+        float[] w = stage.screenToWorld(sx, sy);
+        CircuitElement el = stage.hitTestWorld(w[0], w[1]);
+        CircuitComponent target = resolveRotationTarget(el);
+        if (target == null) {
+            return false;
+        }
+        // Rotating the actively-edited element would race the open panel's rotation field — refuse
+        // here too so the lock-while-editing rule is consistent across drag / scroll / right-press
+        // gestures.
+        if (isEditingTarget(target)) {
+            return true;
+        }
+        double delta = -amountY * SCROLL_ROTATION_STEP;
+        connection.send(new RotateElementPayload(
+                worldId, target.getId(), w[0], w[1], delta));
+        return true;
+    }
+
+    /**
+     * Resolves the rotation target for the gesture surface, applying the same Node>Component
+     * disambiguation the click surface uses: a port node redirects to its parent component, since
+     * rotating "just one port" isn't a coherent operation under the rigid-body anchor system.
+     * Returns {@code null} for elements that can't be rotated (free nodes, edges, intrinsic
+     * internals, anything not directly user-owned).
+     */
+    private CircuitComponent resolveRotationTarget(CircuitElement el) {
+        if (el instanceof CircuitComponent comp) {
+            return comp;
+        }
+        if (el instanceof CircuitNode node && node.getComponent() != null) {
+            return node.getComponent();
+        }
+        return null;
+    }
+
+    /**
+     * Starts the right-press timer if the press lands on a rotatable component (or a port redirecting
+     * to one). Returns {@code true} when claimed so the camera doesn't pan. On empty canvas / non-
+     * rotatable elements we return {@code false} so the camera's existing pan path takes over.
+     */
+    private boolean beginRightPress(int screenX, int screenY) {
+        float[] w = stage.screenToWorld(screenX, screenY);
+        CircuitElement el = stage.hitTestWorld(w[0], w[1]);
+        CircuitComponent target = resolveRotationTarget(el);
+        if (target == null) {
+            return false;
+        }
+        // Lock-while-editing applies to the 1s right-press rotation too: claim the event so the
+        // camera doesn't start panning either, but don't start the rotation timer.
+        if (isEditingTarget(target)) {
+            return true;
+        }
+        rightGestureElementId = target.getId();
+        rightPressStartMs = System.currentTimeMillis();
+        rightPressActive = false;
+        rightPressPrevWorldX = w[0];
+        rightPressPrevWorldY = w[1];
+        return true;
+    }
+
+    /**
+     * Per-frame drag tick while the right button is held. Activates the rotation once the
+     * {@link #RIGHT_PRESS_ACTIVATION_MS} threshold has elapsed; until then cursor motion is
+     * absorbed (no pan, no rotate) so the user has clear feedback that the gesture is queued.
+     *
+     * <p>Rotation delta is the angular sweep of the cursor around the component centre between the
+     * previous and current frame — equivalently, how much the user "spun" the cursor about the
+     * component. Pivot is the current cursor world position (per the spec: cursor is always the
+     * pivot for gesture-driven rotation, even when the cursor moves between frames).
+     */
+    private void processRightPressDrag(int screenX, int screenY) {
+        float[] w = stage.screenToWorld(screenX, screenY);
+        if (!rightPressActive) {
+            long elapsed = System.currentTimeMillis() - rightPressStartMs;
+            if (elapsed < RIGHT_PRESS_ACTIVATION_MS) {
+                // Still in the "hold to activate" phase. Refresh the prev cursor so the first
+                // post-activation tick computes from the current cursor pos, not the press-down pos.
+                rightPressPrevWorldX = w[0];
+                rightPressPrevWorldY = w[1];
+                return;
+            }
+            rightPressActive = true;
+        }
+        CircuitComponent comp = findComponent(rightGestureElementId);
+        if (comp == null) {
+            return;
+        }
+        PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
+        if (pos == null) {
+            return;
+        }
+        double cx = pos.getX();
+        double cy = pos.getY();
+        double prevAlpha = Math.atan2(rightPressPrevWorldY - cy, rightPressPrevWorldX - cx);
+        double curAlpha = Math.atan2(w[1] - cy, w[0] - cx);
+        double delta = normaliseAngle(curAlpha - prevAlpha);
+        rightPressPrevWorldX = w[0];
+        rightPressPrevWorldY = w[1];
+        if (Math.abs(delta) < 1e-5) {
+            return;
+        }
+        UUID worldId = selectedWorldId.get();
+        if (worldId == null) {
+            return;
+        }
+        connection.send(new RotateElementPayload(
+                worldId, comp.getId(), w[0], w[1], delta));
+    }
+
+    /**
+     * Releases the right-press gesture. Always returns {@code true} when a gesture was tracked so
+     * the event doesn't propagate into the camera's pan-stop path and unexpectedly clear an
+     * unrelated pan state. Returns {@code false} when no gesture was tracked so the camera can
+     * resolve a pan-stop normally.
+     */
+    private boolean endRightPress() {
+        if (rightGestureElementId == null) {
+            return false;
+        }
+        rightGestureElementId = null;
+        rightPressStartMs = 0L;
+        rightPressActive = false;
+        return true;
+    }
+
+    /** Normalises an angle delta into (-π, π] so a sweep across the discontinuity doesn't lurch. */
+    private static double normaliseAngle(double a) {
+        while (a <= -Math.PI) a += 2 * Math.PI;
+        while (a > Math.PI) a -= 2 * Math.PI;
+        return a;
+    }
+
+    /**
+     * Returns {@code true} when {@code el} is the currently-edited element, OR when {@code el} is
+     * a port redirecting to a parent component that's being edited. The port-redirect case mirrors
+     * the drag-start path: a left click on a port normally routes its drag through the parent
+     * component, so the lock has to extend through that same redirect — otherwise a user could
+     * "drag the component by its port" while the component's panel is open and bypass the lock.
+     */
+    private boolean isEditingTarget(CircuitElement el) {
+        UUID editing = editingElementId.get();
+        if (editing == null || el == null) {
+            return false;
+        }
+        if (editing.equals(el.getId())) {
+            return true;
+        }
+        if (el instanceof CircuitNode node) {
+            CircuitComponent owner = node.getComponent();
+            return owner != null && editing.equals(owner.getId());
+        }
+        return false;
     }
 }

@@ -3,6 +3,7 @@ package com.minecart.logic;
 import com.minecart.event.events.ServerTickEvent;
 import com.minecart.foundation.Level;
 import com.minecart.foundation.World;
+import com.minecart.logic.cascade.DragLeaseRegistry;
 
 import java.util.Queue;
 import java.util.UUID;
@@ -14,9 +15,21 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class ServerLevel extends Level {
 
     private final Queue<Runnable> actionQueue = new ConcurrentLinkedQueue<>();
+    /**
+     * Server-side drag-lease bookkeeping (Phase 2c). Mutation handlers consult this to refuse
+     * payloads from clients whose drag doesn't hold a lease on the involved elements. The level is
+     * the natural owner because the lease is a per-level concept (a lease on element {@code E} in
+     * level {@code L} doesn't mean anything in level {@code L'}) and because handlers already have
+     * a level reference.
+     */
+    private final DragLeaseRegistry leases = new DragLeaseRegistry();
 
     protected final ServerTickEvent.Level preTick = new ServerTickEvent.Level(ServerTickEvent.Phase.PRE, this);
     protected final ServerTickEvent.Level postTick = new ServerTickEvent.Level(ServerTickEvent.Phase.POST, this);
+
+    public DragLeaseRegistry getDragLeases() {
+        return leases;
+    }
 
     /**
      * Creates a new, isolated electrical network.

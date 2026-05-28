@@ -3,10 +3,16 @@ package com.minecart.logic;
 import com.minecart.misc.CoreStrings;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
+import com.minecart.logic.cascade.CombineCascadeEngine;
 import com.minecart.math.DoubleVar;
 import com.minecart.math.LinearSystem;
+import com.minecart.registry.AllElementInfos;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.fields.CheckboxSpec;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
+import com.minecart.variant.info.PositionInfo;
 
 import java.util.*;
 
@@ -220,5 +226,83 @@ public non-sealed class CircuitNode extends CircuitElement {
         super.load(tag);
         setGround(tag.getBoolean(CoreStrings.NODE_GROUND));
         getVoltage().setValue(tag.getDouble(CoreStrings.NODE_VOLTAGE));
+    }
+
+    /** Snapshot key for the node's authored world position. Editable in the cross-cutting fragment. */
+    public static final String FIELD_POSITION_X = "core:position.x";
+    public static final String FIELD_POSITION_Y = "core:position.y";
+    /**
+     * Snapshot key for the node's "is fixed" lock toggle. Nodes have no rotation degree of
+     * freedom, so the four-mode {@link com.minecart.variant.info.LockMode} collapses to this
+     * 2-state via {@link com.minecart.variant.info.LockMode#forNode()} (POSITION_FREE ≡ FREE,
+     * ROTATION_FREE ≡ LOCKED) — the panel exposes the collapsed form directly.
+     */
+    public static final String FIELD_LOCK_FIXED = "core:lock.isFixed";
+
+    static {
+        // Cross-cutting fragment for every CircuitNode: position (x, y) editable when the node's
+        // PositionInfo isn't hard-locked (canChangeFix=false). Port nodes are shown editable too,
+        // but in Phase 3a the save handler silently refuses port edits; Phase 3b will route them
+        // through the cascade engine to translate the parent component.
+        InfoPanelRegistry.registerNodeFragment((node, builder) -> {
+            PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
+            if (pos == null) {
+                return;
+            }
+            boolean hardLocked = !pos.canChangeFix() && pos.isFixed();
+            if (!hardLocked) {
+                builder.add(new NumberFieldSpec(FIELD_POSITION_X, "X", pos.getX()));
+                builder.add(new NumberFieldSpec(FIELD_POSITION_Y, "Y", pos.getY()));
+            }
+            // Lock toggle: shown when the player is allowed to flip it. Hidden when
+            // canChangeFix=false (i.e. the lock state itself is permanent — component-anchor
+            // internals stamped with canChangeFix=false at place time).
+            if (pos.canChangeFix()) {
+                builder.add(new CheckboxSpec(FIELD_LOCK_FIXED, "Locked", pos.isFixed()));
+            }
+        });
+
+        // Save handler: validate + apply, then notify so the change replicates. Port nodes refuse
+        // here (Phase 3b will route through the cascade engine); free nodes apply directly.
+        InfoPanelRegistry.registerNodeFragmentSaveHandler((node, snapshot, evt) -> {
+            PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
+            if (pos == null) return;
+            boolean mutated = false;
+
+            // Lock toggle: applied first so position edits in the same payload see the new lock
+            // state (and refuse to write if the user just locked the node). canChangeFix gates.
+            if (pos.canChangeFix()) {
+                Boolean wantsFixed = snapshot.getBoolean(FIELD_LOCK_FIXED).orElse(null);
+                if (wantsFixed != null && pos.setFixed(wantsFixed)) {
+                    mutated = true;
+                }
+            }
+
+            // Position: free nodes write PositionInfo directly; port nodes route through the
+            // cascade engine, which translates the parent component so the port lands at the new
+            // world position (Phase 3b). Both paths honour the lock guard: a free node with
+            // isFixed=true refuses; a port whose parent component's effective lock disallows
+            // translation refuses (returned via tryMovePortNode → tryTranslateComponent).
+            Double newX = snapshot.getDouble(FIELD_POSITION_X).orElse(null);
+            Double newY = snapshot.getDouble(FIELD_POSITION_Y).orElse(null);
+            if (newX != null && newY != null
+                    && Double.isFinite(newX) && Double.isFinite(newY)) {
+                if (node.getComponents().isEmpty()) {
+                    if (!pos.isFixed() && (newX != pos.getX() || newY != pos.getY())) {
+                        pos.set(newX, newY);
+                        mutated = true;
+                    }
+                } else if (node.getWorld() instanceof ServerWorld sw) {
+                    // Port edit → translate the parent component. Engine notifies its own
+                    // element-changed callbacks for the moved nodes + component on success, so
+                    // we don't double-notify here. Failure is silent (sync re-asserts).
+                    CombineCascadeEngine.tryMovePortNode(sw, node, newX, newY);
+                }
+            }
+
+            if (mutated && node.getWorld() != null) {
+                node.getWorld().getLevel().notifyElementChanged(node);
+            }
+        });
     }
 }

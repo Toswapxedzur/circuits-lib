@@ -4,9 +4,11 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.scenes.scene2d.ui.CheckBox;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.List;
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
+import com.badlogic.gdx.scenes.scene2d.ui.SelectBox;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
@@ -48,6 +50,10 @@ public final class Skins {
         // Slider track is a thin pill-like strip; keep it lighter than the field background so the knob
         // contrasts cleanly against it without needing dedicated artwork.
         addDrawable(skin, "d_slider_bg", new Color(0.22f, 0.26f, 0.34f, 1f));
+        // Checkbox swatches: an empty box vs. a filled box. Using the same tints as button up/down so
+        // the visual language stays consistent across the panel — no fancy tick artwork yet.
+        addDrawable(skin, "d_check_off", new Color(0.20f, 0.22f, 0.28f, 1f));
+        addDrawable(skin, "d_check_on",  new Color(0.30f, 0.55f, 0.85f, 1f));
 
         BitmapFont font = new BitmapFont();
         skin.add("default-font", font);
@@ -110,6 +116,28 @@ public final class Skins {
         slider.knobOver = skin.getDrawable("d_button_h");
         slider.knobDown = skin.getDrawable("d_button_d");
         skin.add("default-horizontal", slider);
+
+        // CheckBox: only checkboxOn/checkboxOff are strictly required (CheckBoxStyle extends
+        // TextButtonStyle, and we don't render an Up background behind the swatch). Provide a font
+        // + fontColor so the label next to the box renders, and reuse the default button up so the
+        // CheckBox isn't entirely empty if a future caller asks for a background.
+        CheckBox.CheckBoxStyle cb = new CheckBox.CheckBoxStyle();
+        cb.checkboxOff = skin.getDrawable("d_check_off");
+        cb.checkboxOn  = skin.getDrawable("d_check_on");
+        cb.font = font;
+        cb.fontColor = Color.WHITE;
+        skin.add("default", cb);
+
+        // SelectBox: dropdown's background pill, the popup list, and the popup scroll wrapper.
+        // The popup uses the existing default ScrollPane + List styles we built above, plumbed in
+        // explicitly because SelectBoxStyle doesn't inherit them.
+        SelectBox.SelectBoxStyle sel = new SelectBox.SelectBoxStyle();
+        sel.font = font;
+        sel.fontColor = Color.WHITE;
+        sel.background = skin.getDrawable("d_field");
+        sel.scrollStyle = sp;
+        sel.listStyle = lst;
+        skin.add("default", sel);
 
         return skin;
     }

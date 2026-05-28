@@ -4,6 +4,7 @@ import com.minecart.misc.CoreStrings;
 import com.minecart.protocol.codec.PayloadDecoder;
 import com.minecart.protocol.codec.PayloadEncoder;
 import com.minecart.protocol.payload.Payload;
+import com.minecart.protocol.payload.client.CombineCascadePayload;
 import com.minecart.protocol.payload.client.ConnectEdgePayload;
 import com.minecart.protocol.payload.client.DeleteElementPayload;
 import com.minecart.protocol.payload.client.EdgeEndpointChangePayload;
@@ -356,6 +357,86 @@ class CombinePayloadRoundTripTest {
             }
         }
         return null;
+    }
+
+    /**
+     * Round-trip smoke for {@link CombineCascadePayload}: send a single-pair cascade on two free
+     * nodes wired together, observe REMOVE for the absorbed node and authoritative state ending
+     * up with the wire repointed onto the survivor. Same combine semantics as
+     * {@code combineSequence_routesRemoveOpsToCircuitsClientKnowsAbout} but driven through the new
+     * unified payload instead of the granular trio — verifies that the protocol id is registered,
+     * the handler runs, and the cascade engine's {@code DelegateCombineOp} path successfully
+     * fires {@link com.minecart.logic.ServerWorld#combineNodes} from inside the server tick.
+     */
+    @Test
+    void combineCascadePayload_freeOnFree_endToEnd() throws Exception {
+        UUID world = firstWorldId();
+        Set<UUID> knownCircuits = new HashSet<>();
+
+        ch.writeAndFlush(new PlaceNodePayload(world, AllComponents.CONNECTION.getTypeId(), 0.0, 0.0)).sync();
+        ch.writeAndFlush(new PlaceNodePayload(world, AllComponents.CONNECTION.getTypeId(), 1.0, 0.0)).sync();
+        ch.writeAndFlush(new PlaceNodePayload(world, AllComponents.CONNECTION.getTypeId(), 2.0, 0.0)).sync();
+        UUID nodeA = drainUntilInsert(AllComponents.CONNECTION.getTypeId(), knownCircuits);
+        UUID nodeB = drainUntilInsert(AllComponents.CONNECTION.getTypeId(), knownCircuits);
+        UUID nodeC = drainUntilInsert(AllComponents.CONNECTION.getTypeId(), knownCircuits);
+        assertNotNull(nodeA);
+        assertNotNull(nodeB);
+        assertNotNull(nodeC);
+        ch.writeAndFlush(new ConnectEdgePayload(world, AllComponents.RESISTOR.getTypeId(), nodeB, nodeC)).sync();
+        UUID wireId = drainUntilInsert(AllComponents.RESISTOR.getTypeId(), knownCircuits);
+        assertNotNull(wireId);
+
+        // One-shot cascade: combine B into A.
+        ch.writeAndFlush(new CombineCascadePayload(
+                world,
+                null, // no drag gesture id for this scripted scenario
+                java.util.List.of(new CombineCascadePayload.CombinePair(nodeA, nodeB)))).sync();
+
+        boolean sawRemoveOfB = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            Payload p = inbound.poll(100, TimeUnit.MILLISECONDS);
+            if (p == null) {
+                if (sawRemoveOfB) break;
+                continue;
+            }
+            if (p instanceof CircuitLifecyclePayload clp) {
+                if (clp.getKind() == CircuitLifecyclePayload.Kind.INSERT) {
+                    knownCircuits.add(clp.getCircuitId());
+                }
+                continue;
+            }
+            if (p instanceof CircuitSnapshotPayload csp) {
+                UUID cid = TagUtil.getUUID(csp.getCircuitData(), CoreStrings.CIRCUIT_ID);
+                if (cid != null) knownCircuits.add(cid);
+                continue;
+            }
+            if (p instanceof CircuitElementPayload cep) {
+                assertTrue(knownCircuits.contains(cep.getCircuitId()),
+                        "CombineCascadePayload reply routed to unknown circuit " + cep.getCircuitId());
+                for (CircuitElementChange c : cep.getChanges()) {
+                    if (c.kind() == CircuitElementChange.Kind.REMOVE && nodeB.equals(c.elementId())) {
+                        sawRemoveOfB = true;
+                    }
+                }
+            }
+        }
+        assertTrue(sawRemoveOfB, "Expected REMOVE for the absorbed node B after CombineCascadePayload");
+
+        // Authoritative state: wire connects A and C; B no longer exists.
+        CountDownLatch verified = new CountDownLatch(1);
+        server.level().submit(() -> {
+            var w = server.level().findWorld(world);
+            assertNotNull(w);
+            var wire = w.findEdge(wireId);
+            assertNotNull(wire);
+            UUID s = wire.getStart() != null ? wire.getStart().getId() : null;
+            UUID e = wire.getEnd() != null ? wire.getEnd().getId() : null;
+            assertTrue((nodeA.equals(s) && nodeC.equals(e)) || (nodeC.equals(s) && nodeA.equals(e)),
+                    "Wire should land on A–C (either direction) after cascade");
+            verified.countDown();
+        });
+        assertTrue(verified.await(2, TimeUnit.SECONDS), "Server-side assertion didn't run within 2s");
     }
 
     /**

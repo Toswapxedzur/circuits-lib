@@ -243,12 +243,16 @@ public class GameScreen extends ScreenAdapter {
                     };
                 },
                 this::setTrashOverlayVisible,
-                this::onElementClicked);
+                this::onElementClicked,
+                // Late-bound: the InfoPanelController is constructed AFTER the DragController (it
+                // needs the uiStage which buildUi sets up). The supplier guards on null so a drag
+                // before the controller materialises just treats nothing as "currently edited".
+                () -> infoPanelController != null ? infoPanelController.getEditingElementId() : null);
         buildUi();
         // Built after buildUi() so uiStage / skin are wired before the controller can be asked to
         // open a panel. The connection is shared with DragController so panel-save payloads use the
-        // same channel as drag-update payloads.
-        this.infoPanelController = new InfoPanelController(uiStage, skin, connection);
+        // same channel as drag-update payloads. World stage handed in for the amber edit tint.
+        this.infoPanelController = new InfoPanelController(uiStage, skin, connection, worldStage);
     }
 
     /**
@@ -1111,6 +1115,12 @@ public class GameScreen extends ScreenAdapter {
                 stageScratch.set(Gdx.input.getX(), Gdx.input.getY());
                 uiStage.screenToStageCoordinates(stageScratch);
                 if (uiStage.hit(stageScratch.x, stageScratch.y, true) == null) {
+                    // World-canvas scroll: first offer it to the drag controller for the
+                    // scroll-rotate gesture (claims only when the cursor is over a rotatable
+                    // component). If the controller declines, fall through to camera zoom.
+                    if (dragController.scrolled(amountX, amountY)) {
+                        return true;
+                    }
                     return cameraController.scrolled(amountX, amountY);
                 }
                 return false;

@@ -81,12 +81,26 @@ public class WorldStage extends Stage {
      */
     private UUID combineTargetId;
     private boolean combineTargetValid;
+    /**
+     * The element whose info panel is currently open. Painted with {@link #EDIT_TINT} so the user
+     * can see at a glance that it's "forcibly locked while editing". Lives here (not in
+     * {@code InfoPanelController}) so {@link #applyHighlightTints} can decide tint priority
+     * uniformly with hover / drag / combine — edit wins over all of those because the user
+     * shouldn't see "yellow hover" or "blue drag" on something they can't actually drag right now.
+     */
+    private UUID editingElementId;
 
     private static final Color HOVER_TINT = new Color(1.25f, 1.25f, 0.6f, 1f);
     private static final Color DRAG_TINT = new Color(0.8f, 1.1f, 1.6f, 1f);
     private static final Color TRASH_TINT = new Color(1.6f, 0.6f, 0.6f, 1f);
     private static final Color COMBINE_OK_TINT = new Color(0.6f, 1.6f, 0.6f, 1f);
     private static final Color COMBINE_BAD_TINT = new Color(1.6f, 0.6f, 0.6f, 1f);
+    /**
+     * Saturated amber for the element under active panel edit. Picked to be obviously distinct
+     * from hover (light yellow), drag (cool blue), trash (red), and combine (green). The
+     * red-orange skew also reads as "warning / locked" without being alarming.
+     */
+    private static final Color EDIT_TINT = new Color(1.6f, 1.0f, 0.35f, 1f);
     private static final Color RESET_TINT = new Color(1f, 1f, 1f, 1f);
 
     public WorldStage(ClientLevel level, Textures textures) {
@@ -201,6 +215,19 @@ public class WorldStage extends Stage {
         this.combineTargetValid = valid;
     }
 
+    /**
+     * Marks the element whose info panel is currently open so {@link #applyHighlightTints} can paint
+     * it with the {@link #EDIT_TINT}. Pass {@code null} when the panel closes. Called by
+     * {@code InfoPanelController} from its acquire/release-lease helpers.
+     */
+    public void setEditingElementId(UUID id) {
+        this.editingElementId = id;
+    }
+
+    public UUID getEditingElementId() {
+        return editingElementId;
+    }
+
     public UUID getHoveredElementId() {
         return hoveredElementId;
     }
@@ -239,6 +266,12 @@ public class WorldStage extends Stage {
                 && !hoveredElementId.equals(draggedElementId)
                 && !hoveredElementId.equals(combineTargetId)) {
             tint(hoveredElementId, HOVER_TINT);
+        }
+        // Edit tint paints LAST so it overrides hover / drag / combine on the actively-edited
+        // element. The user can't drag a panel-locked element anyway, so masking those other
+        // states with the amber is the right visual feedback ("this element is busy").
+        if (editingElementId != null) {
+            tint(editingElementId, EDIT_TINT);
         }
     }
 

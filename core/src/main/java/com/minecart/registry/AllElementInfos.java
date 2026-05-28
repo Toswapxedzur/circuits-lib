@@ -1,5 +1,6 @@
 package com.minecart.registry;
 
+import com.minecart.variant.info.LockInfo;
 import com.minecart.variant.info.PositionInfo;
 import com.minecart.variant.info.RotationInfo;
 
@@ -15,6 +16,15 @@ public final class AllElementInfos {
 
     public static final ElementInfoType<RotationInfo> ROTATION =
             ElementInfoRegistry.register("core:rotation", RotationInfo::new);
+
+    /**
+     * Player-authored "strict" lock state. Components and edges carry this from their placement
+     * handlers; nodes don't (they reuse {@link PositionInfo#isFixed()} as a 2-phase lock since
+     * rotation modes are degenerate on a point). Soft lock is recomputed at call time from
+     * constituent {@link PositionInfo}s, so it lives in code, not as a stored info.
+     */
+    public static final ElementInfoType<LockInfo> LOCK =
+            ElementInfoRegistry.register("core:lock", LockInfo::new);
 
     private AllElementInfos() {}
 

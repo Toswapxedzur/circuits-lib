@@ -2,10 +2,15 @@ package com.minecart.ui.panel;
 
 import com.minecart.event.events.ElementInfoUpdateEvent;
 import com.minecart.foundation.Level;
+import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
+import com.minecart.logic.CircuitNode;
 import com.minecart.registry.CircuitElementType;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
@@ -50,6 +55,20 @@ public final class InfoPanelRegistry {
     private static final Map<String, InfoPanelDefinition<?>> DEFINITIONS = new HashMap<>();
     private static final Map<String, BiConsumer<? extends CircuitElement, PanelSnapshot>> SAVE_HANDLERS = new HashMap<>();
 
+    /**
+     * Cross-cutting fragments grouped by element kind. Lists rather than singletons because more
+     * than one fragment can layer onto the same kind (e.g. a future "tags" fragment alongside the
+     * built-in position/rotation/lock). Order of registration is preserved → order of rows in the
+     * built schema.
+     */
+    private static final List<InfoPanelFragment<CircuitNode>> NODE_FRAGMENTS = new ArrayList<>();
+    private static final List<InfoPanelFragment<CircuitEdge>> EDGE_FRAGMENTS = new ArrayList<>();
+    private static final List<InfoPanelFragment<CircuitComponent>> COMPONENT_FRAGMENTS = new ArrayList<>();
+
+    private static final List<InfoPanelFragment.FragmentSaveHandler<CircuitNode>> NODE_FRAGMENT_SAVES = new ArrayList<>();
+    private static final List<InfoPanelFragment.FragmentSaveHandler<CircuitEdge>> EDGE_FRAGMENT_SAVES = new ArrayList<>();
+    private static final List<InfoPanelFragment.FragmentSaveHandler<CircuitComponent>> COMPONENT_FRAGMENT_SAVES = new ArrayList<>();
+
     private InfoPanelRegistry() {}
 
     public static <T extends CircuitElement> void register(CircuitElementType<T> type,
@@ -75,8 +94,44 @@ public final class InfoPanelRegistry {
     }
 
     /**
-     * @return the definition for {@code type}, or {@code null} if none was registered. Callers
-     *         should treat {@code null} as "this element has no info panel", not an error.
+     * Adds a fragment that contributes rows to every {@link CircuitNode}'s panel. Multiple fragments
+     * may be registered; their rows appear in registration order before the type-specific definition's
+     * rows.
+     */
+    public static void registerNodeFragment(InfoPanelFragment<CircuitNode> fragment) {
+        Objects.requireNonNull(fragment, "fragment");
+        NODE_FRAGMENTS.add(fragment);
+    }
+
+    public static void registerEdgeFragment(InfoPanelFragment<CircuitEdge> fragment) {
+        Objects.requireNonNull(fragment, "fragment");
+        EDGE_FRAGMENTS.add(fragment);
+    }
+
+    public static void registerComponentFragment(InfoPanelFragment<CircuitComponent> fragment) {
+        Objects.requireNonNull(fragment, "fragment");
+        COMPONENT_FRAGMENTS.add(fragment);
+    }
+
+    public static void registerNodeFragmentSaveHandler(InfoPanelFragment.FragmentSaveHandler<CircuitNode> handler) {
+        Objects.requireNonNull(handler, "handler");
+        NODE_FRAGMENT_SAVES.add(handler);
+    }
+
+    public static void registerEdgeFragmentSaveHandler(InfoPanelFragment.FragmentSaveHandler<CircuitEdge> handler) {
+        Objects.requireNonNull(handler, "handler");
+        EDGE_FRAGMENT_SAVES.add(handler);
+    }
+
+    public static void registerComponentFragmentSaveHandler(InfoPanelFragment.FragmentSaveHandler<CircuitComponent> handler) {
+        Objects.requireNonNull(handler, "handler");
+        COMPONENT_FRAGMENT_SAVES.add(handler);
+    }
+
+    /**
+     * @return the bare type-specific definition for {@code type}, or {@code null} if none was
+     *         registered. Most callers want {@link #buildSchema(CircuitElement)} instead, which
+     *         composes the cross-cutting fragments with the type-specific definition.
      */
     @SuppressWarnings("unchecked")
     public static <T extends CircuitElement> InfoPanelDefinition<T> get(CircuitElementType<T> type) {
@@ -94,6 +149,87 @@ public final class InfoPanelRegistry {
     }
 
     /**
+     * Builds the final, composed schema for {@code element}. Fragments matching the element's kind
+     * (node / edge / component) contribute their rows first, then the type-specific definition
+     * (if any) appends its rows. Returns {@code null} if neither any fragment nor any type-specific
+     * definition would contribute — i.e. the element really has no panel — matching the legacy
+     * "null = no panel" convention.
+     *
+     * <p>Fragment uniqueness check: the underlying {@link InfoPanelSchema.Builder} enforces unique
+     * keys, so any fragment colliding with a type-specific key (or with another fragment) blows up
+     * the schema build with an {@link IllegalArgumentException} — that's a programmer error worth
+     * surfacing loudly rather than silently dropping a row.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static InfoPanelSchema buildSchema(CircuitElement element) {
+        if (element == null) return null;
+        InfoPanelDefinition<?> typeDef = DEFINITIONS.get(element.getRegistryTypeId());
+
+        // Title: prefer the type-specific definition's title if present, otherwise fall back to a
+        // generic title based on kind. Built by asking the type-def to build its schema first;
+        // we then re-build via the same Builder with fragments prepended.
+        InfoPanelSchema typeSchema = null;
+        if (typeDef != null) {
+            try {
+                typeSchema = ((InfoPanelDefinition) typeDef).build(element);
+            } catch (RuntimeException ex) {
+                // A buggy type definition shouldn't take down the whole panel — log and continue
+                // with just the cross-cutting fragments.
+                org.slf4j.LoggerFactory.getLogger(InfoPanelRegistry.class)
+                        .warn("type-specific panel definition for {} threw on build",
+                                element.getRegistryTypeId(), ex);
+            }
+        }
+
+        String title;
+        if (typeSchema != null) {
+            title = typeSchema.getTitle();
+        } else {
+            title = defaultTitleFor(element);
+        }
+        InfoPanelSchema.Builder builder = InfoPanelSchema.builder(title);
+
+        // Apply matching kind fragments first so position / rotation / lock rows appear at the
+        // top — they're the "frame" the element-specific rows fill in.
+        if (element instanceof CircuitNode node) {
+            for (InfoPanelFragment<CircuitNode> f : NODE_FRAGMENTS) {
+                f.contribute(node, builder);
+            }
+        } else if (element instanceof CircuitEdge edge) {
+            for (InfoPanelFragment<CircuitEdge> f : EDGE_FRAGMENTS) {
+                f.contribute(edge, builder);
+            }
+        } else if (element instanceof CircuitComponent comp) {
+            for (InfoPanelFragment<CircuitComponent> f : COMPONENT_FRAGMENTS) {
+                f.contribute(comp, builder);
+            }
+        }
+
+        if (typeSchema != null) {
+            for (PanelField f : typeSchema.getFields()) {
+                builder.add(f);
+            }
+        }
+
+        InfoPanelSchema built = builder.build();
+        if (built.getFields().isEmpty()) {
+            // No fragment contributed and no type-specific definition — preserve the legacy "no
+            // panel for this element" signal.
+            return null;
+        }
+        return built;
+    }
+
+    private static String defaultTitleFor(CircuitElement element) {
+        // Fallback when the element has no type-specific definition. We use the registry id since
+        // it's unambiguous and machine-readable; nicer human titles can be added later by either
+        // registering a type-specific definition with an empty field list (just for the title) or
+        // by extending CircuitElementType with a display-name accessor.
+        String id = element.getRegistryTypeId();
+        return id != null ? id : "Element";
+    }
+
+    /**
      * Attaches a {@link ElementInfoUpdateEvent} listener to {@code level} that routes the event to
      * the appropriate static save handler based on the element's registry id. Idempotent only by
      * not being called twice — duplicate calls would register two listeners, which is benign but
@@ -108,11 +244,41 @@ public final class InfoPanelRegistry {
     private static void dispatch(ElementInfoUpdateEvent evt) {
         CircuitElement el = evt.getElement();
         if (el == null) return;
+        PanelSnapshot snapshot = evt.getSnapshot();
+
+        // Fragment save handlers first: cross-cutting state (position / rotation / lock) should
+        // be visible to any type-specific handler that runs after.
+        if (el instanceof CircuitNode node) {
+            for (InfoPanelFragment.FragmentSaveHandler<CircuitNode> h : NODE_FRAGMENT_SAVES) {
+                try { h.apply(node, snapshot, evt); }
+                catch (RuntimeException ex) {
+                    org.slf4j.LoggerFactory.getLogger(InfoPanelRegistry.class)
+                            .warn("node fragment save handler threw on {}", el.getRegistryTypeId(), ex);
+                }
+            }
+        } else if (el instanceof CircuitEdge edge) {
+            for (InfoPanelFragment.FragmentSaveHandler<CircuitEdge> h : EDGE_FRAGMENT_SAVES) {
+                try { h.apply(edge, snapshot, evt); }
+                catch (RuntimeException ex) {
+                    org.slf4j.LoggerFactory.getLogger(InfoPanelRegistry.class)
+                            .warn("edge fragment save handler threw on {}", el.getRegistryTypeId(), ex);
+                }
+            }
+        } else if (el instanceof CircuitComponent comp) {
+            for (InfoPanelFragment.FragmentSaveHandler<CircuitComponent> h : COMPONENT_FRAGMENT_SAVES) {
+                try { h.apply(comp, snapshot, evt); }
+                catch (RuntimeException ex) {
+                    org.slf4j.LoggerFactory.getLogger(InfoPanelRegistry.class)
+                            .warn("component fragment save handler threw on {}", el.getRegistryTypeId(), ex);
+                }
+            }
+        }
+
         BiConsumer handler = SAVE_HANDLERS.get(el.getRegistryTypeId());
         if (handler == null) return;
         // Cast is checked by the registration contract: the handler keyed under typeId was
         // registered with the matching CircuitElementType<T>, so its parameter T is the same type
         // as the elements produced by that type's factory.
-        handler.accept(el, evt.getSnapshot());
+        handler.accept(el, snapshot);
     }
 }
