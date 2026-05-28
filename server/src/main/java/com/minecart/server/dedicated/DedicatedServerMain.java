@@ -49,6 +49,9 @@ public final class DedicatedServerMain {
         }
 
         ServerLevel level = new ServerLevel();
+        // Same rationale as IntegratedServer.start(): the dispatcher routes ElementInfoUpdateEvents
+        // to the per-type save handlers element classes register in their <clinit>.
+        com.minecart.ui.panel.InfoPanelRegistry.installLevelListener(level);
         ServerPayloadDispatcher dispatcher = new ServerPayloadDispatcher(level);
         StandardServerHandlers.register(dispatcher, level);
 

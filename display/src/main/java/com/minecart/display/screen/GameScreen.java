@@ -34,6 +34,7 @@ import com.minecart.display.editor.PaletteEntries;
 import com.minecart.display.input.CameraController;
 import com.minecart.display.input.DragController;
 import com.minecart.display.log.SessionLog;
+import com.minecart.display.ui.panel.InfoPanelController;
 import com.minecart.display.render.AxisLabelsActor;
 import com.minecart.display.render.Textures;
 import com.minecart.display.render.UiIcons;
@@ -99,6 +100,12 @@ public class GameScreen extends ScreenAdapter {
     private final Editor editor;
     private final CameraController cameraController;
     private final DragController dragController;
+    /**
+     * Built after {@link #buildUi()} runs so it can capture the UI stage + skin. {@code null} only
+     * during the constructor window between {@code dragController} init and the controller assign.
+     * The click callback guards against this transient state.
+     */
+    private InfoPanelController infoPanelController;
     /** Centre-screen trashcan that appears only while the user is mid-drag. */
     private final Table trashOverlay;
 
@@ -235,8 +242,33 @@ public class GameScreen extends ScreenAdapter {
                             trashOverlay.getHeight()
                     };
                 },
-                this::setTrashOverlayVisible);
+                this::setTrashOverlayVisible,
+                this::onElementClicked);
         buildUi();
+        // Built after buildUi() so uiStage / skin are wired before the controller can be asked to
+        // open a panel. The connection is shared with DragController so panel-save payloads use the
+        // same channel as drag-update payloads.
+        this.infoPanelController = new InfoPanelController(uiStage, skin, connection);
+    }
+
+    /**
+     * Resolves the clicked element and asks the {@link InfoPanelController} to open its info panel.
+     * No-op on null worldId / unknown element id (defensive: a stale click during teardown
+     * shouldn't blow up).
+     */
+    private void onElementClicked(java.util.UUID worldId, java.util.UUID elementId) {
+        if (worldId == null || elementId == null || infoPanelController == null) {
+            return;
+        }
+        com.minecart.foundation.World world = clientLevel.findWorld(worldId);
+        if (world == null) {
+            return;
+        }
+        com.minecart.logic.CircuitElement el = world.findElement(elementId);
+        if (el == null) {
+            return;
+        }
+        infoPanelController.openFor(worldId, el);
     }
 
     /** Shown only while the {@link DragController} is mid-drag. */
@@ -1023,10 +1055,12 @@ public class GameScreen extends ScreenAdapter {
         buttons.pad(8f);
 
         if (isSingleplayer()) {
-            TextButton save = new TextButton("Save", skin);
-            save.addListener(new ClickListener() {
-                @Override public void clicked(InputEvent e, float x, float y) { saveNow(); }
-            });
+            // Only Save & Quit is exposed in the UI now. Standalone Save and Quit-Without-Saving
+            // were intentionally removed: save flow is "save happens on the way out" only, mirroring
+            // the panel-driven edit model (changes are sent as the user clicks Save in the per-
+            // element info panel; there's nothing left for a standalone "Save" button to flush).
+            // saveNow() / leaveWithoutSaving() remain on this class as private API in case a future
+            // path (autosave-on-shutdown hook, tests, debug commands) needs them.
             TextButton saveQuit = new TextButton("Save & Quit", skin);
             saveQuit.addListener(new ClickListener() {
                 @Override public void clicked(InputEvent e, float x, float y) {
@@ -1034,16 +1068,7 @@ public class GameScreen extends ScreenAdapter {
                     saveAndQuit();
                 }
             });
-            TextButton quit = new TextButton("Quit Without Saving", skin);
-            quit.addListener(new ClickListener() {
-                @Override public void clicked(InputEvent e, float x, float y) {
-                    dialog.hide();
-                    leaveWithoutSaving();
-                }
-            });
-            buttons.add(save).width(130f).height(40f).padRight(8f);
             buttons.add(saveQuit).width(150f).height(40f).padRight(8f);
-            buttons.add(quit).width(180f).height(40f).padRight(8f);
         } else {
             TextButton disconnect = new TextButton("Disconnect", skin);
             disconnect.addListener(new ClickListener() {
@@ -1179,6 +1204,13 @@ public class GameScreen extends ScreenAdapter {
 
         uiStage.act(dt);
         uiStage.draw();
+
+        // Reconcile the "open panel" reference if the user clicked Save/Cancel — the dialog removes
+        // itself from the stage, but our reference doesn't clear until we look. Cheap O(1) check
+        // per frame; keeps the "only one panel at a time" invariant from getting stuck open.
+        if (infoPanelController != null) {
+            infoPanelController.pollClosed();
+        }
     }
 
     @Override public void resize(int width, int height) {
@@ -1194,6 +1226,10 @@ public class GameScreen extends ScreenAdapter {
         // exit, so this is the right hook for "session ended" - the moment the user clicks Save & Quit,
         // Quit Without Saving, or Disconnect. SessionLog.end() is idempotent so calling it again from
         // dispose() (e.g. on app shutdown without a prior screen swap) is harmless.
+        if (infoPanelController != null) {
+            // Close any open panel so its actor doesn't outlive the stage on a screen swap.
+            infoPanelController.closeOpen();
+        }
         SessionLog.end();
     }
 

@@ -25,6 +25,7 @@ public final class ProtocolStrings {
     public static final String PAYLOAD_DELETE_ELEMENT = "minecart.delete_element_payload";
     public static final String PAYLOAD_EDGE_ENDPOINT_CHANGE = "minecart.edge_endpoint_change_payload";
     public static final String PAYLOAD_REPLACE_COMPONENT_NODE = "minecart.replace_component_node_payload";
+    public static final String PAYLOAD_ELEMENT_INFO_UPDATE = "minecart.element_info_update_payload";
 
     public static final String PAYLOAD_ENVELOPE_ID = "payload_id";
 
@@ -59,6 +60,9 @@ public final class ProtocolStrings {
     public static final String TAG_NEW_START_NODE_ID = "new_start_node_id";
     /** Edge-endpoint-change payload: id of the new {@code end} node. */
     public static final String TAG_NEW_END_NODE_ID = "new_end_node_id";
+
+    /** Element-info-update payload: snapshot of user-edited field values, encoded as a sub-compound. */
+    public static final String TAG_PANEL_SNAPSHOT = "panel_snapshot";
 
     /** Snapshot body: embedded circuit compound under the payload root. */
     public static final String SNAPSHOT_TAG_CIRCUIT = "circuit";

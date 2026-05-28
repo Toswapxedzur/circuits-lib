@@ -6,6 +6,7 @@ import com.minecart.protocol.payload.client.CreateWorldPayload;
 import com.minecart.protocol.payload.client.DeleteElementPayload;
 import com.minecart.protocol.payload.client.DeleteWorldPayload;
 import com.minecart.protocol.payload.client.EdgeEndpointChangePayload;
+import com.minecart.protocol.payload.client.ElementInfoUpdatePayload;
 import com.minecart.protocol.payload.client.MoveElementPayload;
 import com.minecart.protocol.payload.client.PlaceComponentPayload;
 import com.minecart.protocol.payload.client.PlaceNodePayload;
@@ -37,6 +38,7 @@ public final class AllPayloads {
     public static final PayloadType<DeleteElementPayload> DELETE_ELEMENT = DeleteElementPayload.TYPE;
     public static final PayloadType<EdgeEndpointChangePayload> EDGE_ENDPOINT_CHANGE = EdgeEndpointChangePayload.TYPE;
     public static final PayloadType<ReplaceComponentNodePayload> REPLACE_COMPONENT_NODE = ReplaceComponentNodePayload.TYPE;
+    public static final PayloadType<ElementInfoUpdatePayload> ELEMENT_INFO_UPDATE = ElementInfoUpdatePayload.TYPE;
 
     private AllPayloads() {}
 }

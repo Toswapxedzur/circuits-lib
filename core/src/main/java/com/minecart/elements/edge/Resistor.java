@@ -5,6 +5,10 @@ import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
+import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.InfoPanelSchema;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations.ResistorInfo;
 import com.minecart.math.LinearSystem.RelationProvider;
@@ -85,9 +89,69 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
 
     protected void handleResistance(Actions.SetResistanceAction action) {
         info.setResistance(action.getValue());
+        // Replicate the new resistance to every client mirror this tick. Without this, the action
+        // mutates server state but the standard delta sync never sees the change (resistance lives
+        // in ResistorInfo, not in the generic ElementInfo map saveInfos() walks), so the panel-save
+        // path used to leave the client showing stale values until a full reload.
+        if (getWorld() != null) {
+            getWorld().getLevel().notifyElementChanged(this);
+        }
+    }
+
+    /**
+     * Includes the resistor's {@link ResistorInfo} alongside the inherited edge state so the
+     * resistance value flows through both disk persistence ({@link com.minecart.server.persistence.WorldStorage})
+     * and the network sync layer ({@link com.minecart.protocol.sync.SyncRegistry}), both of which
+     * dispatch through this method via {@link CircuitEdge#save}. Without this override, mutations
+     * to {@code info.resistance} (info panel save, {@link Actions.SetResistanceAction}) update only
+     * the server in memory and would silently revert on reload / stay invisible to client mirrors.
+     */
+    @Override
+    public void save(CompoundTag tag) {
+        super.save(tag);
+        info.save(tag);
+    }
+
+    @Override
+    public void load(CompoundTag tag) {
+        super.load(tag);
+        // Only let info.load run if the tag actually carries a resistance entry. Without this
+        // guard, opening a legacy save (or any tag a sync delta omits the field from)
+        // would let ResistorInfo.load read CompoundTag's default-0.0, clamping to DELTA and
+        // silently destroying the value. Keys: ResistorInfo serializes under the literal
+        // "resistance" — kept in sync with Informations.ResistorInfo.TAG_RESISTANCE.
+        if (tag.keySet().contains("resistance")) {
+            info.load(tag);
+        }
     }
 
     static {
         AllComponents.RESISTOR.addActionHandler(ActionTypes.SET_RESISTANCE, (resistor, action) -> resistor.handleResistance(action));
+
+        // Info panel: a single Resistance number field, seeded with the resistor's current value
+        // so the panel always opens at "the current state". The schema is rebuilt every time the
+        // panel opens (rather than cached) so the seed reflects whatever the simulator has been
+        // doing since the last open.
+        InfoPanelRegistry.register(AllComponents.RESISTOR, r ->
+                InfoPanelSchema.builder("Resistor")
+                        .add(new NumberFieldSpec("resistance", "Resistance (Ω)", r.info.getResistance()))
+                        .build());
+
+        // Save handler: validate "resistance > 0" here on the server side rather than client side,
+        // per the project policy of "no client validation, server is the final arbiter". An invalid
+        // entry results in the field NOT being applied; the next sync pulse will reassert the
+        // unchanged authoritative value back to the client, and reopening the panel shows the old
+        // resistance — exactly the design's "reopen panel sees the old data" behaviour.
+        InfoPanelRegistry.registerSaveHandler(AllComponents.RESISTOR, (r, snap) ->
+                snap.getDouble("resistance")
+                        .filter(v -> Double.isFinite(v) && v > 0.0)
+                        .ifPresent(v -> {
+                            r.info.setResistance(v);
+                            // Mark the resistor as changed so the standard delta sync replicates
+                            // the new value back to every client mirror this tick.
+                            if (r.getWorld() != null) {
+                                r.getWorld().getLevel().notifyElementChanged(r);
+                            }
+                        }));
     }
 }

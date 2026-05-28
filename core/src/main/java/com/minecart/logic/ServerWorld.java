@@ -537,13 +537,38 @@ public class ServerWorld extends World {
         if (!survivor.canCombine(absorbed) || !absorbed.canCombine(survivor)) {
             return false;
         }
+
+        // Direction policy: when exactly one side is a registered port of a component, the port
+        // must be the survivor regardless of caller-passed argument order. Anchoring is rigid (port
+        // positions are stamped from ComponentAnchorRegistry offsets of the component's centre), so
+        // letting a free node "win" the slot would yank the port off its anchor and leave the
+        // component's internal struts stretched to the cursor's drop position — see the BJT + free
+        // resistor node bug. Swapping locally instead of returning false keeps both call orderings
+        // (drag-source-as-survivor vs. drop-target-as-survivor) doing the geometrically correct
+        // thing.
+        CircuitComponent survivorComp = survivor.getComponent();
+        boolean survivorIsPort = survivorComp != null && survivorComp.isPort(survivor);
         CircuitComponent absorbedComp = absorbed.getComponent();
         boolean absorbedIsPort = absorbedComp != null && absorbedComp.isPort(absorbed);
+        if (absorbedIsPort && !survivorIsPort) {
+            CircuitNode tmp = survivor;
+            survivor = absorbed;
+            absorbed = tmp;
+            survivorComp = survivor.getComponent();
+            survivorIsPort = true;
+            absorbedComp = absorbed.getComponent();
+            absorbedIsPort = false;
+        }
+
+        // After the swap above, absorbed is never a port of its own component while survivor is a
+        // port of another. The "absorbed is still a port" leg only fires for the exotic port-on-port
+        // case (both nodes on the same component, e.g. an editor flow that walks two ports of one
+        // BJT into each other — currently allowed by the type/component guard below). Cross-component
+        // port-on-port is left for the Phase 2b cascade engine.
         if (absorbedIsPort) {
             if (!java.util.Objects.equals(survivor.getRegistryTypeId(), absorbed.getRegistryTypeId())) {
                 return false;
             }
-            CircuitComponent survivorComp = survivor.getComponent();
             if (survivorComp != null && survivorComp != absorbedComp) {
                 return false;
             }
@@ -554,7 +579,9 @@ public class ServerWorld extends World {
             if (idx < 0) {
                 return false;
             }
-            absorbedComp.replacePort(idx, absorbed, survivor);
+            if (!absorbedComp.switchPort(idx, survivor)) {
+                return false;
+            }
         }
 
         for (CircuitEdge incident : new ArrayList<>(absorbed.getConnection())) {

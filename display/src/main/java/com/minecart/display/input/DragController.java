@@ -68,6 +68,15 @@ public class DragController extends InputAdapter {
     private enum DragKind { NODE, COMPONENT, EDGE }
 
     private UUID draggingId;
+    /**
+     * The element the user actually clicked, which may differ from {@link #draggingId} when the
+     * click landed on a port node owned by a component: {@code draggingId} redirects to the parent
+     * component (so the drag translates the whole body), while {@code clickedId} stays on the node
+     * so a no-movement click fires {@link #onElementClicked} for the node itself. This is what lets
+     * a user pick which info panel opens — node vs. component — based on what they're aiming at,
+     * without giving up the convenience of dragging the body by its ports.
+     */
+    private UUID clickedId;
     private DragKind dragKind;
     /** World-space cursor position at drag start. */
     private float dragStartWorldX;
@@ -98,18 +107,36 @@ public class DragController extends InputAdapter {
      */
     private UUID combineTargetId;
 
+    /**
+     * Invoked on a stationary click on a draggable element (touchDown + touchUp without any
+     * movement in between). The handler typically opens the per-element info panel; the
+     * controller itself doesn't know about that subsystem, just emits the signal.
+     */
+    private final java.util.function.BiConsumer<UUID, UUID> onElementClicked;
+
     public DragController(WorldStage stage,
                           ClientConnection connection,
                           Editor editor,
                           Supplier<UUID> selectedWorldId,
                           TrashBoundsSupplier trashBounds,
                           java.util.function.Consumer<Boolean> onDragStateChanged) {
+        this(stage, connection, editor, selectedWorldId, trashBounds, onDragStateChanged, null);
+    }
+
+    public DragController(WorldStage stage,
+                          ClientConnection connection,
+                          Editor editor,
+                          Supplier<UUID> selectedWorldId,
+                          TrashBoundsSupplier trashBounds,
+                          java.util.function.Consumer<Boolean> onDragStateChanged,
+                          java.util.function.BiConsumer<UUID, UUID> onElementClicked) {
         this.stage = stage;
         this.connection = connection;
         this.editor = editor;
         this.selectedWorldId = selectedWorldId;
         this.trashBounds = trashBounds;
         this.onDragStateChanged = onDragStateChanged != null ? onDragStateChanged : v -> {};
+        this.onElementClicked = onElementClicked != null ? onElementClicked : (w, e) -> {};
     }
 
     public boolean isDragging() {
@@ -134,11 +161,13 @@ public class DragController extends InputAdapter {
     private void updateHoverFromScreen(int screenX, int screenY) {
         float[] w = stage.screenToWorld(screenX, screenY);
         CircuitElement el = stage.hitTestWorld(w[0], w[1]);
-        // Edges, components, and nodes all paint a hover tint via WorldStage.applyHighlightTints,
-        // which only knows how to colour component / node actors. Edges are still reported (so the
-        // drag controller's edge-pickup branch can fire) but the hover tint stays on the renderable
-        // sprite kinds that have a colour to apply.
-        if (el instanceof CircuitComponent || el instanceof CircuitNode) {
+        // Hoverable surface mirrors the click surface: components, every node (including ports on
+        // a component — they're independently selectable with node-priority hit-testing so the
+        // hover hint should also follow the node), and free edges. Component-internal edges stay
+        // un-hoverable because they aren't user-interactable on their own.
+        if (el instanceof CircuitComponent
+                || el instanceof CircuitNode
+                || (el instanceof CircuitEdge edge && edge.getComponent() == null)) {
             stage.setHoveredElementId(el.getId());
         } else {
             stage.setHoveredElementId(null);
@@ -162,22 +191,27 @@ public class DragController extends InputAdapter {
         }
         if (el instanceof CircuitComponent comp) {
             beginDrag(comp);
+            clickedId = comp.getId();
             dragStartWorldX = w[0];
             dragStartWorldY = w[1];
             return true;
         }
         if (el instanceof CircuitNode node) {
-            // Internal port nodes belong to their component's pose; route drag through the parent instead so
-            // anchor offsets stay correct. If the user clicks an internal port directly, fall back to its
-            // component. Belt-and-braces: also honour PositionInfo.isFixed() so a port whose component
-            // pointer somehow didn't get linked client-side (stale mirror, replication race) still resists
-            // being dragged off — no parent to redirect to in that case, so just swallow the click.
+            // Internal port nodes belong to their component's pose; route drag through the parent so
+            // anchor offsets stay correct. The CLICK target stays on the port itself though — a
+            // no-movement click on a port should open the node's info panel, not the component's.
+            // Belt-and-braces: also honour PositionInfo.isFixed() so a port whose component pointer
+            // somehow didn't get linked client-side (stale mirror, replication race) still resists
+            // being dragged off; it can still receive a click via clickedId though.
             if (node.getComponent() != null) {
                 beginDrag(node.getComponent());
+                clickedId = node.getId();
             } else if (isPositionFixed(node)) {
+                clickedId = node.getId();
                 return true;
             } else {
                 beginDragFreeNode(node);
+                clickedId = node.getId();
             }
             dragStartWorldX = w[0];
             dragStartWorldY = w[1];
@@ -195,6 +229,7 @@ public class DragController extends InputAdapter {
                 return true;
             }
             beginDragEdge(edge);
+            clickedId = edge.getId();
             dragStartWorldX = w[0];
             dragStartWorldY = w[1];
             return true;
@@ -377,20 +412,11 @@ public class DragController extends InputAdapter {
         if (survivor == null || candidate == null || survivor == candidate) {
             return false;
         }
-        if (!survivor.canCombine(candidate) || !candidate.canCombine(survivor)) {
-            return false;
-        }
-        CircuitComponent absorbedComp = candidate.getComponent();
-        if (absorbedComp != null && absorbedComp.isPort(candidate)) {
-            if (!Objects.equals(survivor.getRegistryTypeId(), candidate.getRegistryTypeId())) {
-                return false;
-            }
-            CircuitComponent survivorComp = survivor.getComponent();
-            if (survivorComp != null && survivorComp != absorbedComp) {
-                return false;
-            }
-        }
-        return true;
+        // Mutual veto is the only gate: under the port-wins direction policy a free node dropped on
+        // any-type port just absorbs into the port (no slot replacement happens), so the legacy
+        // type-coherence check is gone. canCombine still refuses intrinsic non-port internals and
+        // any subclass-specific overrides — that's enough.
+        return survivor.canCombine(candidate) && candidate.canCombine(survivor);
     }
 
     private void applyComponentDragDelta(double dx, double dy) {
@@ -493,6 +519,7 @@ public class DragController extends InputAdapter {
         }
         UUID worldId = selectedWorldId.get();
         UUID id = draggingId;
+        UUID click = clickedId;
         DragKind kind = dragKind;
         boolean overTrash = isOverTrash(screenX, screenY);
         boolean moved = movedSinceDown;
@@ -505,6 +532,7 @@ public class DragController extends InputAdapter {
 
         // Clear local drag state before sending so the trashcan + tint disappear immediately.
         draggingId = null;
+        clickedId = null;
         dragKind = null;
         combineTargetId = null;
         stage.setDraggedElementId(null);
@@ -525,7 +553,14 @@ public class DragController extends InputAdapter {
             return true;
         }
         if (!moved) {
-            // Pure click — nothing else uses it yet (selection not implemented), so just swallow.
+            // Pure click — emit a "clicked element" signal so the editor can open the info panel
+            // for the element the user actually aimed at, which may differ from the drag target
+            // when the click landed on a port node owned by a component (drag drags the component,
+            // click selects the port). Falls back to the drag id if no separate click target was
+            // recorded. We don't open the panel here directly to keep DragController's dependency
+            // footprint small (no UI Stage, no Skin, no payload imports). Swallow either way so
+            // the click doesn't propagate to other input processors.
+            onElementClicked.accept(worldId, click != null ? click : id);
             return true;
         }
         switch (kind) {
@@ -641,13 +676,40 @@ public class DragController extends InputAdapter {
         if (!survivor.canCombine(absorbed) || !absorbed.canCombine(survivor)) {
             return false;
         }
+
+        // Direction policy (mirrored on the server in ServerWorld.combineNodes): the drag source
+        // is always a free node — port nodes route their drag to the parent component instead of
+        // entering this code path — but the drop target may be a free node OR a port. When it's
+        // a port, the port wins: anchor offsets are rigid and letting a free node take the slot
+        // would yank the port off its anchor (the bug that prompted this rewrite). Swap roles
+        // locally so the rest of the routine always rerouters edges OFF the free node ONTO the
+        // surviving port.
+        CircuitComponent survivorComp = survivor.getComponent();
+        boolean survivorIsPort = survivorComp != null && survivorComp.isPort(survivor);
         CircuitComponent absorbedComp = absorbed.getComponent();
         boolean absorbedIsPort = absorbedComp != null && absorbedComp.isPort(absorbed);
+        if (absorbedIsPort && !survivorIsPort) {
+            CircuitNode tmpNode = survivor;
+            survivor = absorbed;
+            absorbed = tmpNode;
+            UUID tmpId = survivorId;
+            survivorId = absorbedId;
+            absorbedId = tmpId;
+            survivorComp = absorbedComp;
+            absorbedComp = null;
+            survivorIsPort = true;
+            absorbedIsPort = false;
+        }
+
+        // Exotic port-on-port-on-same-component leg (preserved from earlier behaviour for editor
+        // flows that walk two ports of one BJT into each other). Cross-component port-on-port is
+        // still rejected here — the Phase 2b cascade engine is where that case will eventually
+        // land. The unused-variable suppression silences javac when only one branch reads
+        // {@code survivorComp}.
         if (absorbedIsPort) {
             if (!Objects.equals(survivor.getRegistryTypeId(), absorbed.getRegistryTypeId())) {
                 return false;
             }
-            CircuitComponent survivorComp = survivor.getComponent();
             if (survivorComp != null && survivorComp != absorbedComp) {
                 return false;
             }

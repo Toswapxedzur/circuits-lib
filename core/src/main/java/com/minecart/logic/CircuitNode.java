@@ -13,7 +13,19 @@ import java.util.*;
 public non-sealed class CircuitNode extends CircuitElement {
     protected DoubleVar voltage;
     protected Set<CircuitEdge> connection;
-    protected CircuitComponent component;
+    /**
+     * Owning components. A node is "owned" by every component whose port slot it occupies. The set
+     * is single-element for the common case (free node = empty, internal-port node = one component);
+     * Phase 2b's port-port merge across two components produces the multi-owner case where the same
+     * node sits in both components' port maps. Iteration order matches insertion order to keep
+     * downstream consumers (renderer hide rules, save/load, sync deltas) deterministic.
+     *
+     * <p>The single-owner legacy API {@link #getComponent()} / {@link #setComponent(CircuitComponent)}
+     * still works: getComponent returns the first owner (or null), setComponent collapses to a
+     * single owner. New code in the combine engine uses {@link #addComponent} /
+     * {@link #removeComponent} which manage individual entries without disturbing the others.
+     */
+    protected final Set<CircuitComponent> components = new LinkedHashSet<>();
     protected boolean ground;
 
     public CircuitNode(World world){
@@ -86,15 +98,69 @@ public non-sealed class CircuitNode extends CircuitElement {
     }
 
     public boolean hasComponent() {
-        return component != null;
+        return !components.isEmpty();
     }
 
+    /**
+     * @return the primary (first-added) owning component, or {@code null} if this node is free.
+     *         Single-owner legacy API; multi-owner consumers should use {@link #getComponents()}.
+     *         When a node is a shared port across multiple components (Phase 2b cascade outcome),
+     *         this method returns the one that adopted it earliest — sufficient for most legacy
+     *         "what component am I part of" lookups but not for iterating all owners.
+     */
     public CircuitComponent getComponent() {
-        return component;
+        return components.isEmpty() ? null : components.iterator().next();
     }
 
+    /**
+     * Single-owner setter: clears every existing owner and (if non-null) adds {@code component}.
+     * Preserves legacy semantics for call sites that placed a node into exactly one component or
+     * cleared its parent during destroy. New multi-owner-aware code should call
+     * {@link #addComponent} / {@link #removeComponent} directly so unrelated component memberships
+     * survive the mutation.
+     */
     public void setComponent(CircuitComponent component) {
-        this.component = component;
+        components.clear();
+        if (component != null) {
+            components.add(component);
+        }
+    }
+
+    /**
+     * Read-only view of every component currently claiming this node as one of its ports.
+     */
+    public Set<CircuitComponent> getComponents() {
+        return Collections.unmodifiableSet(components);
+    }
+
+    /**
+     * Adds {@code component} to the owner set if not already present. Idempotent. Caller must keep
+     * the backlink consistent (i.e. also add this node to the component's {@code nodes} and
+     * appropriate port slot) — this method only maintains the node-side reference.
+     */
+    public void addComponent(CircuitComponent component) {
+        if (component == null) {
+            return;
+        }
+        components.add(component);
+    }
+
+    /**
+     * Removes {@code component} from the owner set if present. No-op when this node was never a
+     * port of {@code component}. Caller is responsible for tearing down the component-side
+     * structures (port slot, {@code nodes} membership) — this method only maintains the node-side
+     * reference.
+     */
+    public void removeComponent(CircuitComponent component) {
+        if (component == null) {
+            return;
+        }
+        components.remove(component);
+    }
+
+    /** Whether this node is currently a port of {@code component}. */
+    public boolean inComponent(CircuitComponent component) {
+        return component != null && components.contains(component);
     }
 
     public Set<CircuitNode> getAdjacent(){
@@ -119,8 +185,14 @@ public non-sealed class CircuitNode extends CircuitElement {
      * polarised junction that can only merge with its own kind — should override and tighten this.
      */
     public boolean canCombine(CircuitNode other) {
-        if (component != null && !component.isPort(this)) {
-            return false;
+        // Reject if ANY owning component treats this node as a non-port internal (intrinsic
+        // helper that's not meant to be user-interactable). Under multi-owner semantics a node
+        // can appear in several components' port maps simultaneously, so the rule must veto on
+        // the first component that disagrees rather than relying on a single "the" component.
+        for (CircuitComponent c : components) {
+            if (!c.isPort(this)) {
+                return false;
+            }
         }
         return true;
     }

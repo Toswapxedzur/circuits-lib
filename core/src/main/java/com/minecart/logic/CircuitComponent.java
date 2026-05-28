@@ -175,8 +175,49 @@ public non-sealed class CircuitComponent extends CircuitElement {
         portsByIndex.put(portIndex, newPort);
         nodes.remove(oldPort);
         nodes.add(newPort);
-        oldPort.setComponent(null);
-        newPort.setComponent(this);
+        // Multi-owner aware: only drop our own back-pointer from {@code oldPort} so it can remain
+        // a port of any other component that was sharing it (Phase 2b cascade may leave a node in
+        // several ports' slots). Symmetrically, add ourselves to {@code newPort}'s owner set
+        // without disturbing the others.
+        oldPort.removeComponent(this);
+        newPort.addComponent(this);
+    }
+
+    /**
+     * Slot-swap primitive: replaces whichever node currently occupies {@code portIndex} with
+     * {@code newNode}. Validates same {@link CircuitElement#getRegistryTypeId() registry type id}
+     * (a port carries a fixed kind — swapping in a node of a different type would silently change
+     * what this component is wired to expect), then delegates to {@link #replacePort}.
+     *
+     * <p>Intentionally narrow: no incident-edge rerouting, no destruction of the old occupant. The
+     * caller (combine engine, panel-driven topology edit, or test) is responsible for those steps
+     * so the granular protocol stays a flat sequence of {@code switchPort} / {@code changeEdgeEndpoint}
+     * / {@code destroy} ops rather than one composite the client has to reconstruct piecewise.
+     *
+     * @return {@code true} on success; {@code false} if {@code newNode} is {@code null}, no port
+     *         currently sits at {@code portIndex}, the type ids don't match, or any
+     *         {@link #replacePort} invariant rejects the swap.
+     */
+    public boolean switchPort(int portIndex, CircuitNode newNode) {
+        if (newNode == null) {
+            return false;
+        }
+        CircuitNode existing = portsByIndex.get(portIndex);
+        if (existing == null) {
+            return false;
+        }
+        if (existing == newNode) {
+            return true;
+        }
+        if (!java.util.Objects.equals(existing.getRegistryTypeId(), newNode.getRegistryTypeId())) {
+            return false;
+        }
+        try {
+            replacePort(portIndex, existing, newNode);
+        } catch (IllegalArgumentException | IllegalStateException ignored) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -345,9 +386,13 @@ public non-sealed class CircuitComponent extends CircuitElement {
             }
         }
 
-        // 2) Clear backlinks so the manual-removal step below isn't blocked by hasComponent guards.
+        // 2) Clear our back-pointer on every internal so the manual-removal step below isn't blocked
+        //    by hasComponent guards. Multi-owner aware: only drop OUR reference, leaving any shared
+        //    ports as valid ports of whichever other component still claims them (Phase 2b cascade
+        //    may leave a node in several ports' slots; destroying this component shouldn't strand
+        //    those other relationships).
         for (CircuitNode n : nodesSnap) {
-            n.setComponent(null);
+            n.removeComponent(this);
         }
         for (CircuitEdge e : edgesSnap) {
             e.setComponent(null);
@@ -486,8 +531,12 @@ public non-sealed class CircuitComponent extends CircuitElement {
                 }
             }
         }
+        // Restore back-pointers via addComponent (multi-owner aware): if a Phase 2b cascade saved a
+        // shared port, the same node appears in two components' NODE_IDS lists and each component's
+        // load() should add ITSELF to the node's owner set without clearing the other. setComponent
+        // would have collapsed the set to whichever component loaded last.
         for (CircuitNode n : nodes) {
-            n.setComponent(this);
+            n.addComponent(this);
         }
         // Internal edges also need to know they belong to this component. Previously only nodes had
         // their {@code component} pointer restored here, leaving every loaded edge with a {@code null}

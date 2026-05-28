@@ -160,6 +160,11 @@ public class IntegratedServer {
         // of this code used `.class` and silently failed on cold-start saved-world loads.
         AllComponents.init();
         AllElementInfos.init();
+        // Attach the info-panel save dispatcher to this level so ElementInfoUpdateEvents posted by
+        // ElementInfoUpdateHandler route to the static save handlers element classes register in
+        // their <clinit>. Installation timing relative to element-class init is irrelevant because
+        // the dispatcher looks up the handler at event-fire time, not at install time.
+        com.minecart.ui.panel.InfoPanelRegistry.installLevelListener(level);
         // Default-info injection must be attached before any element exists, so loaded elements
         // get their PositionInfo/RotationInfo defaults applied before save data overrides them.
         InfoInjectors.attach(level);

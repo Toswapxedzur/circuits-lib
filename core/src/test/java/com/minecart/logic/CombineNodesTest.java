@@ -12,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -117,57 +116,92 @@ class CombineNodesTest {
     }
 
     @Test
-    void combineNodes_freeOntoPort_typeMatch_replacesPortAndRouteEdges() {
+    void combineNodes_freeOntoPort_portWinsAndKeepsAnchor() {
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
-        CircuitNode oldBase = bjt.getPort(0);
-        CircuitNode survivor = w.createNode(AllComponents.CONNECTION);
+        CircuitNode base = bjt.getPort(0);
+        CircuitNode freeNode = w.createNode(AllComponents.CONNECTION);
         CircuitNode external = w.createNode(AllComponents.CONNECTION);
-        // External wire attached to the BJT's base port — should reattach to the survivor after combine.
-        CircuitEdge externalWire = w.connect(AllComponents.RESISTOR, oldBase, external);
+        // External wire attached to the FREE NODE — should reattach to the port after combine so
+        // the resistor we dragged in stays wired through the transistor's anchored base.
+        CircuitEdge externalWire = w.connect(AllComponents.RESISTOR, freeNode, external);
         assertNotNull(externalWire);
-        // Locate the internal strut connecting the centre to old base — its endpoint should swap to
-        // the survivor when the port replacement runs.
+        // The centre↔base internal strut MUST stay anchored on the same base node, untouched by the
+        // combine — that's the bug we're fixing. If anything reroutes this strut, the transistor's
+        // internals come loose on disk and the user sees exposed wires after a reload.
         CircuitEdge baseStrut = null;
         for (CircuitEdge e : bjt.getEdges()) {
-            if (e.connectTo(oldBase) && e.connectTo(bjt.getCenter())) {
+            if (e.connectTo(base) && e.connectTo(bjt.getCenter())) {
                 baseStrut = e;
                 break;
             }
         }
         assertNotNull(baseStrut, "Should find centre↔base internal strut");
 
-        boolean ok = w.combineNodes(survivor, oldBase);
+        // The drag direction (survivor=free node, absorbed=port) is what the dragController
+        // currently passes; combineNodes must internally swap so the port still wins.
+        boolean ok = w.combineNodes(freeNode, base);
         assertTrue(ok);
 
-        // Port slot is now filled by survivor; old base node has no component pointer left.
-        assertSame(survivor, bjt.getPort(0));
-        assertNull(oldBase.getComponent());
-        assertSame(bjt, survivor.getComponent());
-        // External wire and internal strut both repointed to survivor.
-        assertTrue(externalWire.connectTo(survivor));
-        assertTrue(baseStrut.connectTo(survivor));
-        // Old base node is deleted from every circuit.
+        // Port slot unchanged: the original base node still occupies port 0.
+        assertSame(base, bjt.getPort(0));
+        assertSame(bjt, base.getComponent());
+        // External wire (the resistor) re-pointed onto the port.
+        assertTrue(externalWire.connectTo(base));
+        // Internal strut untouched: still centre↔base.
+        assertTrue(baseStrut.connectTo(base));
+        assertTrue(baseStrut.connectTo(bjt.getCenter()));
+        // Free node deleted from every circuit.
         for (Circuit c : w.getCircuits()) {
-            assertFalse(c.nodes().contains(oldBase));
+            assertFalse(c.nodes().contains(freeNode));
         }
     }
 
     @Test
-    void combineNodes_freeOntoPort_typeMismatch_isRejected() {
+    void combineNodes_freeOntoPort_callerOrderInvariantUnderSwap() {
+        // Same scenario as above but passing arguments in the opposite order; result must be
+        // identical because combineNodes swaps internally to enforce port-wins.
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
         CircuitNode base = bjt.getPort(0);
-        // The transistor's base port is a CONNECTION-typed node; a JUNCTION-typed node has a different
-        // registry id, so the type-coherence check should refuse.
-        CircuitNode survivor = w.createNode(AllComponents.JUNCTION);
+        CircuitNode freeNode = w.createNode(AllComponents.CONNECTION);
+        CircuitNode external = w.createNode(AllComponents.CONNECTION);
+        CircuitEdge externalWire = w.connect(AllComponents.RESISTOR, freeNode, external);
+        assertNotNull(externalWire);
 
-        assertFalse(w.combineNodes(survivor, base));
-        // Port still points at the original base node.
+        assertTrue(w.combineNodes(base, freeNode));
+
         assertSame(base, bjt.getPort(0));
         assertSame(bjt, base.getComponent());
+        assertTrue(externalWire.connectTo(base));
+        for (Circuit c : w.getCircuits()) {
+            assertFalse(c.nodes().contains(freeNode));
+        }
+    }
+
+    @Test
+    void combineNodes_freeOntoPort_typeMismatch_stillSucceedsBecausePortStays() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
+        CircuitNode base = bjt.getPort(0);
+        // A JUNCTION free node has a different registry id than the CONNECTION base port. Under the
+        // old "free node wins" policy this combine was rejected because the port-slot-replacement
+        // path required matching types. Now the port wins the slot regardless and the free node is
+        // simply destroyed (its edges, if any, repoint to the port) — there's no slot mutation to
+        // be type-incompatible.
+        CircuitNode freeNode = w.createNode(AllComponents.JUNCTION);
+
+        assertTrue(w.combineNodes(freeNode, base));
+        // Port still points at the original base node, type unchanged.
+        assertSame(base, bjt.getPort(0));
+        assertSame(bjt, base.getComponent());
+        // Free node is destroyed.
+        for (Circuit c : w.getCircuits()) {
+            assertFalse(c.nodes().contains(freeNode));
+        }
     }
 
     @Test

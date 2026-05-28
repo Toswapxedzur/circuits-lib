@@ -221,6 +221,9 @@ public class WorldStage extends Stage {
         for (ComponentActor a : componentActors.values()) {
             a.setColor(RESET_TINT);
         }
+        for (EdgeActor a : edgeActors.values()) {
+            a.setColor(RESET_TINT);
+        }
         if (draggedElementId != null) {
             Color c = draggedOverTrash ? TRASH_TINT : DRAG_TINT;
             tint(draggedElementId, c);
@@ -248,6 +251,14 @@ public class WorldStage extends Stage {
         NodeActor na = nodeActors.get(id);
         if (na != null) {
             na.setColor(c);
+            return;
+        }
+        // Edges (wires, resistors, batteries, etc.) all draw via EdgeActor.draw() which honours
+        // getColor() across both the body sprite and the bridge tiles, so the same tint pipeline
+        // works without per-kind plumbing.
+        EdgeActor ea = edgeActors.get(id);
+        if (ea != null) {
+            ea.setColor(c);
         }
     }
 
@@ -357,7 +368,14 @@ public class WorldStage extends Stage {
 
     /**
      * @return the topmost {@link CircuitElement} whose actor's bounds contain {@code (worldX, worldY)},
-     *         or {@code null} if nothing is hit. Components → nodes → edges in that priority.
+     *         or {@code null} if nothing is hit. Priority is nodes &gt; components &gt; edges.
+     *
+     * <p>Nodes win over components because a node sprite drawn over a component body (e.g. a port
+     * node on a transistor) should be independently selectable — clicking the node opens the
+     * node-level info panel even though the parent component is also under the cursor. The drag
+     * controller still redirects a port-node DRAG to its parent component so anchor offsets stay
+     * consistent (see {@link com.minecart.display.input.DragController#touchDown}), but a CLICK
+     * (no movement) on a port node fires for the node itself.
      *
      * <p>Edges are tested last so a click on a junction (node sprite straddling an edge endpoint)
      * picks the node, not the edge underneath. Edge hit-testing uses
@@ -366,14 +384,14 @@ public class WorldStage extends Stage {
      * to land on a sub-pixel line. Edges with missing endpoints / positions are skipped.
      */
     public CircuitElement hitTestWorld(float worldX, float worldY) {
-        for (ComponentActor a : componentActors.values()) {
-            if (contains(a, worldX, worldY)) {
-                return a.getComponent();
-            }
-        }
         for (NodeActor a : nodeActors.values()) {
             if (contains(a, worldX, worldY)) {
                 return a.getNode();
+            }
+        }
+        for (ComponentActor a : componentActors.values()) {
+            if (contains(a, worldX, worldY)) {
+                return a.getComponent();
             }
         }
         EdgeActor edgeHit = hitTestEdge(worldX, worldY);
