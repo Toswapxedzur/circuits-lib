@@ -13,6 +13,7 @@ import com.minecart.registry.AllElementInfos;
 import com.minecart.registry.CircuitElementRegistry;
 import com.minecart.registry.CircuitElementType;
 import com.minecart.registry.ComponentAnchorRegistry;
+import com.minecart.variant.info.LockState;
 import com.minecart.variant.info.PositionInfo;
 import com.minecart.variant.info.RotationInfo;
 
@@ -29,6 +30,13 @@ import java.util.Set;
  * (edges are positionless by construction and rely on their endpoints).
  */
 public final class MoveElementHandler implements PayloadHandler<MoveElementPayload> {
+
+    /**
+     * Tolerance fed to {@link CircuitComponent#effectiveLockState(double)} for the lock-state
+     * preflight. Same value the cascade engine uses for pivot reconciliation — kept inline here
+     * to avoid coupling the handler to an unrelated module-private constant.
+     */
+    private static final double LOCK_EPSILON = 1e-6;
 
     private final ServerLevel level;
 
@@ -81,6 +89,15 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
      * {@link com.minecart.server.listener.CircuitElementListener} as a CHANGE op for that node.
      */
     private void moveComponent(CircuitComponent comp, double x, double y) {
+        // Phase 1 lock enforcement: refuse the drag silently when the component's effective lock
+        // doesn't permit translation. Mirror reads "no delta" → drag visually snaps back. The
+        // engine-level entry point ({@link com.minecart.logic.cascade.CombineCascadeEngine#tryTranslateComponent})
+        // already enforces the same check; we add it here so the manual move path is consistent
+        // with the cascade path rather than letting LockMode.LOCKED leak through.
+        LockState eff = comp.effectiveLockState(LOCK_EPSILON);
+        if (!eff.mode().allowsTranslation()) {
+            return;
+        }
         PositionInfo centre = comp.getInfo(AllElementInfos.POSITION);
         if (centre == null) {
             centre = new PositionInfo();

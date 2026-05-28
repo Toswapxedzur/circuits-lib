@@ -9,6 +9,8 @@ import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
 import com.minecart.protocol.payload.PayloadHandler;
 import com.minecart.protocol.payload.client.ReplaceComponentNodePayload;
+import com.minecart.variant.info.LockMode;
+import com.minecart.variant.info.LockState;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -30,6 +32,9 @@ import java.util.UUID;
  */
 public final class ReplaceComponentNodeHandler implements PayloadHandler<ReplaceComponentNodePayload> {
 
+    /** Pivot tolerance for {@link CircuitComponent#effectiveLockState(double)}. */
+    private static final double LOCK_EPSILON = 1e-6;
+
     private final ServerLevel level;
 
     public ReplaceComponentNodeHandler(ServerLevel level) {
@@ -48,6 +53,13 @@ public final class ReplaceComponentNodeHandler implements PayloadHandler<Replace
         }
         CircuitComponent comp = findComponent(world, payload.getComponentId());
         if (comp == null) {
+            return;
+        }
+        // Phase 1 lock enforcement: a strictly LOCKED component refuses port swaps. POSITION_FREE
+        // and ROTATION_FREE are kinematic-only restrictions; they don't have a natural meaning
+        // for topological port replacement, so we only gate on LOCKED for now.
+        LockState eff = comp.effectiveLockState(LOCK_EPSILON);
+        if (eff.mode() == LockMode.LOCKED) {
             return;
         }
         CircuitNode oldNode = findNode(world, payload.getOldNodeId());

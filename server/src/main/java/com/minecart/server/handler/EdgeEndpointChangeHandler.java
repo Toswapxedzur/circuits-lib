@@ -9,6 +9,8 @@ import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
 import com.minecart.protocol.payload.PayloadHandler;
 import com.minecart.protocol.payload.client.EdgeEndpointChangePayload;
+import com.minecart.variant.info.LockMode;
+import com.minecart.variant.info.LockState;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -24,6 +26,9 @@ import java.util.UUID;
  * client reads as "rejected" (no element-change deltas come back in the next sync).
  */
 public final class EdgeEndpointChangeHandler implements PayloadHandler<EdgeEndpointChangePayload> {
+
+    /** Pivot tolerance for {@link CircuitEdge#effectiveLockState(double)}; see MoveElementHandler. */
+    private static final double LOCK_EPSILON = 1e-6;
 
     private final ServerLevel level;
 
@@ -48,6 +53,14 @@ public final class EdgeEndpointChangeHandler implements PayloadHandler<EdgeEndpo
         CircuitNode newStart = findNode(world, payload.getNewStartNodeId());
         CircuitNode newEnd = findNode(world, payload.getNewEndNodeId());
         if (newStart == null || newEnd == null || newStart == newEnd) {
+            return;
+        }
+        // Phase 1 lock enforcement: a strictly LOCKED edge refuses any topological change. The
+        // weaker modes (POSITION_FREE, ROTATION_FREE) are kinematic restrictions that don't have
+        // a clean meaning for rewiring, so we only gate on LOCKED for now; this matches the
+        // user-visible "the strict lock should actually do something" contract.
+        LockState eff = edge.effectiveLockState(LOCK_EPSILON);
+        if (eff.mode() == LockMode.LOCKED) {
             return;
         }
         try {
