@@ -2,6 +2,7 @@ package com.minecart.registry;
 
 import com.minecart.variant.info.LockInfo;
 import com.minecart.variant.info.PositionInfo;
+import com.minecart.variant.info.RigidityInfo;
 import com.minecart.variant.info.RotationInfo;
 
 /**
@@ -25,6 +26,16 @@ public final class AllElementInfos {
      */
     public static final ElementInfoType<LockInfo> LOCK =
             ElementInfoRegistry.register("core:lock", LockInfo::new);
+
+    /**
+     * Player-authored rigid / flexible flag attached to a {@link com.minecart.logic.CircuitEdge}.
+     * Drives whether the physics solver treats the edge as a fixed-length distance connector
+     * (rigid ⇒ drag-propagation across the edge) or as a purely visual line (flexible, the
+     * default ⇒ endpoints move independently). Only carried by edges; components and nodes have
+     * no use for it.
+     */
+    public static final ElementInfoType<RigidityInfo> RIGIDITY =
+            ElementInfoRegistry.register("core:rigidity", RigidityInfo::new);
 
     private AllElementInfos() {}
 

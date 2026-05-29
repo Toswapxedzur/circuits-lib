@@ -288,9 +288,14 @@ public non-sealed class CircuitNode extends CircuitElement {
             if (newX != null && newY != null
                     && Double.isFinite(newX) && Double.isFinite(newY)) {
                 if (node.getComponents().isEmpty()) {
-                    if (!pos.isFixed() && (newX != pos.getX() || newY != pos.getY())) {
-                        pos.set(newX, newY);
-                        mutated = true;
+                    if (!pos.isFixed() && (newX != pos.getX() || newY != pos.getY())
+                            && node.getWorld() instanceof ServerWorld sw) {
+                        // Free-node panel edit routed through the cascade engine so any rigid
+                        // edges incident to the node propagate the motion. The engine notifies
+                        // each touched element internally on success; we just skip the local
+                        // notify path. Failure is silent (sync re-asserts).
+                        CombineCascadeEngine.tryTranslateFreeNode(sw, node,
+                                newX - pos.getX(), newY - pos.getY());
                     }
                 } else if (node.getWorld() instanceof ServerWorld sw) {
                     // Port edit → translate the parent component. Engine notifies its own

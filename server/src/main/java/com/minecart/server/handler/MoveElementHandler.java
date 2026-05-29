@@ -7,36 +7,39 @@ import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
+import com.minecart.logic.cascade.CombineCascadeEngine;
+import com.minecart.logic.physics.DragGesture;
 import com.minecart.protocol.payload.PayloadHandler;
 import com.minecart.protocol.payload.client.MoveElementPayload;
 import com.minecart.registry.AllElementInfos;
-import com.minecart.registry.CircuitElementRegistry;
-import com.minecart.registry.CircuitElementType;
-import com.minecart.registry.ComponentAnchorRegistry;
-import com.minecart.variant.info.LockState;
 import com.minecart.variant.info.PositionInfo;
-import com.minecart.variant.info.RotationInfo;
 
-import java.util.HashSet;
 import java.util.Objects;
-import java.util.Set;
+import java.util.UUID;
 
 /**
- * Server-side handler for {@link MoveElementPayload}: re-positions a free node or a component (and all its
- * internal nodes, port-anchored or not) and notifies the element-change pipeline so the move replicates to
- * every client mirror via the existing sync stream.
+ * Server-side handler for {@link MoveElementPayload}. Two routing modes, picked by whether the
+ * payload carries a {@code gestureId}:
  *
- * <p>Silent no-op on unknown world, unknown element, or element kind that doesn't carry a single anchor
- * (edges are positionless by construction and rely on their endpoints).
+ * <ul>
+ *   <li><b>Streaming drag</b> ({@code gestureId != null}): the payload is one sample from a
+ *       client-side drag. It's pushed into the level's {@link com.minecart.logic.physics.DragAggregator}
+ *       for resolution as part of this tick's unified physics solve. Multiple streaming samples
+ *       with the same gesture coalesce to the latest; distinct gesture ids on the same element
+ *       trigger the contention policy (immobilise for the tick).</li>
+ *   <li><b>One-shot</b> ({@code gestureId == null}): a panel save, scroll-rotate's translation
+ *       sibling, or any other discrete mutation. Routed through
+ *       {@link CombineCascadeEngine#tryTranslateComponent} (for components) or
+ *       {@link CombineCascadeEngine#tryTranslateFreeNode} (for free nodes) immediately — hard pin
+ *       at the target pose, propagated across rigid edges synchronously.</li>
+ * </ul>
+ *
+ * <p>Silent no-op on unknown world / unknown element / element kind without a single anchor
+ * (edges are positionless by construction). The strict-lock preflight lives in
+ * {@link com.minecart.logic.physics.DragAggregator#flush} for the streaming path and in the
+ * cascade engine entry points for the one-shot path.
  */
 public final class MoveElementHandler implements PayloadHandler<MoveElementPayload> {
-
-    /**
-     * Tolerance fed to {@link CircuitComponent#effectiveLockState(double)} for the lock-state
-     * preflight. Same value the cascade engine uses for pivot reconciliation — kept inline here
-     * to avoid coupling the handler to an unrelated module-private constant.
-     */
-    private static final double LOCK_EPSILON = 1e-6;
 
     private final ServerLevel level;
 
@@ -51,24 +54,26 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
 
     private void apply(MoveElementPayload payload) {
         World world = level.findWorld(payload.getWorldId());
-        if (!(world instanceof ServerWorld)) {
+        if (!(world instanceof ServerWorld serverWorld)) {
             return;
         }
         CircuitElement el = findElement(world, payload.getElementId());
         if (el == null) {
             return;
         }
-        if (el instanceof CircuitComponent comp) {
-            moveComponent(comp, payload.getX(), payload.getY());
-        } else if (el instanceof CircuitNode node) {
-            moveFreeNode(node, payload.getX(), payload.getY());
+        UUID gestureId = payload.getGestureId();
+        if (gestureId != null) {
+            // Streaming drag: queue into the aggregator. The aggregator's flush at end-of-tick
+            // resolves all this-tick gestures in a single unified solve and broadcasts authority.
+            level.getDragAggregator().enqueue(payload.getWorldId(),
+                    new DragGesture(gestureId, el, payload.getX(), payload.getY()));
+            return;
         }
-    }
-
-    private void notifyChanged(CircuitElement el) {
-        World w = el.getWorld();
-        if (w != null) {
-            w.getLevel().notifyElementChanged(el);
+        // One-shot path (panel save, etc.) — hard-pin the target pose synchronously.
+        if (el instanceof CircuitComponent comp) {
+            moveComponent(serverWorld, comp, payload.getX(), payload.getY());
+        } else if (el instanceof CircuitNode node) {
+            moveFreeNode(serverWorld, node, payload.getX(), payload.getY());
         }
     }
 
@@ -83,91 +88,58 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
     }
 
     /**
-     * Moves the component's centre and re-stamps every internal node (port nodes via the anchor registry,
-     * non-port internals at the new centre). Sync data is emitted as PositionInfo lives in the element's
-     * info bag, so each {@link CircuitElement#notifyElementChanged()} call flows through
-     * {@link com.minecart.server.listener.CircuitElementListener} as a CHANGE op for that node.
+     * Translates the component so its centre lands at {@code (x, y)}. First-time placement on a
+     * component without an existing {@link PositionInfo} short-circuits to a direct stamp + notify
+     * (no delta to propagate, no constraint graph yet built).
      */
-    private void moveComponent(CircuitComponent comp, double x, double y) {
-        // Phase 1 lock enforcement: refuse the drag silently when the component's effective lock
-        // doesn't permit translation. Mirror reads "no delta" → drag visually snaps back. The
-        // engine-level entry point ({@link com.minecart.logic.cascade.CombineCascadeEngine#tryTranslateComponent})
-        // already enforces the same check; we add it here so the manual move path is consistent
-        // with the cascade path rather than letting LockMode.LOCKED leak through.
-        LockState eff = comp.effectiveLockState(LOCK_EPSILON);
-        if (!eff.mode().allowsTranslation()) {
-            return;
-        }
+    private void moveComponent(ServerWorld world, CircuitComponent comp, double x, double y) {
         PositionInfo centre = comp.getInfo(AllElementInfos.POSITION);
         if (centre == null) {
+            // Bootstrap: the component has no recorded centre yet, so there's no delta to propagate
+            // and the constraint graph wouldn't have anything meaningful to do. Stamp directly and
+            // hand off to the cascade engine on subsequent moves.
             centre = new PositionInfo();
             comp.setInfo(AllElementInfos.POSITION, centre);
+            centre.set(x, y);
+            level.notifyElementChanged(comp);
+            return;
         }
-        centre.set(x, y);
-        RotationInfo rot = comp.getInfo(AllElementInfos.ROTATION);
-        double angle = rot != null ? rot.getAngle() : 0.0;
-
-        CircuitElementType<?> type = CircuitElementRegistry.getType(comp.getRegistryTypeId());
-        Set<CircuitNode> anchored = new HashSet<>();
-        if (type != null) {
-            for (ComponentAnchorRegistry.Anchor anchor : ComponentAnchorRegistry.getAnchors(type)) {
-                CircuitNode port = comp.getPort(anchor.portIndex());
-                if (port == null) {
-                    continue;
-                }
-                anchored.add(port);
-                double[] xy = ComponentAnchorRegistry.worldPositionOf(anchor, x, y, angle);
-                PositionInfo p = port.getInfo(AllElementInfos.POSITION);
-                if (p == null) {
-                    p = new PositionInfo();
-                    port.setInfo(AllElementInfos.POSITION, p);
-                }
-                p.set(xy[0], xy[1]);
-                lockToParent(p);
-                notifyChanged(port);
-            }
-        }
-        for (CircuitNode internal : comp.getNodes()) {
-            if (anchored.contains(internal)) {
-                continue;
-            }
-            PositionInfo p = internal.getInfo(AllElementInfos.POSITION);
-            if (p == null) {
-                p = new PositionInfo();
-                internal.setInfo(AllElementInfos.POSITION, p);
-            }
-            p.set(x, y);
-            lockToParent(p);
-            notifyChanged(internal);
-        }
-        notifyChanged(comp);
+        double dx = x - centre.getX();
+        double dy = y - centre.getY();
+        CombineCascadeEngine.tryTranslateComponent(world, comp, dx, dy);
     }
 
-    private void moveFreeNode(CircuitNode node, double x, double y) {
-        // Free nodes (placed via PlaceNodeHandler) live outside any component; nodes parented to a component
-        // are repositioned through moveComponent so their anchor offsets stay consistent. We skip those here
-        // to avoid letting the editor drag a single port off its anchor.
-        if (node.getComponent() != null) {
+    /**
+     * Translates a free node so it lands at {@code (x, y)}. Skips port nodes (port motion is the
+     * cascade engine's responsibility via {@link CombineCascadeEngine#tryMovePortNode}) and
+     * isFixed=true nodes (player-locked node anchor).
+     *
+     * <p>The short-circuit refusals (port node, isFixed) still fire a {@link com.minecart.foundation.Level#notifyElementChanged}
+     * for the node so the client's optimistic local mutation gets corrected by the next sync
+     * delta — same refusal-broadcast contract the cascade engine applies on its own refusal
+     * branches. Without this, a client that dragged a player-locked node would see the visual
+     * stay at the dragged position because the server silently no-ops and never tells the client
+     * what the authoritative pose is.
+     */
+    private void moveFreeNode(ServerWorld world, CircuitNode node, double x, double y) {
+        if (!node.getComponents().isEmpty()) {
+            level.notifyElementChanged(node);
             return;
         }
         PositionInfo p = node.getInfo(AllElementInfos.POSITION);
-        // Defensive: even if the parent linkage was somehow lost, refuse to move a position that's been
-        // explicitly fixed (e.g. component internals stamped by the place / move-component path). Pairs
-        // with the client-side DragController guard so a stale mirror can't trick the server into dragging
-        // a port off its anchor.
-        if (p != null && p.isFixed()) {
-            return;
-        }
         if (p == null) {
             p = new PositionInfo();
             node.setInfo(AllElementInfos.POSITION, p);
+            p.set(x, y);
+            level.notifyElementChanged(node);
+            return;
         }
-        p.set(x, y);
-        notifyChanged(node);
-    }
-
-    private static void lockToParent(PositionInfo pos) {
-        pos.setFixed(true);
-        pos.setCanChangeFix(false);
+        if (p.isFixed()) {
+            level.notifyElementChanged(node);
+            return;
+        }
+        double dx = x - p.getX();
+        double dy = y - p.getY();
+        CombineCascadeEngine.tryTranslateFreeNode(world, node, dx, dy);
     }
 }

@@ -12,14 +12,11 @@ import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.protocol.payload.client.CombineCascadePayload;
 import com.minecart.protocol.payload.client.DeleteElementPayload;
-import com.minecart.protocol.payload.client.DragBeginPayload;
-import com.minecart.protocol.payload.client.DragEndPayload;
 import com.minecart.protocol.payload.client.MoveElementPayload;
 import com.minecart.protocol.payload.client.RotateElementPayload;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.info.PositionInfo;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -103,23 +100,40 @@ public class DragController extends InputAdapter {
     /** Set after a drag actually moves so a stationary click doesn't generate a no-op MoveElement. */
     private boolean movedSinceDown;
     /**
-     * Gesture id allocated at drag start and threaded through every payload the drag emits
-     * (DragBegin / DragEnd, and as the {@code gestureId} on any CombineCascadePayload fired from
-     * touchUp). Multi-client correlation handle for the server's
-     * {@link com.minecart.logic.cascade.DragLeaseRegistry}: while this id holds leases, other
-     * clients trying to drag the same elements are refused. {@code null} when no drag is active.
+     * Gesture id allocated at drag start and threaded through every {@link MoveElementPayload} and
+     * {@link CombineCascadePayload} emitted by this drag. The server uses it to:
+     * <ul>
+     *   <li>Coalesce mid-drag streaming samples (same gesture id, same target → keep the latest
+     *       cursor pose only).</li>
+     *   <li>Detect contention in the per-tick drag aggregator (two distinct gesture ids on the
+     *       same element → immobilise the element for that tick).</li>
+     * </ul>
+     * {@code null} when no drag is active.
      */
     private UUID dragGestureId;
-    /** The world the active drag belongs to — captured at begin so end can route to the same world. */
-    private UUID dragWorldId;
-    /** Element ids registered with the active drag's lease, kept so end can release the same set. */
-    private final java.util.List<UUID> leasedElementIds = new java.util.ArrayList<>();
     /**
      * When dragging a free node, the id of the other node currently under the cursor (if any) — used
      * to render a "combine target" hint and to dispatch the combine payload sequence on touchUp. Reset
      * each frame in {@link #touchDragged}.
      */
     private UUID combineTargetId;
+
+    // --- Mid-drag streaming -------------------------------------------------------------------
+
+    /**
+     * Throttle period for mid-drag {@link MoveElementPayload} streaming. Approximately 20 Hz: fast
+     * enough for spectator clients to see smooth motion of the dragged element through the
+     * standard sync-delta pipeline, slow enough that a long sustained drag doesn't flood the wire.
+     * Final pose is always sent again on {@link #touchUp} so a late-suppressed frame still lands.
+     */
+    private static final long STREAM_INTERVAL_NANOS = 50_000_000L;
+
+    /**
+     * {@link System#nanoTime()} of the last streamed mid-drag payload, or {@code 0} when no payload
+     * has been streamed in the current gesture. The first {@link #touchDragged} frame in any new
+     * gesture emits immediately so spectators see the drag start with minimal delay.
+     */
+    private long lastStreamSendNanos;
 
     // --- Phase 3c gesture state ---------------------------------------------------------------
 
@@ -147,9 +161,9 @@ public class DragController extends InputAdapter {
     /**
      * Returns the id of the element whose info panel is currently open, or {@code null} when no
      * panel is open. The drag controller polls this every {@code touchDown} to refuse starting a
-     * drag on the actively-edited element — that's the client-side enforcement of "an element is
-     * forcibly locked while editing". Multi-client enforcement still goes through the server's
-     * drag-lease registry; this supplier just keeps the local user from racing themselves.
+     * drag on the actively-edited element — that's the client-side enforcement of "you can't
+     * drag what you're editing". In multiplayer, other players are free to drag the same element;
+     * the panel reopens with authoritative data on save.
      */
     private final Supplier<UUID> editingElementId;
 
@@ -315,6 +329,7 @@ public class DragController extends InputAdapter {
         draggingId = comp.getId();
         dragKind = DragKind.COMPONENT;
         movedSinceDown = false;
+        lastStreamSendNanos = 0L;
         PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
@@ -330,9 +345,7 @@ public class DragController extends InputAdapter {
         combineTargetId = null;
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
-        // Lease the component id — the server-side combine handler also walks owning-components, so
-        // any cross-component cascade that touches this one will detect the conflict.
-        openDragLease(java.util.List.of(comp.getId()));
+        dragGestureId = UUID.randomUUID();
         onDragStateChanged.accept(Boolean.TRUE);
     }
 
@@ -340,6 +353,7 @@ public class DragController extends InputAdapter {
         draggingId = node.getId();
         dragKind = DragKind.NODE;
         movedSinceDown = false;
+        lastStreamSendNanos = 0L;
         PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
@@ -350,7 +364,7 @@ public class DragController extends InputAdapter {
         combineTargetId = null;
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
-        openDragLease(java.util.List.of(node.getId()));
+        dragGestureId = UUID.randomUUID();
         onDragStateChanged.accept(Boolean.TRUE);
     }
 
@@ -372,6 +386,7 @@ public class DragController extends InputAdapter {
         draggingId = edge.getId();
         dragKind = DragKind.EDGE;
         movedSinceDown = false;
+        lastStreamSendNanos = 0L;
         originalNodePositions.clear();
         edgeMovableIds.clear();
         edgeMovableOrigins.clear();
@@ -422,13 +437,7 @@ public class DragController extends InputAdapter {
 
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
-        // Lease the edge + every movable. Edge id keeps another client from grabbing the same wire;
-        // each movable id (component centre or free node) blocks parallel translates of the same
-        // backing element.
-        java.util.List<UUID> ids = new java.util.ArrayList<>(edgeMovableIds.size() + 1);
-        ids.add(edge.getId());
-        ids.addAll(edgeMovableIds);
-        openDragLease(ids);
+        dragGestureId = UUID.randomUUID();
         onDragStateChanged.accept(Boolean.TRUE);
     }
 
@@ -459,6 +468,14 @@ public class DragController extends InputAdapter {
             case EDGE -> applyEdgeDragDelta(dx, dy);
         }
         stage.setDraggedOverTrash(isOverTrash(screenX, screenY));
+        // Stream the current optimistic pose to the server at a throttled cadence so other
+        // clients (multiplayer spectators) see the dragged element animate smoothly through the
+        // standard sync-delta pipeline. Without this, spectators would see nothing until touchUp
+        // and the element would appear to teleport at gesture-end. The server treats each
+        // streamed payload like any other Move — it lock-preflights, then either accepts and
+        // broadcasts, or refuses-and-rebroadcasts (which snaps THIS client back, so a refused
+        // mid-drag continuously springs against the lock until release).
+        maybeStreamCurrentPose();
         return true;
     }
 
@@ -632,10 +649,7 @@ public class DragController extends InputAdapter {
         onDragStateChanged.accept(Boolean.FALSE);
 
         if (worldId == null) {
-            // No world to send into — still release the lease defensively so a future world
-            // selection doesn't see stale lease state on the server. The Begin payload would have
-            // been sent under the now-cleared dragWorldId anyway.
-            closeDragLease();
+            dragGestureId = null;
             return true;
         }
         if (overTrash) {
@@ -645,7 +659,7 @@ public class DragController extends InputAdapter {
             if (kind != DragKind.EDGE) {
                 connection.send(new DeleteElementPayload(worldId, id));
             }
-            closeDragLease();
+            dragGestureId = null;
             return true;
         }
         if (!moved) {
@@ -657,34 +671,58 @@ public class DragController extends InputAdapter {
             // footprint small (no UI Stage, no Skin, no payload imports). Swallow either way so
             // the click doesn't propagate to other input processors.
             onElementClicked.accept(worldId, click != null ? click : id);
-            closeDragLease();
+            dragGestureId = null;
             return true;
         }
         switch (kind) {
-            case COMPONENT -> {
-                sendComponentMove(worldId, id);
-                closeDragLease();
-            }
+            case COMPONENT -> sendComponentMove(worldId, id);
             case NODE -> {
                 if (combineTarget != null && trySendCombine(worldId, gestureId, id, combineTarget)) {
-                    // Combine succeeded — close the lease AFTER sending the cascade so the
-                    // server processes "cascade with active lease" then "release". Sequence
-                    // matters: if release went first, the cascade would arrive after the lease
-                    // is gone, which (a) makes the lease check trivially pass anyway (no lease
-                    // held) but (b) breaks the multi-client guarantee that "this combine was
-                    // serialised inside the drag's lease window".
-                    closeDragLease();
+                    dragGestureId = null;
                     return true;
                 }
                 sendFreeNodeMove(worldId, id);
-                closeDragLease();
             }
-            case EDGE -> {
-                sendEdgeMovableMoves(worldId, movables, movableOrigins, movableIsComp);
-                closeDragLease();
-            }
+            case EDGE -> sendEdgeMovableMoves(worldId, movables, movableOrigins, movableIsComp);
         }
+        dragGestureId = null;
         return true;
+    }
+
+    /**
+     * Emits a mid-drag streaming pose update for whichever element / movables the active drag is
+     * tracking, if enough time has elapsed since the last stream. The first call in a fresh drag
+     * gesture always emits (lastStreamSendNanos starts at 0); subsequent calls throttle to
+     * {@link #STREAM_INTERVAL_NANOS}. Silent no-op when no drag is active, the world is unknown,
+     * or the gesture hasn't actually moved yet (no point streaming a "still at origin" pose).
+     *
+     * <p>Reuses the same per-kind dispatch as {@link #touchUp}'s final send. The server's sync
+     * pipeline coalesces multiple deltas for the same element in a single tick into one CHANGE
+     * op, so even a flood of streamed updates produces at most one network message per element
+     * per tick on the wire — bounded by the server's tick cadence, not the client's stream rate.
+     */
+    private void maybeStreamCurrentPose() {
+        if (draggingId == null || dragKind == null) {
+            return;
+        }
+        if (!movedSinceDown) {
+            return;
+        }
+        UUID worldId = selectedWorldId.get();
+        if (worldId == null) {
+            return;
+        }
+        long now = System.nanoTime();
+        if (lastStreamSendNanos != 0L && now - lastStreamSendNanos < STREAM_INTERVAL_NANOS) {
+            return;
+        }
+        lastStreamSendNanos = now;
+        switch (dragKind) {
+            case COMPONENT -> sendComponentMove(worldId, draggingId);
+            case NODE -> sendFreeNodeMove(worldId, draggingId);
+            case EDGE -> sendEdgeMovableMoves(worldId,
+                    edgeMovableIds, edgeMovableOrigins, edgeMovableIsComponent);
+        }
     }
 
     private void sendComponentMove(UUID worldId, UUID id) {
@@ -694,7 +732,7 @@ public class DragController extends InputAdapter {
         }
         PositionInfo p = comp.getInfo(AllElementInfos.POSITION);
         if (p != null) {
-            connection.send(new MoveElementPayload(worldId, id, p.getX(), p.getY()));
+            connection.send(new MoveElementPayload(worldId, id, dragGestureId, p.getX(), p.getY()));
         }
     }
 
@@ -705,7 +743,7 @@ public class DragController extends InputAdapter {
         }
         PositionInfo p = node.getInfo(AllElementInfos.POSITION);
         if (p != null) {
-            connection.send(new MoveElementPayload(worldId, id, p.getX(), p.getY()));
+            connection.send(new MoveElementPayload(worldId, id, dragGestureId, p.getX(), p.getY()));
         }
     }
 
@@ -737,7 +775,8 @@ public class DragController extends InputAdapter {
                 if (p == null) {
                     continue;
                 }
-                connection.send(new MoveElementPayload(worldId, movId, p.getX(), p.getY()));
+                connection.send(new MoveElementPayload(worldId, movId, dragGestureId,
+                        p.getX(), p.getY()));
             } else {
                 CircuitNode node = findFreeNode(movId);
                 if (node == null) {
@@ -747,7 +786,8 @@ public class DragController extends InputAdapter {
                 if (p == null) {
                     continue;
                 }
-                connection.send(new MoveElementPayload(worldId, movId, p.getX(), p.getY()));
+                connection.send(new MoveElementPayload(worldId, movId, dragGestureId,
+                        p.getX(), p.getY()));
             }
         }
     }
@@ -794,42 +834,6 @@ public class DragController extends InputAdapter {
                 gestureId,
                 List.of(new CombineCascadePayload.CombinePair(survivorId, absorbedId))));
         return true;
-    }
-
-    // --- Phase 2c drag-lease wiring -----------------------------------------------------------
-
-    /**
-     * Allocates a fresh {@link #dragGestureId} and dispatches a {@link DragBeginPayload} for the
-     * given element ids. Called from every {@code beginDrag*()} entry point. Silent no-op when
-     * {@link #selectedWorldId} returns {@code null} — we don't have a world to lease into, but the
-     * drag still happens locally (the server will simply ignore the eventual Move payload too).
-     */
-    private void openDragLease(java.util.List<UUID> elementIds) {
-        UUID worldId = selectedWorldId.get();
-        dragWorldId = worldId;
-        dragGestureId = UUID.randomUUID();
-        leasedElementIds.clear();
-        leasedElementIds.addAll(elementIds);
-        if (worldId != null && !elementIds.isEmpty()) {
-            connection.send(new DragBeginPayload(worldId, dragGestureId, leasedElementIds));
-        }
-    }
-
-    /**
-     * Releases the current drag lease, if any, by sending {@link DragEndPayload} and clearing the
-     * local tracking fields. Idempotent — calling repeatedly is harmless (the second call just
-     * sends nothing because {@code dragGestureId} is already null).
-     */
-    private void closeDragLease() {
-        if (dragGestureId == null) {
-            return;
-        }
-        if (dragWorldId != null) {
-            connection.send(new DragEndPayload(dragWorldId, dragGestureId));
-        }
-        dragGestureId = null;
-        dragWorldId = null;
-        leasedElementIds.clear();
     }
 
     private boolean isOverTrash(int screenX, int screenY) {

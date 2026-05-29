@@ -3,7 +3,7 @@ package com.minecart.logic;
 import com.minecart.event.events.ServerTickEvent;
 import com.minecart.foundation.Level;
 import com.minecart.foundation.World;
-import com.minecart.logic.cascade.DragLeaseRegistry;
+import com.minecart.logic.physics.DragAggregator;
 
 import java.util.Queue;
 import java.util.UUID;
@@ -11,24 +11,24 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Server-side level tick: processes deferred actions and ticks every {@link World}.
+ *
+ * <h2>Per-tick drag aggregator</h2>
+ * Streaming drag payloads (move / rotate gestures from multiple concurrent clients) are buffered
+ * via {@link #getDragAggregator()} and resolved as a single physics solve at the start of each
+ * tick, before the per-world tick. This replaces the older "drag lease" model where each gesture
+ * acquired exclusive ownership of the touched elements — see the physics package for the
+ * soft-spring / contention-policy details.
  */
 public class ServerLevel extends Level {
 
     private final Queue<Runnable> actionQueue = new ConcurrentLinkedQueue<>();
-    /**
-     * Server-side drag-lease bookkeeping (Phase 2c). Mutation handlers consult this to refuse
-     * payloads from clients whose drag doesn't hold a lease on the involved elements. The level is
-     * the natural owner because the lease is a per-level concept (a lease on element {@code E} in
-     * level {@code L} doesn't mean anything in level {@code L'}) and because handlers already have
-     * a level reference.
-     */
-    private final DragLeaseRegistry leases = new DragLeaseRegistry();
+    private final DragAggregator dragAggregator = new DragAggregator();
 
     protected final ServerTickEvent.Level preTick = new ServerTickEvent.Level(ServerTickEvent.Phase.PRE, this);
     protected final ServerTickEvent.Level postTick = new ServerTickEvent.Level(ServerTickEvent.Phase.POST, this);
 
-    public DragLeaseRegistry getDragLeases() {
-        return leases;
+    public DragAggregator getDragAggregator() {
+        return dragAggregator;
     }
 
     /**
@@ -74,6 +74,20 @@ public class ServerLevel extends Level {
 
     /**
      * The single global tick method.
+     *
+     * <p>Phases:
+     * <ol>
+     *   <li>{@code preTick} event fires.</li>
+     *   <li>Action queue is drained — incoming-payload handlers' {@code level.submit}-ed actions
+     *       run here; these populate the drag aggregator's per-tick buffer and apply discrete
+     *       mutations (panel saves, combine cascades, scroll rotations, etc.).</li>
+     *   <li>{@link DragAggregator#flush} resolves all of this tick's buffered drag streams as a
+     *       single unified physics solve, writing back authoritative poses. This runs AFTER the
+     *       action queue so discrete mutations land in the world before streaming drags adapt
+     *       to them.</li>
+     *   <li>Each world's per-tick simulation runs.</li>
+     *   <li>{@code postTick} fires.</li>
+     * </ol>
      */
     public void tick() {
         init();
@@ -84,6 +98,8 @@ public class ServerLevel extends Level {
                 action.run();
             }
         }
+
+        dragAggregator.flush(this);
 
         for (World world : getWorlds()) {
             if (world instanceof ServerWorld sw) {

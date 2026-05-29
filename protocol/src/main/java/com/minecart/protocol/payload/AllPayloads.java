@@ -12,8 +12,6 @@ import com.minecart.protocol.payload.client.MoveElementPayload;
 import com.minecart.protocol.payload.client.PlaceComponentPayload;
 import com.minecart.protocol.payload.client.PlaceNodePayload;
 import com.minecart.protocol.payload.client.RenameWorldPayload;
-import com.minecart.protocol.payload.client.DragBeginPayload;
-import com.minecart.protocol.payload.client.DragEndPayload;
 import com.minecart.protocol.payload.client.ReplaceComponentNodePayload;
 import com.minecart.protocol.payload.client.RotateElementPayload;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
@@ -45,8 +43,6 @@ public final class AllPayloads {
     public static final PayloadType<ElementInfoUpdatePayload> ELEMENT_INFO_UPDATE = ElementInfoUpdatePayload.TYPE;
     public static final PayloadType<CombineCascadePayload> COMBINE_CASCADE = CombineCascadePayload.TYPE;
     public static final PayloadType<RotateElementPayload> ROTATE_ELEMENT = RotateElementPayload.TYPE;
-    public static final PayloadType<DragBeginPayload> DRAG_BEGIN = DragBeginPayload.TYPE;
-    public static final PayloadType<DragEndPayload> DRAG_END = DragEndPayload.TYPE;
 
     private AllPayloads() {}
 }

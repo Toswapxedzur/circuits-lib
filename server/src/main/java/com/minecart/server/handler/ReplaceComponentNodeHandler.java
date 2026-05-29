@@ -60,6 +60,13 @@ public final class ReplaceComponentNodeHandler implements PayloadHandler<Replace
         // for topological port replacement, so we only gate on LOCKED for now.
         LockState eff = comp.effectiveLockState(LOCK_EPSILON);
         if (eff.mode() == LockMode.LOCKED) {
+            // Rebroadcast the component (and the two nodes the swap would have touched, when
+            // known) so any client that already showed an optimistic port replacement reverts.
+            level.notifyElementChanged(comp);
+            CircuitNode oldNode = findNode(world, payload.getOldNodeId());
+            CircuitNode newNode = findNode(world, payload.getNewNodeId());
+            if (oldNode != null) level.notifyElementChanged(oldNode);
+            if (newNode != null) level.notifyElementChanged(newNode);
             return;
         }
         CircuitNode oldNode = findNode(world, payload.getOldNodeId());

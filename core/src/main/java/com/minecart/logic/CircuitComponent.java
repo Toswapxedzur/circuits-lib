@@ -320,80 +320,54 @@ public non-sealed class CircuitComponent extends CircuitElement {
     }
 
     /**
-     * Soft lock state derived from internal port node lock counts. Walks {@link #portsByIndex}
-     * (only registered ports, not intrinsic non-port internals which have their positions stamped
-     * from anchor offsets unconditionally) and counts how many carry {@link PositionInfo#isFixed()}.
+     * Default rotation pivot for a component with no authored pivot — the component centre when
+     * known, otherwise an "empty" {@link LockState#FREE}. Always reports {@link LockMode#FREE};
+     * the historical "soft-lock from internal port isFixed counts" derivation has been retired
+     * now that the physics solver fully encodes the kinematic constraints of locked ports via
+     * its body / constraint graph (a port pinned to other anchors contributes {@code invMass=0}
+     * weight or distance / pin constraints, so the solver naturally refuses motion that the old
+     * soft-lock would have flagged as LOCKED / ROTATION_FREE).
      *
-     * <ul>
-     *   <li>0 locked → {@link LockMode#FREE}; the returned pivot defaults to the component centre
-     *       (so a rotation gesture on a fully-free component has a sensible default pivot without
-     *       the caller having to recompute it).</li>
-     *   <li>1 locked → {@link LockMode#ROTATION_FREE} pivoted at that port's world position.</li>
-     *   <li>≥2 locked → {@link LockMode#LOCKED}; pivot fields are inert.</li>
-     * </ul>
-     *
-     * <p>This is the SOFT half of the effective lock — combine via {@link #effectiveLockState(double)}
-     * with the strict {@link LockInfo}.
+     * <p>Retained as a thin convenience for the UI panels and rotation-gesture defaults: they
+     * still want a sensible "where should the rotation pivot live by default" answer, and the
+     * component's own centre is the right choice when no {@link LockInfo#isPivotSet() authored
+     * pivot} exists. Callers that need a real lock state should use
+     * {@link #effectiveLockState(double)} (which now returns the strict {@link LockInfo} state
+     * directly).
      */
     public LockState getSoftLockState() {
-        int lockedCount = 0;
-        double lockedX = 0.0;
-        double lockedY = 0.0;
-        for (CircuitNode port : portsByIndex.values()) {
-            if (port == null) {
-                continue;
-            }
-            PositionInfo p = port.getInfo(AllElementInfos.POSITION);
-            if (p != null && p.isFixed()) {
-                lockedCount++;
-                if (lockedCount == 1) {
-                    lockedX = p.getX();
-                    lockedY = p.getY();
-                }
-                if (lockedCount > 1) {
-                    return LockState.LOCKED;
-                }
-            }
+        PositionInfo centre = getInfo(AllElementInfos.POSITION);
+        if (centre != null) {
+            return new LockState(LockMode.FREE, centre.getX(), centre.getY(), true);
         }
-        if (lockedCount == 0) {
-            PositionInfo centre = getInfo(AllElementInfos.POSITION);
-            if (centre != null) {
-                return new LockState(LockMode.FREE, centre.getX(), centre.getY(), true);
-            }
-            return LockState.FREE;
-        }
-        return LockState.rotationFree(lockedX, lockedY);
+        return LockState.FREE;
     }
 
     /**
-     * Effective lock state = {@link LockState#and AND} of strict ({@link LockInfo}) and soft. When
-     * no strict {@link LockInfo} is attached the strict half defaults to {@link LockMode#FREE}, so
-     * the soft state alone drives the result. {@code epsilon} is the pivot-coincidence tolerance
-     * used when both inputs are {@link LockMode#ROTATION_FREE} — typically a small fraction of a
-     * world unit (e.g. {@code 1e-6}).
+     * Effective lock state = the strict {@link LockInfo} state. With the soft-lock derivation
+     * retired (see {@link #getSoftLockState()} javadoc), strict is the sole authoritative source
+     * for "what motion does the player permit on this element"; the kinematic constraints that
+     * the old soft-lock used to encode (multiple anchored ports ⇒ LOCKED; one anchored port ⇒
+     * ROTATION_FREE) are now expressed directly to the physics solver as pin / distance
+     * constraints on the body graph.
+     *
+     * <p>{@code epsilon} is retained on the signature for API stability with prior call sites,
+     * but is unused — the strict {@link LockInfo}'s pivot is taken at face value with no
+     * reconciliation needed.
      */
     public LockState effectiveLockState(double epsilon) {
-        LockState soft = getSoftLockState();
         LockInfo strict = getInfo(AllElementInfos.LOCK);
-        LockState strictState;
         if (strict == null) {
-            strictState = LockState.FREE;
-        } else if (strict.getMode() == LockMode.ROTATION_FREE && strict.isPivotSet()) {
-            strictState = LockState.rotationFree(strict.getPivotX(), strict.getPivotY());
-        } else if (strict.getMode() == LockMode.ROTATION_FREE) {
-            // ROTATION_FREE without an authored pivot — treat as "no constraint" on the strict side
-            // so the soft side's pivot (if any) wins. Equivalent to LockMode FREE for the AND
-            // computation since LockMode.and(FREE, soft) = soft.
-            strictState = LockState.FREE;
-        } else {
-            strictState = switch (strict.getMode()) {
-                case FREE -> LockState.FREE;
-                case POSITION_FREE -> LockState.positionFree();
-                case LOCKED -> LockState.LOCKED;
-                default -> LockState.FREE;
-            };
+            return LockState.FREE;
         }
-        return LockState.and(strictState, soft, epsilon);
+        return switch (strict.getMode()) {
+            case FREE -> LockState.FREE;
+            case POSITION_FREE -> LockState.positionFree();
+            case ROTATION_FREE -> strict.isPivotSet()
+                    ? LockState.rotationFree(strict.getPivotX(), strict.getPivotY())
+                    : LockState.FREE; // No pivot authored ⇒ treat as FREE so the gesture picks its own.
+            case LOCKED -> LockState.LOCKED;
+        };
     }
 
     /**

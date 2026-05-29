@@ -3,8 +3,10 @@ package com.minecart.event.info;
 import com.minecart.event.events.ElementInfoInjectEvent;
 import com.minecart.foundation.Level;
 import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.info.PositionInfo;
+import com.minecart.variant.info.RigidityInfo;
 import com.minecart.variant.info.RotationInfo;
 
 /**
@@ -39,6 +41,19 @@ public final class InfoInjectors {
                 return;
             }
             event.inject(AllElementInfos.ROTATION, new RotationInfo());
+        });
+        // RigidityInfo on every edge: defaults to flexible. Attaching it eagerly means the panel
+        // and the physics adapter never have to deal with "absent vs. flexible" — they always see
+        // an explicit RigidityInfo and read its boolean. Newly-placed edges get the flexible
+        // default; users can opt individual edges into rigid coupling via the edge panel.
+        level.register(ElementInfoInjectEvent.class, event -> {
+            if (!(event.getElement() instanceof CircuitEdge)) {
+                return;
+            }
+            if (event.isPresent(AllElementInfos.RIGIDITY)) {
+                return;
+            }
+            event.inject(AllElementInfos.RIGIDITY, new RigidityInfo());
         });
     }
 }

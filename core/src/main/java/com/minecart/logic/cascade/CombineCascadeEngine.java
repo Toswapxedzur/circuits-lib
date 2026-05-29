@@ -4,6 +4,7 @@ import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerWorld;
+import com.minecart.logic.physics.CircuitPhysicsAdapter;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.info.LockMode;
 import com.minecart.variant.info.LockState;
@@ -140,15 +141,18 @@ public final class CombineCascadeEngine {
     }
 
     /**
-     * Atomically translates a component by {@code (dx, dy)} via {@link TranslateComponentOp}, after
-     * a lock-state preflight: refuses (returns {@code false}) when the component's effective lock
-     * doesn't allow translation. Used by panel-driven port edits and (Phase 3c) gestures, both of
-     * which want the engine's atomicity + rollback semantics rather than mutating
-     * {@link PositionInfo} fields directly.
+     * Atomically translates a component by {@code (dx, dy)}, after a lock-state preflight: refuses
+     * (returns {@code false}) when the component's effective lock doesn't allow translation. The
+     * translation is dispatched through {@link CircuitPhysicsAdapter#translate} so any rigid
+     * edges and multi-owner port nodes connected to {@code component} propagate the motion
+     * across the kinematic sub-graph; isolated components (the common case for the editor's
+     * single-element drag) move only themselves because no constraints exist to pull anything
+     * else along.
      *
-     * <p>Notifies via {@link com.minecart.foundation.Level#notifyElementChanged} for every owned
-     * internal node + the component itself on success, so the standard delta-sync replicates the
-     * move to client mirrors. We don't broadcast on a failed preflight — the world is unchanged.
+     * <p>Notifies via {@link com.minecart.foundation.Level#notifyElementChanged} for every
+     * mutated element — the adapter handles the per-body notifies internally — so the standard
+     * delta-sync replicates the move to client mirrors. We don't broadcast on a failed preflight:
+     * the world is unchanged.
      */
     public static boolean tryTranslateComponent(ServerWorld world, CircuitComponent component,
                                                 double dx, double dy) {
@@ -160,21 +164,26 @@ public final class CombineCascadeEngine {
         }
         LockState eff = component.effectiveLockState(PIVOT_EPSILON);
         if (!eff.mode().allowsTranslation()) {
+            broadcastAuthoritativeComponent(world, component);
             return false;
         }
-        boolean ok = apply(world, java.util.List.of(new TranslateComponentOp(component, dx, dy)));
-        if (ok) {
-            notifyComponentAndOwnedNodes(world, component);
-        }
-        return ok;
+        CircuitPhysicsAdapter.translate(world, component, dx, dy);
+        return true;
     }
 
     /**
      * Atomically rotates a component by {@code deltaRadians} around {@code (pivotX, pivotY)} via
-     * {@link RotateComponentOp}, with the same lock-preflight + atomicity semantics as
+     * {@link CircuitPhysicsAdapter#rotate}, with the same lock-preflight semantics as
      * {@link #tryTranslateComponent}. The pivot is the geometric centre of rotation, separate from
-     * the component's centre {@link PositionInfo}: gestures and the cascade-cascade-from-panel
-     * paths use this directly with the cursor or user-chosen pivot.
+     * the component's centre {@link PositionInfo}: gestures and the panel-driven motion paths use
+     * this directly with the cursor or user-chosen pivot.
+     *
+     * <p>ROTATION_FREE strict additionally constrains the pivot: it must coincide (within
+     * {@link #PIVOT_EPSILON}) with the authored strict pivot. A gesture targeting a different
+     * pivot is refused outright rather than partially applied — matches the user's "rotation
+     * lock always wins" contract for the seed body. Bodies <em>elsewhere</em> in the chain with
+     * rotation-locked inverse inertias also refuse to spin, but that's enforced naturally by the
+     * solver's inverse-inertia weighting (no special handling needed here).
      */
     public static boolean tryRotateComponent(ServerWorld world, CircuitComponent component,
                                              double pivotX, double pivotY, double deltaRadians) {
@@ -186,24 +195,18 @@ public final class CombineCascadeEngine {
         }
         LockState eff = component.effectiveLockState(PIVOT_EPSILON);
         if (!eff.mode().allowsRotation()) {
+            broadcastAuthoritativeComponent(world, component);
             return false;
         }
-        // ROTATION_FREE additionally constrains the pivot: it must coincide (within eps) with the
-        // soft/strict-locked pivot. The lock-state machinery already collapses incompatible
-        // pivots to LOCKED for the cross-cutting AND, but a freshly-issued rotation that targets a
-        // different pivot than the only-allowed one would still bypass the gate. Enforce here.
         if (eff.mode() == LockMode.ROTATION_FREE && eff.pivotValid()) {
             if (Math.abs(eff.pivotX() - pivotX) > PIVOT_EPSILON
                     || Math.abs(eff.pivotY() - pivotY) > PIVOT_EPSILON) {
+                broadcastAuthoritativeComponent(world, component);
                 return false;
             }
         }
-        boolean ok = apply(world,
-                java.util.List.of(new RotateComponentOp(component, pivotX, pivotY, deltaRadians)));
-        if (ok) {
-            notifyComponentAndOwnedNodes(world, component);
-        }
-        return ok;
+        CircuitPhysicsAdapter.rotate(world, component, pivotX, pivotY, deltaRadians);
+        return true;
     }
 
     /**
@@ -213,8 +216,10 @@ public final class CombineCascadeEngine {
      * geometry is solved.
      *
      * <p>Refuses when {@code portNode} isn't a port (no parent component), when it's a port of
-     * more than one component (Phase 2c+ transitive cascade territory), or when the parent
-     * component's effective lock state forbids translation.
+     * more than one component (the shared-port case is handled by emitting the parent translation
+     * and letting the pin-joint constraint propagate via the adapter — but only when the caller
+     * picks one specific owner), or when the parent component's effective lock state forbids
+     * translation.
      */
     public static boolean tryMovePortNode(ServerWorld world, CircuitNode portNode,
                                           double targetX, double targetY) {
@@ -223,17 +228,18 @@ public final class CombineCascadeEngine {
         }
         if (portNode.getComponents().size() != 1) {
             // 0 → free node (caller should write PositionInfo directly, not call us).
-            // ≥2 → shared port between components; needs transitive cascade.
+            // ≥2 → shared port between components; needs a deliberate "which owner moves" choice.
+            broadcastAuthoritativeNode(world, portNode);
             return false;
         }
         CircuitComponent parent = portNode.getComponents().iterator().next();
         if (!parent.isPort(portNode)) {
-            // Owned but not as a registered port (intrinsic non-port internal) → can't move via
-            // the standard panel path; refused.
+            broadcastAuthoritativeNode(world, portNode);
             return false;
         }
         PositionInfo p = portNode.getInfo(AllElementInfos.POSITION);
         if (p == null) {
+            broadcastAuthoritativeNode(world, portNode);
             return false;
         }
         double dx = targetX - p.getX();
@@ -241,13 +247,80 @@ public final class CombineCascadeEngine {
         return tryTranslateComponent(world, parent, dx, dy);
     }
 
-    private static void notifyComponentAndOwnedNodes(ServerWorld world, CircuitComponent component) {
-        component.getWorld().getLevel().notifyElementChanged(component);
-        for (CircuitNode n : component.getNodes()) {
-            if (n != null && n.getWorld() != null) {
-                n.getWorld().getLevel().notifyElementChanged(n);
+    /**
+     * Free-node analogue of {@link #tryTranslateComponent}: dispatches a free node's translation
+     * gesture through the physics adapter so it propagates across any rigid edges incident to
+     * the node. Refuses silently when {@code node} is actually a port (the caller should route
+     * port edits through {@link #tryMovePortNode}) or when its {@link PositionInfo#isFixed()}
+     * flag forbids movement.
+     */
+    public static boolean tryTranslateFreeNode(ServerWorld world, CircuitNode node,
+                                                double dx, double dy) {
+        if (world == null || node == null) {
+            return false;
+        }
+        if (!node.getComponents().isEmpty()) {
+            broadcastAuthoritativeNode(world, node);
+            return false;
+        }
+        if (dx == 0.0 && dy == 0.0) {
+            return true;
+        }
+        PositionInfo p = node.getInfo(AllElementInfos.POSITION);
+        if (p != null && p.isFixed()) {
+            broadcastAuthoritativeNode(world, node);
+            return false;
+        }
+        CircuitPhysicsAdapter.translateFreeNode(world, node, dx, dy);
+        return true;
+    }
+
+    /**
+     * Emits an authoritative-pose sync for {@code component} and every internal node it owns. Used
+     * after a refused translate / rotate so the client mirror — which has already optimistically
+     * moved the component's centre and every internal port in {@code DragController.applyComponentDragDelta} —
+     * gets corrected back to the server's authoritative state.
+     *
+     * <p>The set notified here intentionally mirrors what the optimistic client-side drag mutates
+     * (the component itself plus {@code comp.getNodes()}). Notifying the component without its
+     * internal nodes would leave the ports rendered at the dragged offset even after the centre
+     * snapped back, since the sync layer can't infer the rigid relationship and clients don't
+     * re-derive port positions from a component's POSITION delta.
+     *
+     * <p>The sync layer ({@link com.minecart.server.listener.CircuitElementListener}) deduplicates
+     * by element id and serializes the current state at flush time, so calling this with an
+     * unchanged authoritative pose still produces a meaningful CHANGE delta that overwrites the
+     * client's stale optimistic state — the whole point of the rebroadcast.
+     */
+    private static void broadcastAuthoritativeComponent(ServerWorld world, CircuitComponent component) {
+        if (world == null || component == null) {
+            return;
+        }
+        com.minecart.foundation.Level level = world.getLevel();
+        if (level == null) {
+            return;
+        }
+        level.notifyElementChanged(component);
+        for (CircuitNode internal : component.getNodes()) {
+            if (internal != null) {
+                level.notifyElementChanged(internal);
             }
         }
+    }
+
+    /**
+     * Single-element variant of {@link #broadcastAuthoritativeComponent}: emits one CHANGE for a
+     * free node (or a refused port-node move where the engine doesn't reach the parent component).
+     */
+    private static void broadcastAuthoritativeNode(ServerWorld world, CircuitNode node) {
+        if (world == null || node == null) {
+            return;
+        }
+        com.minecart.foundation.Level level = world.getLevel();
+        if (level == null) {
+            return;
+        }
+        level.notifyElementChanged(node);
     }
 
     private static void rollback(ServerWorld world, List<CascadeOp> applied) {

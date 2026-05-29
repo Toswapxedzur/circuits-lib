@@ -21,13 +21,12 @@ import java.util.UUID;
  * the port wins regardless of how the client passed the arguments. The server replays the list
  * through {@code CombineCascadeEngine}; either every pair lands or none do.
  *
- * <h2>Multiplayer drag lease (Phase 2c)</h2>
- * The optional {@link #getGestureId()} carries the drag-lease handle from the client's
- * {@code DragBegin} so the server can correlate the merge with the active drag. Combines not
- * initiated from a drag (panel edits, scripted edits) leave it {@code null} and are validated
- * solely against the touched elements' lease state — if any element is leased to another player
- * the cascade is refused. The drag-lease protocol itself isn't wired yet; this payload carries
- * the field from day one so the wire format won't churn when drag-lease lands.
+ * <h2>Gesture id</h2>
+ * The optional {@link #getGestureId()} matches the {@code dragGestureId} of the drag that emitted
+ * this combine, when the combine arose from a drop. Servers may use it to correlate the merge
+ * with this-tick streaming Move payloads (same gesture id) for diagnostics; it's no longer used
+ * for any lease / lock decision since the drag-lease system was removed. Combines not initiated
+ * from a drag (panel edits, scripted edits) leave it {@code null}.
  *
  * <p>Replaces the per-step trio of {@link ReplaceComponentNodePayload} +
  * {@link EdgeEndpointChangePayload} + {@link DeleteElementPayload} that the editor currently sends

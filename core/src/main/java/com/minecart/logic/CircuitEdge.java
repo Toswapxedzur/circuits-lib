@@ -18,6 +18,7 @@ import com.minecart.variant.info.LockInfo;
 import com.minecart.variant.info.LockMode;
 import com.minecart.variant.info.LockState;
 import com.minecart.variant.info.PositionInfo;
+import com.minecart.variant.info.RigidityInfo;
 
 import java.util.Set;
 import java.util.UUID;
@@ -109,89 +110,47 @@ public non-sealed class CircuitEdge extends CircuitElement {
     }
 
     /**
-     * Soft lock state derived from this edge's two endpoint nodes. Walks {@link #start} and
-     * {@link #end} (skipping nulls) and counts how many carry {@link PositionInfo#isFixed()}.
+     * Default rotation pivot for this edge — midpoint of its two endpoints when both endpoint
+     * positions are known, otherwise an "empty" {@link LockState#FREE}. Always reports
+     * {@link LockMode#FREE}; the historical isFixed-counting derivation has been retired now
+     * that the physics solver encodes endpoint anchoring as pin / distance constraints on the
+     * body graph (see {@link CircuitComponent#getSoftLockState()} for the full rationale).
      *
-     * <p>Per the design (Q2 in the lock-state design pass): a port endpoint's {@code isFixed}
-     * does NOT contribute here — port locks are an anchor-bookkeeping detail of the parent
-     * component, not a constraint on the edge itself. Component-attached endpoints behave as if
-     * they were free for the purpose of edge soft lock; the parent component's own lock state
-     * still gates any cascade that would have to translate it. To detect "this endpoint is a
-     * port" we ask whether the node has any owning component; free nodes participate as usual.
-     *
-     * <ul>
-     *   <li>0 free endpoints locked → {@link LockMode#FREE}; pivot defaults to midpoint of the
-     *       two endpoints (the rotation gesture's natural pivot for an unconstrained line).</li>
-     *   <li>1 free endpoint locked → {@link LockMode#ROTATION_FREE} pivoted at that endpoint.</li>
-     *   <li>2 free endpoints locked → {@link LockMode#LOCKED}.</li>
-     * </ul>
+     * <p>Retained as a panel-default-pivot helper: the edge panel uses this when no
+     * {@link LockInfo#isPivotSet() authored pivot} is present, and a midpoint is a sensible
+     * default that doesn't depend on lock semantics at all.
      */
     public LockState getSoftLockState() {
-        int lockedCount = 0;
-        double lockedX = 0.0;
-        double lockedY = 0.0;
-        CircuitNode[] endpoints = new CircuitNode[]{start, end};
-        for (CircuitNode n : endpoints) {
-            if (n == null) {
-                continue;
-            }
-            if (n.hasComponent()) {
-                // Port-anchored: doesn't bind this edge — see method javadoc.
-                continue;
-            }
-            PositionInfo p = n.getInfo(AllElementInfos.POSITION);
-            if (p != null && p.isFixed()) {
-                lockedCount++;
-                if (lockedCount == 1) {
-                    lockedX = p.getX();
-                    lockedY = p.getY();
-                }
-                if (lockedCount > 1) {
-                    return LockState.LOCKED;
-                }
-            }
+        PositionInfo ps = start != null ? start.getInfo(AllElementInfos.POSITION) : null;
+        PositionInfo pe = end != null ? end.getInfo(AllElementInfos.POSITION) : null;
+        if (ps != null && pe != null) {
+            return new LockState(LockMode.FREE,
+                    (ps.getX() + pe.getX()) * 0.5,
+                    (ps.getY() + pe.getY()) * 0.5,
+                    true);
         }
-        if (lockedCount == 0) {
-            // FREE with midpoint as the default pivot. Midpoint is undefined when an endpoint is
-            // missing or has no PositionInfo; fall back to (0,0) with pivotValid=false in that case
-            // so the gesture code can pick a sensible default itself.
-            PositionInfo ps = start != null ? start.getInfo(AllElementInfos.POSITION) : null;
-            PositionInfo pe = end != null ? end.getInfo(AllElementInfos.POSITION) : null;
-            if (ps != null && pe != null) {
-                return new LockState(LockMode.FREE,
-                        (ps.getX() + pe.getX()) * 0.5,
-                        (ps.getY() + pe.getY()) * 0.5,
-                        true);
-            }
-            return LockState.FREE;
-        }
-        return LockState.rotationFree(lockedX, lockedY);
+        return LockState.FREE;
     }
 
     /**
-     * Effective lock state for this edge = {@link LockState#and AND} of strict ({@link LockInfo})
-     * and soft. See {@link CircuitComponent#effectiveLockState(double)} for the strict-side
-     * lookup convention.
+     * Effective lock state for this edge = the strict {@link LockInfo} state. See
+     * {@link CircuitComponent#effectiveLockState(double)} for the contract; the soft-lock half
+     * is no longer combined in (kinematic anchoring is now expressed to the physics solver as
+     * constraints on the body graph rather than as a derived lock mode here).
      */
     public LockState effectiveLockState(double epsilon) {
-        LockState soft = getSoftLockState();
         LockInfo strict = getInfo(AllElementInfos.LOCK);
-        LockState strictState;
         if (strict == null) {
-            strictState = LockState.FREE;
-        } else if (strict.getMode() == LockMode.ROTATION_FREE && strict.isPivotSet()) {
-            strictState = LockState.rotationFree(strict.getPivotX(), strict.getPivotY());
-        } else if (strict.getMode() == LockMode.ROTATION_FREE) {
-            strictState = LockState.FREE;
-        } else {
-            strictState = switch (strict.getMode()) {
-                case FREE -> LockState.FREE;
-                case POSITION_FREE -> LockState.positionFree();
-                case LOCKED -> LockState.LOCKED;
-                default -> LockState.FREE;
-            };
+            return LockState.FREE;
         }
-        return LockState.and(strictState, soft, epsilon);
+        return switch (strict.getMode()) {
+            case FREE -> LockState.FREE;
+            case POSITION_FREE -> LockState.positionFree();
+            case ROTATION_FREE -> strict.isPivotSet()
+                    ? LockState.rotationFree(strict.getPivotX(), strict.getPivotY())
+                    : LockState.FREE;
+            case LOCKED -> LockState.LOCKED;
+        };
     }
 
     public CircuitNode getConnection(int index) {
@@ -389,6 +348,13 @@ public non-sealed class CircuitEdge extends CircuitElement {
     public static final String FIELD_LOCK_MODE = "core:lock.mode";
     public static final String FIELD_LOCK_PIVOT_X = "core:lock.pivotX";
     public static final String FIELD_LOCK_PIVOT_Y = "core:lock.pivotY";
+    /**
+     * Rigid / flexible toggle. When {@code true}, this edge contributes a fixed-length distance
+     * constraint to the physics solver and dragging either endpoint pulls the other along; when
+     * {@code false} (default) the edge is purely visual. Authored via the edge panel; persisted
+     * through {@link RigidityInfo}.
+     */
+    public static final String FIELD_RIGID = "core:edge.rigid";
 
     static {
         // Cross-cutting fragment for every CircuitEdge: editable endpoint coordinates + the 4-mode
@@ -443,6 +409,11 @@ public non-sealed class CircuitEdge extends CircuitElement {
                 builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_X, "Pivot X", pivotX));
                 builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_Y, "Pivot Y", pivotY));
             }
+            // Rigid / flexible toggle. Always present, defaulting to whatever RigidityInfo carries
+            // (which the info-injector ensures is always non-null on a freshly placed edge).
+            RigidityInfo rigid = edge.getInfo(AllElementInfos.RIGIDITY);
+            boolean rigidCurrent = rigid != null && rigid.isRigid();
+            builder.add(new CheckboxSpec(FIELD_RIGID, "Rigid", rigidCurrent));
         });
 
         // Save handler. Applies lock first, then endpoint coords. Port endpoints refuse here
@@ -490,6 +461,23 @@ public non-sealed class CircuitEdge extends CircuitElement {
             mutated |= applyEdgeEndpoint(edge.getStart(), snapshot, FIELD_START_X, FIELD_START_Y);
             mutated |= applyEdgeEndpoint(edge.getEnd(), snapshot, FIELD_END_X, FIELD_END_Y);
 
+            // Rigid toggle: apply last so the next solver pass (driven by any subsequent gesture)
+            // sees the freshly-set flag. We lazily create RigidityInfo if absent — the injector
+            // normally attaches it at element insert time, but defensive creation here makes the
+            // panel save robust to elements that predate the injector wiring.
+            Boolean wantsRigid = snapshot.getBoolean(FIELD_RIGID).orElse(null);
+            if (wantsRigid != null) {
+                RigidityInfo rigid = edge.getInfo(AllElementInfos.RIGIDITY);
+                if (rigid == null) {
+                    rigid = new RigidityInfo();
+                    edge.setInfo(AllElementInfos.RIGIDITY, rigid);
+                    mutated = true;
+                }
+                if (rigid.setRigid(wantsRigid)) {
+                    mutated = true;
+                }
+            }
+
             if (mutated && edge.getWorld() != null) {
                 edge.getWorld().getLevel().notifyElementChanged(edge);
             }
@@ -515,11 +503,13 @@ public non-sealed class CircuitEdge extends CircuitElement {
 
         PositionInfo p = node.getInfo(AllElementInfos.POSITION);
         if (p == null || (p.isFixed() && !p.canChangeFix())) return false;
-        if (p.isFixed()) return false; // soft lock honoured: locked nodes don't move via panel
+        if (p.isFixed()) return false; // node-level lock honoured: fixed free nodes don't move via panel
         if (newX == p.getX() && newY == p.getY()) return false;
-        p.set(newX, newY);
-        if (node.getWorld() != null) {
-            node.getWorld().getLevel().notifyElementChanged(node);
+        // Route through the cascade engine so any rigid edges incident to the free endpoint
+        // propagate the panel-driven move. The engine notifies each touched element on success.
+        if (node.getWorld() instanceof ServerWorld sw) {
+            CombineCascadeEngine.tryTranslateFreeNode(sw, node,
+                    newX - p.getX(), newY - p.getY());
         }
         return true;
     }

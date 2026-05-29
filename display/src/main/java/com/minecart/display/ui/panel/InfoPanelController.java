@@ -6,15 +6,12 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.display.render.WorldStage;
 import com.minecart.logic.CircuitElement;
-import com.minecart.protocol.payload.client.DragBeginPayload;
-import com.minecart.protocol.payload.client.DragEndPayload;
 import com.minecart.protocol.payload.client.ElementInfoUpdatePayload;
 import com.minecart.ui.panel.InfoPanelRegistry;
 import com.minecart.ui.panel.InfoPanelSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -42,8 +39,9 @@ public final class InfoPanelController {
     /**
      * Optional reference to the world stage so the controller can paint the edited element with a
      * distinctive tint while its panel is open. Tints are best-effort: when no stage is wired
-     * (tests, headless smoke), the lock still works on the protocol side (drag-lease + DragController
-     * refusal); the user just doesn't get a visual highlight.
+     * (tests, headless smoke), the local-only "you can't drag what you're editing" check in
+     * {@link com.minecart.display.input.DragController} still works; the user just doesn't get a
+     * visual highlight.
      */
     private final WorldStage worldStage;
 
@@ -51,21 +49,10 @@ public final class InfoPanelController {
     /**
      * Element currently being edited (i.e. its panel is open). {@code null} when no panel is open.
      * Exposed via {@link #getEditingElementId()} so the {@link com.minecart.display.input.DragController}
-     * can refuse to start a drag on it — that's the client-side enforcement of "an element is
-     * forcibly locked while its panel is open".
+     * can refuse to start a drag on the local user's own panel-edited element. Other clients
+     * remain free to drag the same element — the panel reopens with authoritative data on save.
      */
     private UUID editingElementId;
-    /**
-     * World containing the edited element, captured at open-time so close-time can route the
-     * {@link DragEndPayload} to the same world without re-querying the screen's selection (which
-     * may have changed by then).
-     */
-    private UUID editWorldId;
-    /**
-     * Gesture id under which the server holds the edit lease. Fresh UUID per panel open so multiple
-     * sequential edits don't pollute each other's leases on the server registry.
-     */
-    private UUID editGestureId;
 
     public InfoPanelController(Stage uiStage, Skin skin, ClientConnection connection) {
         this(uiStage, skin, connection, null);
@@ -105,10 +92,7 @@ public final class InfoPanelController {
 
         closeOpen();
         UUID elementId = element.getId();
-        // Open the edit lease BEFORE showing the dialog so the lease is in effect for the entire
-        // visible lifetime of the panel. The server will refuse combine cascades + (future) drags
-        // targeting the leased element from any gesture other than this edit gesture.
-        acquireEditLease(worldId, elementId);
+        beginLocalEdit(worldId, elementId);
         // Save closure: clears openDialog AFTER sending so the next openFor() doesn't try to hide
         // an already-detached dialog. Cancel closure happens through the dialog's own hide() path;
         // pollClosed() (called every render frame from GameScreen) reconciles openDialog → null
@@ -120,7 +104,7 @@ public final class InfoPanelController {
                 log.warn("Failed to send ElementInfoUpdatePayload for element {}", elementId, t);
             } finally {
                 openDialog = null;
-                releaseEditLease();
+                endLocalEdit();
             }
         });
     }
@@ -138,7 +122,7 @@ public final class InfoPanelController {
                 // stage was disposed first); we just want to drop the reference either way.
             }
             openDialog = null;
-            releaseEditLease();
+            endLocalEdit();
         }
     }
 
@@ -151,9 +135,9 @@ public final class InfoPanelController {
         if (openDialog != null && openDialog.getStage() == null) {
             openDialog = null;
             // Cancel path: the dialog detached itself from the stage without going through the
-            // save callback, so releaseEditLease() didn't fire. Catch that here so the lease
-            // (and the tint) doesn't stick around after a Cancel click.
-            releaseEditLease();
+            // save callback, so endLocalEdit() didn't fire. Catch that here so the local edit
+            // state (and the tint) doesn't stick around after a Cancel click.
+            endLocalEdit();
         }
     }
 
@@ -170,40 +154,28 @@ public final class InfoPanelController {
         return editingElementId;
     }
 
-    // --- edit lease + tint plumbing ------------------------------------------------------------
+    // --- local edit tracking ------------------------------------------------------------------
 
-    private void acquireEditLease(UUID worldId, UUID elementId) {
+    /**
+     * Records the local edit so {@link com.minecart.display.input.DragController} can refuse drags
+     * on the same element from this client. No network traffic — the panel save/cancel is the
+     * authoritative round-trip; other clients are free to drag the element in the meantime and
+     * the panel just reopens with authoritative data on save.
+     */
+    private void beginLocalEdit(UUID worldId, UUID elementId) {
         editingElementId = elementId;
-        editWorldId = worldId;
-        editGestureId = UUID.randomUUID();
-        try {
-            connection.send(new DragBeginPayload(worldId, editGestureId, List.of(elementId)));
-        } catch (Throwable t) {
-            log.warn("Failed to send DragBeginPayload for edit lease on element {}", elementId, t);
-        }
         if (worldStage != null) {
             worldStage.setEditingElementId(elementId);
         }
     }
 
-    private void releaseEditLease() {
+    private void endLocalEdit() {
         if (editingElementId == null) {
             return;
         }
-        UUID worldId = editWorldId;
-        UUID gestureId = editGestureId;
         editingElementId = null;
-        editWorldId = null;
-        editGestureId = null;
         if (worldStage != null) {
             worldStage.setEditingElementId(null);
-        }
-        if (worldId != null && gestureId != null) {
-            try {
-                connection.send(new DragEndPayload(worldId, gestureId));
-            } catch (Throwable t) {
-                log.warn("Failed to send DragEndPayload for edit lease (gesture {})", gestureId, t);
-            }
         }
     }
 }

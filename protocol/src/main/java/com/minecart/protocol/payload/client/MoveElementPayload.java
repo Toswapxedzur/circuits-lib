@@ -11,9 +11,15 @@ import java.util.UUID;
 
 /**
  * Client → server: "translate the element identified by {@code elementId} (a free {@link com.minecart.logic.CircuitNode}
- * or a {@link com.minecart.logic.CircuitComponent}) inside {@code worldId} to ({@code x}, {@code y})". For
- * components the server re-stamps every internal port node via {@link com.minecart.registry.ComponentAnchorRegistry}
- * and recentres any non-port internal nodes. Silently no-ops on unknown world / element / element kind.
+ * or a {@link com.minecart.logic.CircuitComponent}) inside {@code worldId} to ({@code x}, {@code y})".
+ *
+ * <h2>Gesture id</h2>
+ * Each drag mints a fresh {@code gestureId} (UUID) at {@code touchDown}; every streaming and final
+ * Move payload from that drag carries the same id. The server's per-tick drag aggregator uses it
+ * to (a) coalesce multiple this-tick samples to the latest cursor pose, and (b) detect contention
+ * when two distinct gesture ids target the same element in the same tick. {@code null} is allowed
+ * for legacy / one-shot panel-save callers that don't run through the aggregator's contention
+ * machinery; such payloads still go through the same handler but get a synthesised per-payload id.
  */
 public final class MoveElementPayload implements Payload {
 
@@ -24,6 +30,7 @@ public final class MoveElementPayload implements Payload {
 
     private UUID worldId;
     private UUID elementId;
+    private UUID gestureId;
     private double x;
     private double y;
 
@@ -31,8 +38,13 @@ public final class MoveElementPayload implements Payload {
     }
 
     public MoveElementPayload(UUID worldId, UUID elementId, double x, double y) {
+        this(worldId, elementId, null, x, y);
+    }
+
+    public MoveElementPayload(UUID worldId, UUID elementId, UUID gestureId, double x, double y) {
         this.worldId = worldId;
         this.elementId = elementId;
+        this.gestureId = gestureId;
         this.x = x;
         this.y = y;
     }
@@ -49,6 +61,7 @@ public final class MoveElementPayload implements Payload {
 
     public UUID getWorldId() { return worldId; }
     public UUID getElementId() { return elementId; }
+    public UUID getGestureId() { return gestureId; }
     public double getX() { return x; }
     public double getY() { return y; }
 
@@ -57,6 +70,9 @@ public final class MoveElementPayload implements Payload {
         Payload.super.save(tag);
         TagUtil.putUUID(tag, ProtocolStrings.TAG_WORLD_ID, worldId);
         TagUtil.putUUID(tag, ProtocolStrings.TAG_ELEMENT_ID, elementId);
+        if (gestureId != null) {
+            TagUtil.putUUID(tag, ProtocolStrings.TAG_GESTURE_ID, gestureId);
+        }
         tag.putDouble(ProtocolStrings.TAG_X, x);
         tag.putDouble(ProtocolStrings.TAG_Y, y);
     }
@@ -72,6 +88,7 @@ public final class MoveElementPayload implements Payload {
         if (elementId == null) {
             throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_ELEMENT_ID + "'");
         }
+        gestureId = TagUtil.getUUID(tag, ProtocolStrings.TAG_GESTURE_ID);
         x = tag.getDouble(ProtocolStrings.TAG_X);
         y = tag.getDouble(ProtocolStrings.TAG_Y);
     }

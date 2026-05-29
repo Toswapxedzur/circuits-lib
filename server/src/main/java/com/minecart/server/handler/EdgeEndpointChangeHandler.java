@@ -61,6 +61,15 @@ public final class EdgeEndpointChangeHandler implements PayloadHandler<EdgeEndpo
         // user-visible "the strict lock should actually do something" contract.
         LockState eff = edge.effectiveLockState(LOCK_EPSILON);
         if (eff.mode() == LockMode.LOCKED) {
+            // Rebroadcast the edge's authoritative state so any client that already showed the
+            // optimistic rewire (preview line, dragged endpoint) snaps back. Notifying both old
+            // endpoints in addition to the edge itself covers the case where a port-node mirror's
+            // connection set has been optimistically updated client-side.
+            level.notifyElementChanged(edge);
+            CircuitNode oldStart = edge.getStart();
+            CircuitNode oldEnd = edge.getEnd();
+            if (oldStart != null) level.notifyElementChanged(oldStart);
+            if (oldEnd != null) level.notifyElementChanged(oldEnd);
             return;
         }
         try {

@@ -96,78 +96,74 @@ class LockStateTest {
     }
 
     @Test
-    void component_softLock_noLockedPorts_returnsFreeWithCentrePivot() {
+    void component_softLock_returnsFreeWithCentrePivot_regardlessOfPortFixedFlags() {
+        // Soft-lock derivation is retired: it always reports FREE with the component's centre as
+        // the default rotation pivot, even when ports carry isFixed=true (port isFixed is purely
+        // structural metadata under the physics-solver integration, not lock state).
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
-        // Place a centre PositionInfo so the default pivot has somewhere to land.
         bjt.setInfo(AllElementInfos.POSITION, new PositionInfo(12.0, 34.0));
-        // No ports locked yet — soft is FREE with the centre as the rotation-default pivot.
-        LockState soft = bjt.getSoftLockState();
-        assertEquals(LockMode.FREE, soft.mode());
-        assertEquals(12.0, soft.pivotX(), EPS);
-        assertEquals(34.0, soft.pivotY(), EPS);
-        assertTrue(soft.pivotValid(),
-                "A FREE component with a centre PositionInfo should advertise the centre as the "
-                        + "default rotation pivot so gestures don't have to recompute it");
-    }
 
-    @Test
-    void component_softLock_oneLockedPort_returnsRotationFreeAtThatPort() {
-        ServerLevel level = new ServerLevel();
-        ServerWorld w = level.createWorld();
-        BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
-        bjt.setInfo(AllElementInfos.POSITION, new PositionInfo(0.0, 0.0));
-        CircuitNode base = bjt.getPort(0);
-        base.setInfo(AllElementInfos.POSITION, new PositionInfo(2.5, -1.5));
-        base.getInfo(AllElementInfos.POSITION).setFixed(true);
+        LockState bare = bjt.getSoftLockState();
+        assertEquals(LockMode.FREE, bare.mode());
+        assertEquals(12.0, bare.pivotX(), EPS);
+        assertEquals(34.0, bare.pivotY(), EPS);
+        assertTrue(bare.pivotValid());
 
-        LockState soft = bjt.getSoftLockState();
-        assertEquals(LockMode.ROTATION_FREE, soft.mode());
-        assertEquals(2.5, soft.pivotX(), EPS);
-        assertEquals(-1.5, soft.pivotY(), EPS);
-    }
-
-    @Test
-    void component_softLock_twoLockedPorts_returnsLocked() {
-        ServerLevel level = new ServerLevel();
-        ServerWorld w = level.createWorld();
-        BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
+        // Pin two ports — the old derivation would have flipped this to LOCKED, the new contract
+        // keeps it FREE because port isFixed no longer participates in the lock vocabulary.
         for (int i = 0; i < 2; i++) {
             CircuitNode p = bjt.getPort(i);
             p.setInfo(AllElementInfos.POSITION, new PositionInfo(i, i));
             p.getInfo(AllElementInfos.POSITION).setFixed(true);
         }
-        assertEquals(LockMode.LOCKED, bjt.getSoftLockState().mode());
+        LockState withFixedPorts = bjt.getSoftLockState();
+        assertEquals(LockMode.FREE, withFixedPorts.mode(),
+                "Port isFixed no longer feeds the soft-lock derivation");
     }
 
     @Test
-    void component_effectiveLock_strictPositionFree_andSoftFree_isPositionFree() {
+    void component_effectiveLock_isPureStrictLockInfo_evenWithFixedPorts() {
+        // Effective lock state collapses to the strict LockInfo. The kinematic anchoring that
+        // the old soft-lock used to encode (multiple fixed ports ⇒ LOCKED) is now expressed to
+        // the physics solver via constraints on the body graph, not via this method.
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
         bjt.setInfo(AllElementInfos.POSITION, new PositionInfo(0.0, 0.0));
+        for (int i = 0; i < 2; i++) {
+            CircuitNode p = bjt.getPort(i);
+            p.setInfo(AllElementInfos.POSITION, new PositionInfo(i, i));
+            p.getInfo(AllElementInfos.POSITION).setFixed(true);
+        }
+
+        // No strict lock ⇒ effective FREE, even though both ports are isFixed=true. Under the
+        // pre-integration contract this returned LOCKED.
+        assertEquals(LockMode.FREE, bjt.effectiveLockState(EPS).mode());
+
+        // Strict POSITION_FREE alone now wins, again ignoring port isFixed counts.
         LockInfo strict = new LockInfo();
         strict.setMode(LockMode.POSITION_FREE);
         bjt.setInfo(AllElementInfos.LOCK, strict);
-        // Nothing locked on the soft side, so soft = FREE; FREE ∩ POSITION_FREE = POSITION_FREE.
         assertEquals(LockMode.POSITION_FREE, bjt.effectiveLockState(EPS).mode());
     }
 
     @Test
-    void component_effectiveLock_strictPositionFree_andSoftRotationFree_isLocked() {
+    void component_effectiveLock_strictLockInfo_carriesRotationPivotThrough() {
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
         bjt.setInfo(AllElementInfos.POSITION, new PositionInfo(0.0, 0.0));
-        CircuitNode base = bjt.getPort(0);
-        base.setInfo(AllElementInfos.POSITION, new PositionInfo(1.0, 0.0));
-        base.getInfo(AllElementInfos.POSITION).setFixed(true);
-        LockInfo strict = new LockInfo();
-        strict.setMode(LockMode.POSITION_FREE);
+
+        LockInfo strict = new LockInfo(LockMode.ROTATION_FREE, 7.0, -2.0, true);
         bjt.setInfo(AllElementInfos.LOCK, strict);
-        // soft = ROTATION_FREE (one port locked); strict = POSITION_FREE. Disjoint → LOCKED.
-        assertEquals(LockMode.LOCKED, bjt.effectiveLockState(EPS).mode());
+
+        LockState eff = bjt.effectiveLockState(EPS);
+        assertEquals(LockMode.ROTATION_FREE, eff.mode());
+        assertEquals(7.0, eff.pivotX(), EPS);
+        assertEquals(-2.0, eff.pivotY(), EPS);
+        assertTrue(eff.pivotValid());
     }
 
     @Test
