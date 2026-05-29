@@ -15,11 +15,11 @@ import java.util.UUID;
  *
  * <h2>Gesture id</h2>
  * Each drag mints a fresh {@code gestureId} (UUID) at {@code touchDown}; every streaming and final
- * Move payload from that drag carries the same id. The server's per-tick drag aggregator uses it
- * to (a) coalesce multiple this-tick samples to the latest cursor pose, and (b) detect contention
- * when two distinct gesture ids target the same element in the same tick. {@code null} is allowed
- * for legacy / one-shot panel-save callers that don't run through the aggregator's contention
- * machinery; such payloads still go through the same handler but get a synthesised per-payload id.
+ * Move payload from that drag carries the same id. The server's drag aggregator uses it to
+ * (a) coalesce multiple same-flush samples to the latest cursor pose, and (b) detect contention
+ * when two distinct gesture ids target the same element in the same flush. {@code null} is allowed
+ * for one-shot panel-save callers that don't run through the aggregator's contention machinery;
+ * such payloads still go through the same handler but are applied as discrete hard-pin moves.
  */
 public final class MoveElementPayload implements Payload {
 

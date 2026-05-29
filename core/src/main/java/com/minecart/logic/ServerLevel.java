@@ -14,10 +14,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *
  * <h2>Per-tick drag aggregator</h2>
  * Streaming drag payloads (move / rotate gestures from multiple concurrent clients) are buffered
- * via {@link #getDragAggregator()} and resolved as a single physics solve at the start of each
- * tick, before the per-world tick. This replaces the older "drag lease" model where each gesture
- * acquired exclusive ownership of the touched elements — see the physics package for the
- * soft-spring / contention-policy details.
+ * via {@link #getDragAggregator()} and resolved as a unified physics solve. Resolution happens at
+ * the start of every {@link #tick()} (as a safety net for headless callers / tests), and also at
+ * the cadence of an optional high-frequency "drag pump" the runtime layer can attach
+ * (see {@link com.minecart.server.network.LevelPumps}) so drag responsiveness isn't capped by the
+ * main tick rate. The aggregator's buffer drains on every flush, so the two flush sites coexist
+ * without double-applying gestures.
  */
 public class ServerLevel extends Level {
 
@@ -66,10 +68,29 @@ public class ServerLevel extends Level {
     }
 
     /**
-     * Safely submit an action to the global simulation queue.
+     * Safely submit an action to the global simulation queue. Actions drain on the worker thread
+     * via {@link #drainActionQueue()} — that's the main tick body's first step, and is also called
+     * by the high-frequency drag pump so streaming drag enqueues land within ~one drag-pump period
+     * rather than waiting for the next main tick.
      */
     public void submit(Runnable action) {
         actionQueue.offer(action);
+    }
+
+    /**
+     * Drains the action queue on the calling thread. Safe to call from any thread that owns
+     * exclusive write access to the level (in practice: the single worker thread that also runs
+     * {@link #tick()}). The {@link com.minecart.server.network.LevelPumps drag pump} invokes this
+     * between main ticks so {@code level.submit(...)} actions don't pile up for up to a full tick
+     * before drag gestures get enqueued into the aggregator.
+     */
+    public void drainActionQueue() {
+        while (!actionQueue.isEmpty()) {
+            Runnable action = actionQueue.poll();
+            if (action != null) {
+                action.run();
+            }
+        }
     }
 
     /**
@@ -80,11 +101,13 @@ public class ServerLevel extends Level {
      *   <li>{@code preTick} event fires.</li>
      *   <li>Action queue is drained — incoming-payload handlers' {@code level.submit}-ed actions
      *       run here; these populate the drag aggregator's per-tick buffer and apply discrete
-     *       mutations (panel saves, combine cascades, scroll rotations, etc.).</li>
-     *   <li>{@link DragAggregator#flush} resolves all of this tick's buffered drag streams as a
-     *       single unified physics solve, writing back authoritative poses. This runs AFTER the
-     *       action queue so discrete mutations land in the world before streaming drags adapt
-     *       to them.</li>
+     *       mutations (panel saves, combine cascades, scroll rotations, etc.). The drag pump may
+     *       have already drained queue work since the previous tick; the drain here just catches
+     *       anything that landed in the gap between the last pump and this tick.</li>
+     *   <li>{@link DragAggregator#flush} resolves any drag gestures still buffered (typically
+     *       nothing, since the fast drag pump already flushes them at high cadence). Kept here as
+     *       a safety net so headless callers that drive {@code tick()} directly without a pump
+     *       still see drag resolution.</li>
      *   <li>Each world's per-tick simulation runs.</li>
      *   <li>{@code postTick} fires.</li>
      * </ol>
@@ -92,12 +115,7 @@ public class ServerLevel extends Level {
     public void tick() {
         init();
         post(preTick);
-        while (!actionQueue.isEmpty()) {
-            Runnable action = actionQueue.poll();
-            if (action != null) {
-                action.run();
-            }
-        }
+        drainActionQueue();
 
         dragAggregator.flush(this);
 

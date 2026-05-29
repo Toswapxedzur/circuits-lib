@@ -3,8 +3,8 @@ package com.minecart.server.dedicated;
 import com.minecart.logic.ServerLevel;
 import com.minecart.protocol.codec.PayloadDecoder;
 import com.minecart.protocol.codec.PayloadEncoder;
+import com.minecart.server.network.LevelPumps;
 import com.minecart.server.network.ServerPayloadDispatcher;
-import com.minecart.server.network.ServerTickThread;
 import com.minecart.server.network.StandardServerHandlers;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -23,7 +23,8 @@ import org.slf4j.LoggerFactory;
  * {@link com.minecart.server.integrated.IntegratedServer}, and ticks the {@link ServerLevel} at the level's
  * configured rate. Run via {@code ./gradlew :server:run [port]} (defaults to port 25565).
  * <p>
- * Blocks the calling thread until the JVM is killed; the simulation runs on a separate {@link ServerTickThread}.
+ * Blocks the calling thread until the JVM is killed; the simulation runs on a separate worker thread
+ * driven by {@link LevelPumps}.
  */
 public final class DedicatedServerMain {
 
@@ -57,7 +58,9 @@ public final class DedicatedServerMain {
 
         EventLoopGroup boss = new NioEventLoopGroup(1);
         EventLoopGroup worker = new NioEventLoopGroup();
-        ServerTickThread tick = new ServerTickThread(level);
+        // Dedicated server has no replication listeners attached (no broadcast group set up here),
+        // so the drag pump's postDragWork is a no-op — flushing the aggregator is enough.
+        LevelPumps pumps = new LevelPumps(level, "dedicated-server-tick");
 
         Channel serverChannel;
         try {
@@ -83,13 +86,13 @@ public final class DedicatedServerMain {
             throw t;
         }
 
-        tick.start();
+        pumps.start();
         log.info("Dedicated server listening on port {}", port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("Shutting down dedicated server...");
             try {
-                tick.stop();
+                pumps.stop();
                 serverChannel.close().syncUninterruptibly();
             } finally {
                 worker.shutdownGracefully();

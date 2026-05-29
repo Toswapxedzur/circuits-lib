@@ -277,20 +277,19 @@ public final class CombineCascadeEngine {
 
     /**
      * Emits an authoritative-pose sync for {@code component} and every internal node it owns. Used
-     * after a refused translate / rotate so the client mirror — which has already optimistically
-     * moved the component's centre and every internal port in {@code DragController.applyComponentDragDelta} —
-     * gets corrected back to the server's authoritative state.
+     * after a refused translate / rotate so any client that derived a different pose for the
+     * component (e.g. a one-shot panel save that the server then refused, or a multiplayer
+     * spectator whose mirror diverged through a separate concurrent path) gets corrected back to
+     * the server's authoritative state.
      *
-     * <p>The set notified here intentionally mirrors what the optimistic client-side drag mutates
-     * (the component itself plus {@code comp.getNodes()}). Notifying the component without its
-     * internal nodes would leave the ports rendered at the dragged offset even after the centre
-     * snapped back, since the sync layer can't infer the rigid relationship and clients don't
-     * re-derive port positions from a component's POSITION delta.
+     * <p>Notifies the component AND every internal node because the sync layer can't infer the
+     * rigid relationship — clients don't re-derive port positions from a component's POSITION
+     * delta, so notifying only the centre would leave ports rendered at the wrong offset.
      *
      * <p>The sync layer ({@link com.minecart.server.listener.CircuitElementListener}) deduplicates
      * by element id and serializes the current state at flush time, so calling this with an
-     * unchanged authoritative pose still produces a meaningful CHANGE delta that overwrites the
-     * client's stale optimistic state — the whole point of the rebroadcast.
+     * unchanged authoritative pose still produces a meaningful CHANGE delta — the whole point of
+     * the rebroadcast.
      */
     private static void broadcastAuthoritativeComponent(ServerWorld world, CircuitComponent component) {
         if (world == null || component == null) {

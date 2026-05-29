@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Coverage of the multi-seed solve scenarios the editor's per-tick drag aggregator produces:
+ * Coverage of the multi-seed solve scenarios the editor's drag aggregator produces:
  * several {@link SpringConstraint}s on different bodies in the same connected sub-graph, possibly
  * linked by rigid {@link DistanceConstraint}s and/or locked bodies. Verifies the solver behaves
  * sensibly when many simultaneous "pulls" share constraint mass through the network.
@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * springs fight each other or fight a rigid linkage, because:
  * <ul>
  *   <li>The editor's default {@code 0.001} compliance is intended for the cursor-following case
- *       where each per-tick displacement is tiny — the springs never accumulate much before the
+ *       where each per-flush displacement is tiny — the springs never accumulate much before the
  *       target moves on. Pumping at near-hard stiffness against an immovable barrier is a
- *       multi-second-scale convergence problem outside any realistic per-tick budget.</li>
+ *       multi-second-scale convergence problem outside any realistic frame/pump budget.</li>
  *   <li>Moderate compliance lets us verify equilibrium <em>topology</em> (where the bodies settle
  *       relative to each other) in tens of iterations, which is what the test suite needs to be
  *       fast.</li>

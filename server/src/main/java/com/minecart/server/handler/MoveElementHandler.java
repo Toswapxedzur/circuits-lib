@@ -24,9 +24,9 @@ import java.util.UUID;
  * <ul>
  *   <li><b>Streaming drag</b> ({@code gestureId != null}): the payload is one sample from a
  *       client-side drag. It's pushed into the level's {@link com.minecart.logic.physics.DragAggregator}
- *       for resolution as part of this tick's unified physics solve. Multiple streaming samples
+ *       for resolution by the high-frequency drag pump. Multiple streaming samples
  *       with the same gesture coalesce to the latest; distinct gesture ids on the same element
- *       trigger the contention policy (immobilise for the tick).</li>
+ *       trigger the contention policy (immobilise for the current flush).</li>
  *   <li><b>One-shot</b> ({@code gestureId == null}): a panel save, scroll-rotate's translation
  *       sibling, or any other discrete mutation. Routed through
  *       {@link CombineCascadeEngine#tryTranslateComponent} (for components) or
@@ -63,8 +63,8 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
         }
         UUID gestureId = payload.getGestureId();
         if (gestureId != null) {
-            // Streaming drag: queue into the aggregator. The aggregator's flush at end-of-tick
-            // resolves all this-tick gestures in a single unified solve and broadcasts authority.
+            // Streaming drag: queue into the aggregator. The high-frequency drag pump flushes
+            // buffered gestures in a single unified solve and broadcasts authority.
             level.getDragAggregator().enqueue(payload.getWorldId(),
                     new DragGesture(gestureId, el, payload.getX(), payload.getY()));
             return;
@@ -115,11 +115,9 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
      * isFixed=true nodes (player-locked node anchor).
      *
      * <p>The short-circuit refusals (port node, isFixed) still fire a {@link com.minecart.foundation.Level#notifyElementChanged}
-     * for the node so the client's optimistic local mutation gets corrected by the next sync
-     * delta — same refusal-broadcast contract the cascade engine applies on its own refusal
-     * branches. Without this, a client that dragged a player-locked node would see the visual
-     * stay at the dragged position because the server silently no-ops and never tells the client
-     * what the authoritative pose is.
+     * for the node — under the current server-authoritative model the dragging player can't have
+     * optimistically diverged, but multiplayer spectators may have applied a stale pose from a
+     * concurrent path, and the rebroadcast lets the sync layer reconcile them.
      */
     private void moveFreeNode(ServerWorld world, CircuitNode node, double x, double y) {
         if (!node.getComponents().isEmpty()) {

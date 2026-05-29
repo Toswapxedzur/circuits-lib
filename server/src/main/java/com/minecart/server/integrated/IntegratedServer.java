@@ -16,8 +16,8 @@ import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
 import com.minecart.protocol.payload.server.WorldLifecyclePayload;
 import com.minecart.server.listener.CircuitElementListener;
 import com.minecart.server.listener.CircuitLifecycleListener;
+import com.minecart.server.network.LevelPumps;
 import com.minecart.server.network.ServerPayloadDispatcher;
-import com.minecart.server.network.ServerTickThread;
 import com.minecart.server.network.StandardServerHandlers;
 import com.minecart.server.persistence.WorldStorage;
 import io.netty.bootstrap.ServerBootstrap;
@@ -43,7 +43,8 @@ import java.util.function.Consumer;
 /**
  * In-process server backing the singleplayer "join world" flow: binds a {@link LocalServerChannel} at a unique
  * {@link LocalAddress}, registers all standard {@link com.minecart.protocol.payload.PayloadHandler}s on a
- * {@link ServerPayloadDispatcher}, and starts a {@link ServerTickThread} to drive {@link ServerLevel#tick()}.
+ * {@link ServerPayloadDispatcher}, and starts a {@link LevelPumps} to drive {@link ServerLevel#tick()} plus
+ * a high-frequency drag pump that decouples streaming-drag responsiveness from the 20 Hz logic tick.
  * <p>
  * The pipeline is identical to the dedicated server's: {@link PayloadDecoder} ↔ {@link PayloadEncoder} ↔
  * {@link ServerPayloadDispatcher}. Clients connect via {@link com.minecart.client.network.ClientConnection#connectIntegrated(LocalAddress)}.
@@ -67,7 +68,7 @@ public class IntegratedServer {
     private final ServerLevel level;
     private final LocalAddress address;
     private final ServerPayloadDispatcher dispatcher;
-    private final ServerTickThread tickThread;
+    private final LevelPumps pumps;
     /** Directory containing {@code level.dat}; {@code null} for in-memory only. */
     private final Path saveDir;
 
@@ -95,7 +96,6 @@ public class IntegratedServer {
         // World create/delete/rename handlers need a sink to push CLIENT-bound notifications back to every
         // connected channel. We capture `this::broadcast` so the channel group is read at send time.
         StandardServerHandlers.register(dispatcher, level, this::broadcast);
-        this.tickThread = new ServerTickThread(level, "integrated-server-tick");
         this.saveDir = saveDir;
         Consumer<CircuitElementPayload> broadcastSink = payload -> {
             if (channels.isEmpty()) {
@@ -111,6 +111,33 @@ public class IntegratedServer {
             channels.writeAndFlush(payload);
         };
         this.lifecycleListener = new CircuitLifecycleListener(level, lifecycleSink);
+        // The drag-pump postWork mirrors the main-tick POST sync (announce inserts → flush element
+        // deltas → drop dead circuits) so streaming-drag pose updates reach clients between main
+        // ticks. Lifecycle ops are rare during a drag so this normally just emits element deltas.
+        // Listener.sync* methods are no-ops when their pending sets are empty, so the dispatched
+        // sync chain is cheap on idle ticks.
+        this.pumps = new LevelPumps(level, "integrated-server-tick", this::pushReplicationDeltas);
+    }
+
+    /**
+     * Pushes replication deltas (lifecycle inserts → element changes → lifecycle removes) accumulated
+     * by listeners. Invoked from the drag pump on the worker thread after each {@link com.minecart.logic.physics.DragAggregator}
+     * flush so drag-induced {@code notifyElementChanged} broadcasts reach clients at the pump cadence
+     * rather than waiting for the next 20 Hz main-tick POST. Also called from the main tick's POST
+     * phase via {@link com.minecart.event.events.ServerTickEvent}; same ordering invariant either way.
+     *
+     * <p>Order matters: announce new circuits FIRST so element INSERT deltas can find them, apply
+     * element deltas, then drop dead circuits LAST so element REMOVE deltas resolved correctly.
+     */
+    private void pushReplicationDeltas() {
+        if (!lifecycleListener.isAttached() && !elementListener.isAttached()) {
+            // Pre-attach (during early startup), or post-detach (during shutdown). Bail rather
+            // than touching listener state racily.
+            return;
+        }
+        lifecycleListener.syncInserts();
+        elementListener.sync();
+        lifecycleListener.syncRemoves();
     }
 
     /** Writes {@code payload} to every connected client channel. No-op when no client is connected. */
@@ -179,15 +206,11 @@ public class IntegratedServer {
         elementListener.attach();
         // Flush deltas at the end of every tick so the next inbound payload from the client sees an
         // up-to-date mirror; runs on the tick thread because ServerTickEvent is posted from tick().
-        //
-        // Order matters: announce new circuits FIRST so element INSERT deltas can find them, apply element
-        // deltas, then drop dead circuits LAST so element REMOVE deltas resolved correctly. See
-        // CircuitLifecycleListener for the full rationale.
+        // The drag pump invokes the same sync sequence between ticks via pushReplicationDeltas so
+        // streaming-drag pose updates aren't held back by the 20 Hz logic tick.
         level.register(ServerTickEvent.Level.class, evt -> {
             if (evt.getPhase() == ServerTickEvent.Phase.POST && evt.getLevel() == level) {
-                lifecycleListener.syncInserts();
-                elementListener.sync();
-                lifecycleListener.syncRemoves();
+                pushReplicationDeltas();
             }
         });
         loop = new DefaultEventLoopGroup(1, new DefaultThreadFactory("integrated-server-net", true));
@@ -220,7 +243,7 @@ public class IntegratedServer {
                     }
                 });
         serverChannel = b.bind(address).sync().channel();
-        tickThread.start();
+        pumps.start();
         started = true;
     }
 
@@ -274,7 +297,7 @@ public class IntegratedServer {
             return;
         }
         try {
-            tickThread.stop();
+            pumps.stop();
         } catch (Throwable ignored) {
         }
         try {

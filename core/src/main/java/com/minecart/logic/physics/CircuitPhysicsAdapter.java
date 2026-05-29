@@ -114,13 +114,13 @@ public final class CircuitPhysicsAdapter {
     /**
      * Multi-drag entry point: applies every gesture in {@code gestures} as a soft-spring pull
      * toward its target pose, running a single unified physics solve over the union sub-graph.
-     * This is the per-tick aggregator's hot path — replaces the hard-pin-per-gesture model with
+     * This is the drag aggregator's hot path — replaces the hard-pin-per-gesture model with
      * a softer one that resolves contention via the constraint graph rather than via a
      * separately-tracked lease.
      *
      * <h2>Contention policy</h2>
      * If two or more distinct {@link DragGesture#gestureId()}s target the same element in the
-     * same batch, that element is treated as <em>immobilised</em> for the tick: its body is
+     * same batch, that element is treated as <em>immobilised</em> for this solve: its body is
      * locked at its current authoritative pose ({@code invMassT = invMassR = 0}), no spring is
      * attached, and other gestures in the same connected sub-graph have to route around it. Per
      * the user's "tie = both lose" tie-breaker policy.
@@ -128,7 +128,7 @@ public final class CircuitPhysicsAdapter {
      * <h2>Coalescing</h2>
      * Multiple gestures with the same {@code (gestureId, target)} pair coalesce to the
      * <em>latest</em> one (insertion order through {@code gestures}). Callers should pass the
-     * latest cursor sample per gesture; redundant earlier samples in the same tick are harmless.
+     * latest cursor sample per gesture; redundant earlier samples in the same flush are harmless.
      *
      * <h2>Disjoint sub-graphs</h2>
      * Gestures whose target sub-graphs don't overlap are solved together in one session, but the

@@ -33,13 +33,20 @@ import java.util.function.Supplier;
  * {@link WorldStage#setHoveredElementId(UUID)} so the renderer can apply a yellow tint. Returns {@code false}
  * so downstream processors still see the move.
  *
- * <h2>Drag</h2>
+ * <h2>Drag (server-authoritative)</h2>
  * Left {@link #touchDown} over a draggable element (free {@link CircuitNode} or {@link CircuitComponent})
  * captures it <em>only while the editor tool is Idle</em>, so a placement tool always wins click priority.
- * During {@link #touchDragged} the element's local {@link PositionInfo} is rewritten so the actor visually
- * follows the cursor instantly — the authoritative server update lands later through the normal sync
- * pipeline. On {@link #touchUp} a {@link MoveElementPayload} (or {@link DeleteElementPayload} when released
- * over the trashcan rectangle) is sent.
+ * The controller does <strong>not</strong> mutate any client-side element pose during the drag — the dragged
+ * element only visually moves when the server broadcasts a fresh authoritative pose. Each {@link #touchDragged}
+ * tick computes the cursor's target world position and (subject to a small streaming throttle) ships it to
+ * the server as a {@link MoveElementPayload}; the server's high-frequency drag pump applies a spring solve
+ * and broadcasts the new pose back. The result: the element snaps to the cursor at the server's pump rate
+ * (typically &gt;100 Hz on the integrated server), and bugs like "locked element lags back" disappear by
+ * construction because there's no client mutation to revert.
+ *
+ * <p>On {@link #touchUp} a final {@link MoveElementPayload} (or {@link DeleteElementPayload} when released
+ * over the trashcan rectangle) is sent so the server doesn't miss the gesture-end pose if it fell in the
+ * stream-throttle window.
  *
  * <h2>Trashcan</h2>
  * The trashcan rectangle is supplied as a screen-space {@link TrashBoundsSupplier} so the screen layout can
@@ -83,8 +90,6 @@ public class DragController extends InputAdapter {
     /** Element's original position at drag start (component centre or free node position). */
     private double originX;
     private double originY;
-    /** Original positions of the component's internal nodes captured at drag start. */
-    private final java.util.Map<UUID, double[]> originalNodePositions = new java.util.HashMap<>();
     /**
      * For an edge drag: ids of the "movables" (free nodes or component centres) that need to be
      * translated by the same delta so the wire's two endpoints keep their relative offset. Captured at
@@ -100,13 +105,21 @@ public class DragController extends InputAdapter {
     /** Set after a drag actually moves so a stationary click doesn't generate a no-op MoveElement. */
     private boolean movedSinceDown;
     /**
+     * Last cursor delta seen by {@link #touchDragged}, in world units. Consumed by the sender
+     * methods to compute the target authoritative pose (origin + delta) without referencing any
+     * client-side mutation of {@link PositionInfo} — the client no longer mutates element poses
+     * during a drag (server-authoritative).
+     */
+    private double currentDx;
+    private double currentDy;
+    /**
      * Gesture id allocated at drag start and threaded through every {@link MoveElementPayload} and
      * {@link CombineCascadePayload} emitted by this drag. The server uses it to:
      * <ul>
      *   <li>Coalesce mid-drag streaming samples (same gesture id, same target → keep the latest
      *       cursor pose only).</li>
-     *   <li>Detect contention in the per-tick drag aggregator (two distinct gesture ids on the
-     *       same element → immobilise the element for that tick).</li>
+     *   <li>Detect contention in the drag aggregator (two distinct gesture ids on the
+     *       same element in one flush → immobilise the element for that solve).</li>
      * </ul>
      * {@code null} when no drag is active.
      */
@@ -121,12 +134,12 @@ public class DragController extends InputAdapter {
     // --- Mid-drag streaming -------------------------------------------------------------------
 
     /**
-     * Throttle period for mid-drag {@link MoveElementPayload} streaming. Approximately 20 Hz: fast
-     * enough for spectator clients to see smooth motion of the dragged element through the
-     * standard sync-delta pipeline, slow enough that a long sustained drag doesn't flood the wire.
+     * Throttle period for mid-drag {@link MoveElementPayload} streaming. ~60 Hz so the dragged
+     * element snaps near-frame-rate on the integrated server (where the drag pump applies the
+     * spring solve at ~250 Hz and broadcasts back without waiting for the 20 Hz logic tick).
      * Final pose is always sent again on {@link #touchUp} so a late-suppressed frame still lands.
      */
-    private static final long STREAM_INTERVAL_NANOS = 50_000_000L;
+    private static final long STREAM_INTERVAL_NANOS = 16_000_000L;
 
     /**
      * {@link System#nanoTime()} of the last streamed mid-drag payload, or {@code 0} when no payload
@@ -330,15 +343,11 @@ public class DragController extends InputAdapter {
         dragKind = DragKind.COMPONENT;
         movedSinceDown = false;
         lastStreamSendNanos = 0L;
+        currentDx = 0.0;
+        currentDy = 0.0;
         PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
-        originalNodePositions.clear();
-        for (CircuitNode n : comp.getNodes()) {
-            PositionInfo np = n.getInfo(AllElementInfos.POSITION);
-            originalNodePositions.put(n.getId(),
-                    new double[]{np != null ? np.getX() : 0.0, np != null ? np.getY() : 0.0});
-        }
         edgeMovableIds.clear();
         edgeMovableOrigins.clear();
         edgeMovableIsComponent.clear();
@@ -354,10 +363,11 @@ public class DragController extends InputAdapter {
         dragKind = DragKind.NODE;
         movedSinceDown = false;
         lastStreamSendNanos = 0L;
+        currentDx = 0.0;
+        currentDy = 0.0;
         PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
-        originalNodePositions.clear();
         edgeMovableIds.clear();
         edgeMovableOrigins.clear();
         edgeMovableIsComponent.clear();
@@ -387,7 +397,8 @@ public class DragController extends InputAdapter {
         dragKind = DragKind.EDGE;
         movedSinceDown = false;
         lastStreamSendNanos = 0L;
-        originalNodePositions.clear();
+        currentDx = 0.0;
+        currentDy = 0.0;
         edgeMovableIds.clear();
         edgeMovableOrigins.clear();
         edgeMovableIsComponent.clear();
@@ -414,15 +425,6 @@ public class DragController extends InputAdapter {
                     edgeMovableOrigins.put(id,
                             new double[]{p != null ? p.getX() : 0.0, p != null ? p.getY() : 0.0});
                     edgeMovableIsComponent.put(id, Boolean.TRUE);
-                    // Component drag also drags every internal node by the same delta so port edges
-                    // stay anchored — same machinery as a primary component drag, just keyed off a
-                    // different drag-state path.
-                    for (CircuitNode n : owner.getNodes()) {
-                        PositionInfo np = n.getInfo(AllElementInfos.POSITION);
-                        originalNodePositions.put(n.getId(),
-                                new double[]{np != null ? np.getX() : 0.0,
-                                             np != null ? np.getY() : 0.0});
-                    }
                 }
             } else {
                 UUID id = endpoint.getId();
@@ -459,22 +461,22 @@ public class DragController extends InputAdapter {
         if (dx != 0 || dy != 0) {
             movedSinceDown = true;
         }
-        switch (dragKind) {
-            case COMPONENT -> applyComponentDragDelta(dx, dy);
-            case NODE -> {
-                applyFreeNodeDragDelta(dx, dy);
-                updateCombineTarget(w[0], w[1]);
-            }
-            case EDGE -> applyEdgeDragDelta(dx, dy);
+        currentDx = dx;
+        currentDy = dy;
+        // Combine-target hint for a node drag needs the cursor world position regardless of
+        // whether we predicted any client-side motion (which we no longer do under the
+        // server-authoritative model — see class doc). updateCombineTarget reads from the live
+        // scene actors, so it works just as well when the dragged node hasn't yet visually moved.
+        if (dragKind == DragKind.NODE) {
+            updateCombineTarget(w[0], w[1]);
         }
         stage.setDraggedOverTrash(isOverTrash(screenX, screenY));
-        // Stream the current optimistic pose to the server at a throttled cadence so other
-        // clients (multiplayer spectators) see the dragged element animate smoothly through the
-        // standard sync-delta pipeline. Without this, spectators would see nothing until touchUp
-        // and the element would appear to teleport at gesture-end. The server treats each
-        // streamed payload like any other Move — it lock-preflights, then either accepts and
-        // broadcasts, or refuses-and-rebroadcasts (which snaps THIS client back, so a refused
-        // mid-drag continuously springs against the lock until release).
+        // Stream the cursor's target pose to the server. The server's drag pump (see
+        // com.minecart.server.network.LevelPumps) applies a spring solve and broadcasts the new
+        // authoritative pose back; the dragged element only visually moves when that broadcast
+        // arrives, so a refused-because-locked gesture is naturally invisible (the server simply
+        // never moves the body, never broadcasts a new pose, and the client renders the original
+        // position the whole time).
         maybeStreamCurrentPose();
         return true;
     }
@@ -494,10 +496,12 @@ public class DragController extends InputAdapter {
     private void updateCombineTarget(float wx, float wy) {
         combineTargetId = null;
         stage.setCombineTarget(null, false);
-        // Skip the dragged actor — it follows the cursor so its bounds always contain (wx, wy), and
-        // without an explicit exclude the (HashMap-ordered) lookup would sometimes return the dragged
-        // node and miss the combine target sitting underneath. That non-determinism is what made
-        // merges "work in one direction but not the other" depending on actor insertion order.
+        // Skip the dragged actor: at the start of a drag (and any moment the cursor wanders back
+        // toward the original actor position) the cursor's world coord sits inside the dragged
+        // actor's bounds, and without an explicit exclude the (HashMap-ordered) lookup would
+        // sometimes return the dragged node and miss the combine target sitting underneath. That
+        // non-determinism is what made merges "work in one direction but not the other" depending
+        // on actor insertion order.
         var dropTarget = stage.findNodeActorAt(wx, wy, draggingId);
         if (dropTarget == null) {
             return;
@@ -521,99 +525,6 @@ public class DragController extends InputAdapter {
         // type-coherence check is gone. canCombine still refuses intrinsic non-port internals and
         // any subclass-specific overrides — that's enough.
         return survivor.canCombine(candidate) && candidate.canCombine(survivor);
-    }
-
-    private void applyComponentDragDelta(double dx, double dy) {
-        CircuitComponent comp = findComponent(draggingId);
-        if (comp == null) {
-            return;
-        }
-        PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
-        if (pos == null) {
-            pos = new PositionInfo();
-            comp.setInfo(AllElementInfos.POSITION, pos);
-        }
-        pos.set(originX + dx, originY + dy);
-        // Translate every captured internal node by the same delta so port edges follow the body instead of
-        // stretching while the user drags. The server will recompute proper anchor offsets when the
-        // MoveElementPayload lands.
-        for (CircuitNode n : comp.getNodes()) {
-            double[] orig = originalNodePositions.get(n.getId());
-            if (orig == null) {
-                continue;
-            }
-            PositionInfo np = n.getInfo(AllElementInfos.POSITION);
-            if (np == null) {
-                np = new PositionInfo();
-                n.setInfo(AllElementInfos.POSITION, np);
-            }
-            np.set(orig[0] + dx, orig[1] + dy);
-        }
-    }
-
-    private void applyFreeNodeDragDelta(double dx, double dy) {
-        CircuitNode node = findFreeNode(draggingId);
-        if (node == null) {
-            return;
-        }
-        PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
-        if (pos == null) {
-            pos = new PositionInfo();
-            node.setInfo(AllElementInfos.POSITION, pos);
-        }
-        pos.set(originX + dx, originY + dy);
-    }
-
-    /**
-     * Translates every captured edge-drag movable by {@code (dx, dy)} so the wire's two endpoints
-     * keep their relative offset (no rotation, no length change). Component movables also re-stamp
-     * every internal node by the same delta — same machinery as {@link #applyComponentDragDelta} —
-     * so port wires don't visibly snap back-and-forth between the rendered drag and the
-     * server-confirmed pose.
-     */
-    private void applyEdgeDragDelta(double dx, double dy) {
-        for (UUID id : edgeMovableIds) {
-            double[] orig = edgeMovableOrigins.get(id);
-            if (orig == null) {
-                continue;
-            }
-            Boolean isComp = edgeMovableIsComponent.get(id);
-            if (Boolean.TRUE.equals(isComp)) {
-                CircuitComponent comp = findComponent(id);
-                if (comp == null) {
-                    continue;
-                }
-                PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
-                if (pos == null) {
-                    pos = new PositionInfo();
-                    comp.setInfo(AllElementInfos.POSITION, pos);
-                }
-                pos.set(orig[0] + dx, orig[1] + dy);
-                for (CircuitNode n : comp.getNodes()) {
-                    double[] nodeOrig = originalNodePositions.get(n.getId());
-                    if (nodeOrig == null) {
-                        continue;
-                    }
-                    PositionInfo np = n.getInfo(AllElementInfos.POSITION);
-                    if (np == null) {
-                        np = new PositionInfo();
-                        n.setInfo(AllElementInfos.POSITION, np);
-                    }
-                    np.set(nodeOrig[0] + dx, nodeOrig[1] + dy);
-                }
-            } else {
-                CircuitNode node = findFreeNode(id);
-                if (node == null) {
-                    continue;
-                }
-                PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
-                if (pos == null) {
-                    pos = new PositionInfo();
-                    node.setInfo(AllElementInfos.POSITION, pos);
-                }
-                pos.set(orig[0] + dx, orig[1] + dy);
-            }
-        }
     }
 
     @Override
@@ -683,7 +594,8 @@ public class DragController extends InputAdapter {
                 }
                 sendFreeNodeMove(worldId, id);
             }
-            case EDGE -> sendEdgeMovableMoves(worldId, movables, movableOrigins, movableIsComp);
+            case EDGE -> sendEdgeMovableMoves(worldId, movables, movableOrigins, movableIsComp,
+                    currentDx, currentDy);
         }
         dragGestureId = null;
         return true;
@@ -696,10 +608,10 @@ public class DragController extends InputAdapter {
      * {@link #STREAM_INTERVAL_NANOS}. Silent no-op when no drag is active, the world is unknown,
      * or the gesture hasn't actually moved yet (no point streaming a "still at origin" pose).
      *
-     * <p>Reuses the same per-kind dispatch as {@link #touchUp}'s final send. The server's sync
-     * pipeline coalesces multiple deltas for the same element in a single tick into one CHANGE
-     * op, so even a flood of streamed updates produces at most one network message per element
-     * per tick on the wire — bounded by the server's tick cadence, not the client's stream rate.
+     * <p>Reuses the same per-kind dispatch as {@link #touchUp}'s final send. The server's drag
+     * pump coalesces multiple gestures with the same {@code (target, gestureId)} pair within a
+     * single pump cycle into one solve target, so even a flood of streamed updates produces a
+     * bounded amount of work per server tick.
      */
     private void maybeStreamCurrentPose() {
         if (draggingId == null || dragKind == null) {
@@ -721,45 +633,52 @@ public class DragController extends InputAdapter {
             case COMPONENT -> sendComponentMove(worldId, draggingId);
             case NODE -> sendFreeNodeMove(worldId, draggingId);
             case EDGE -> sendEdgeMovableMoves(worldId,
-                    edgeMovableIds, edgeMovableOrigins, edgeMovableIsComponent);
-        }
-    }
-
-    private void sendComponentMove(UUID worldId, UUID id) {
-        CircuitComponent comp = findComponent(id);
-        if (comp == null) {
-            return;
-        }
-        PositionInfo p = comp.getInfo(AllElementInfos.POSITION);
-        if (p != null) {
-            connection.send(new MoveElementPayload(worldId, id, dragGestureId, p.getX(), p.getY()));
-        }
-    }
-
-    private void sendFreeNodeMove(UUID worldId, UUID id) {
-        CircuitNode node = findFreeNode(id);
-        if (node == null) {
-            return;
-        }
-        PositionInfo p = node.getInfo(AllElementInfos.POSITION);
-        if (p != null) {
-            connection.send(new MoveElementPayload(worldId, id, dragGestureId, p.getX(), p.getY()));
+                    edgeMovableIds, edgeMovableOrigins, edgeMovableIsComponent,
+                    currentDx, currentDy);
         }
     }
 
     /**
+     * Sends the cursor's target pose for the dragged component. The pose is {@code (originX + dx,
+     * originY + dy)} where {@code origin} was captured at drag start and {@code (dx, dy)} is the
+     * latest cursor delta from {@link #touchDragged}. We deliberately do NOT read the live
+     * {@link PositionInfo} — under the server-authoritative model that field reflects the last
+     * pose the server broadcast, not where the user is trying to drag the element to.
+     */
+    private void sendComponentMove(UUID worldId, UUID id) {
+        if (findComponent(id) == null) {
+            return;
+        }
+        connection.send(new MoveElementPayload(worldId, id, dragGestureId,
+                originX + currentDx, originY + currentDy));
+    }
+
+    private void sendFreeNodeMove(UUID worldId, UUID id) {
+        if (findFreeNode(id) == null) {
+            return;
+        }
+        connection.send(new MoveElementPayload(worldId, id, dragGestureId,
+                originX + currentDx, originY + currentDy));
+    }
+
+    /**
      * Issues one {@link MoveElementPayload} per captured edge-drag movable so the server accepts
-     * each as an authoritative pose update. Component movables hand off to
-     * {@link com.minecart.server.handler.MoveElementHandler#moveComponent} which restamps every port
-     * via {@link com.minecart.registry.ComponentAnchorRegistry}; free movables go through the
-     * free-node path. The order is the order the movables were captured in {@link #beginDragEdge},
-     * which is endpoint(0) before endpoint(1) — irrelevant for correctness but keeps the test
-     * captures stable.
+     * each as an authoritative pose update. The target pose for each movable is its captured origin
+     * plus the current cursor delta — the wire's two endpoints stay at a fixed offset from each
+     * other (translation only, no rotation, no length change) because every movable shares the
+     * same delta.
+     *
+     * <p>Component movables hand off to {@link com.minecart.server.handler.MoveElementHandler#moveComponent}
+     * which restamps every port via {@link com.minecart.registry.ComponentAnchorRegistry}; free
+     * movables go through the free-node path. The order is the order the movables were captured
+     * in {@link #beginDragEdge}, which is endpoint(0) before endpoint(1) — irrelevant for
+     * correctness but keeps the test captures stable.
      */
     private void sendEdgeMovableMoves(UUID worldId,
                                       Set<UUID> movables,
                                       java.util.Map<UUID, double[]> origins,
-                                      java.util.Map<UUID, Boolean> isComp) {
+                                      java.util.Map<UUID, Boolean> isComp,
+                                      double dx, double dy) {
         for (UUID movId : movables) {
             double[] orig = origins.get(movId);
             if (orig == null) {
@@ -767,27 +686,17 @@ public class DragController extends InputAdapter {
             }
             Boolean component = isComp.get(movId);
             if (Boolean.TRUE.equals(component)) {
-                CircuitComponent comp = findComponent(movId);
-                if (comp == null) {
-                    continue;
-                }
-                PositionInfo p = comp.getInfo(AllElementInfos.POSITION);
-                if (p == null) {
+                if (findComponent(movId) == null) {
                     continue;
                 }
                 connection.send(new MoveElementPayload(worldId, movId, dragGestureId,
-                        p.getX(), p.getY()));
+                        orig[0] + dx, orig[1] + dy));
             } else {
-                CircuitNode node = findFreeNode(movId);
-                if (node == null) {
-                    continue;
-                }
-                PositionInfo p = node.getInfo(AllElementInfos.POSITION);
-                if (p == null) {
+                if (findFreeNode(movId) == null) {
                     continue;
                 }
                 connection.send(new MoveElementPayload(worldId, movId, dragGestureId,
-                        p.getX(), p.getY()));
+                        orig[0] + dx, orig[1] + dy));
             }
         }
     }

@@ -62,18 +62,12 @@ public class Level {
      */
     public void init() {
         if (initialized) {
-            throw new UnsupportedOperationException("Registration already frozen");
+            return;
         }
         RegisterElementChangeListenerEvent event = new RegisterElementChangeListenerEvent(this);
         post(event);
         elementChangeNotifier = event.getNotifier();
-    }
-
-    /**
-     * Must be called before the first tick ran
-     */
-    public void setInitialized() {
-        this.initialized = true;
+        initialized = true;
     }
 
     public boolean isInitialized() {

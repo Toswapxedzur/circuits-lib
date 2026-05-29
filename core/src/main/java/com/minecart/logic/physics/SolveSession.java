@@ -249,8 +249,8 @@ public final class SolveSession {
 
     /**
      * Forces {@code element}'s body to {@code invMassT = invMassR = 0} (fully immobilised) at
-     * its current pose. Used by the per-tick aggregator's contention policy: when two gestures
-     * target the same element, that element is locked for the tick and neither gesture wins.
+     * its current pose. Used by the drag aggregator's contention policy: when two gestures
+     * target the same element in one flush, that element is locked for the solve and neither gesture wins.
      * Other bodies in the same connected sub-graph can still move under their own springs /
      * rigid edges, but this body acts as an anchor.
      *

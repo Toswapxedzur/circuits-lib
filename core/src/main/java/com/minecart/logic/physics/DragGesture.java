@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * A single drag gesture's desired pose for one tick. The {@code (targetX, targetY)} is the world-
+ * A single drag gesture's desired pose for one aggregator flush. The {@code (targetX, targetY)} is the world-
  * space position the drag wants the {@code target} element's body centre to land at — typically
  * computed client-side as {@code initialBodyCentre + (currentCursor - initialCursor)} and shipped
  * inside a {@code MoveElementPayload} stream.
@@ -14,11 +14,11 @@ import java.util.UUID;
  * <h2>Identity</h2>
  * The {@code gestureId} uniquely identifies the gesture across the network: every payload from
  * one drag session carries the same {@code gestureId} (the client minted it at drag start). The
- * per-tick aggregator uses it to:
+ * drag aggregator uses it to:
  * <ul>
- *   <li>Coalesce multiple payloads in one tick into a single "latest target" pose
+ *   <li>Coalesce multiple payloads in one flush into a single "latest target" pose
  *       (streaming updates collapse to the most recent cursor position).</li>
- *   <li>Detect contention: two distinct {@code gestureId}s targeting the same element in one tick
+ *   <li>Detect contention: two distinct {@code gestureId}s targeting the same element in one flush
  *       means two players are fighting over it, which triggers the "immobilise the contended
  *       element" policy. See {@link CircuitPhysicsAdapter#applyDragBatch}.</li>
  * </ul>

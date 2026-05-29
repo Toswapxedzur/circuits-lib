@@ -280,10 +280,9 @@ class Phase1LockEnforcementTest {
     }
 
     // ---------------------------------------------------------------------
-    // Refusal rebroadcast — server must push the authoritative pose back at clients on every
-    // refused gesture so the client's optimistic mid-drag mutations get corrected. Without this,
-    // a LOCKED component still appears to move on the client because the server silently no-ops
-    // and never sends the sync delta that would snap the visual back.
+    // Refusal rebroadcast — server must reassert the authoritative pose on every refused gesture
+    // so all client mirrors stay consistent. Drag is currently server-authoritative, but topology
+    // previews / stale spectator mirrors can still need an explicit unchanged-state CHANGE.
     // ---------------------------------------------------------------------
 
     @Test
@@ -304,9 +303,7 @@ class Phase1LockEnforcementTest {
 
         // Server-side state still authoritative (test is in Phase1 already verified): position
         // unchanged. What's new here is the refusal rebroadcast: the BJT *and* every internal
-        // port must have been notified so the sync layer pushes a CHANGE delta for each. Without
-        // this, a client that optimistically translated the body would still display it at the
-        // dragged offset.
+        // port must have been notified so the sync layer can push a CHANGE delta for each.
         assertEquals(1.0, bjt.getInfo(AllElementInfos.POSITION).getX(), EPS);
         assertEquals(2.0, bjt.getInfo(AllElementInfos.POSITION).getY(), EPS);
         assertTrue(changed.contains(bjt.getId()),
@@ -409,10 +406,10 @@ class Phase1LockEnforcementTest {
                 w.getId(), bjt.getId(), originalPort.getId(), candidate.getId()));
         level.tick();
 
-        // No swap; rebroadcast covers the component plus both candidates so the client snaps any
-        // mid-flight optimistic UI back. The candidate broadcast in particular matters when the
-        // client has dragged the candidate node onto the port slot and is showing it visually
-        // attached: the snapshot pushes its real (un-attached) position back over the optimism.
+        // No swap; rebroadcast covers the component plus both candidates so clients reconcile
+        // any stale preview/mirror state. The candidate broadcast in particular matters when a
+        // UI preview showed the candidate visually attached: the snapshot pushes its real
+        // (un-attached) position back over that preview.
         assertSame(originalPort, bjt.getPort(0));
         assertTrue(changed.contains(bjt.getId()), "refused port swap must notify the component");
         assertTrue(changed.contains(originalPort.getId()),

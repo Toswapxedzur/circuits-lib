@@ -21,29 +21,29 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Per-tick aggregator for streaming drag gestures. Replaces the old explicit drag-lease system:
- * incoming {@code MoveElementPayload} (and analogous translation payloads) are buffered into this
- * aggregator instead of mutating the world inline; once per tick {@link ServerLevel#tick()} calls
- * {@link #flush(ServerLevel)} to resolve everything in a single unified physics solve.
+ * Aggregator for streaming drag gestures. Replaces the old explicit drag-lease system:
+ * incoming {@code MoveElementPayload} samples are buffered into this aggregator instead of
+ * mutating the world inline; {@link #flush(ServerLevel)} resolves the buffered samples in a
+ * single unified physics solve. In production, {@link com.minecart.server.network.LevelPumps}
+ * flushes this at a higher cadence than the main logic tick so server-authoritative drag feels
+ * responsive without client-side pose prediction.
  *
  * <h2>Lifecycle per tick</h2>
  * <ol>
- *   <li>Client streams Move payloads at ~20 Hz. Each handler does
+ *   <li>Client streams Move payloads containing cursor target poses. Each handler does
  *       {@code level.submit(() -> level.getDragAggregator().enqueue(gesture))}.</li>
- *   <li>{@link ServerLevel#tick} drains the action queue → all this-tick gestures land in
- *       {@link #buffered}.</li>
+ *   <li>The level action queue is drained by the main tick and by the high-frequency drag pump,
+ *       so pending samples land in {@link #buffered} quickly.</li>
  *   <li>{@link #flush} groups gestures by world, runs one
  *       {@link CircuitPhysicsAdapter#applyDragBatch} call per world, then clears the buffer.</li>
- *   <li>Per-tick refusal broadcasts: every gesture's target element gets a
- *       {@code notifyElementChanged}, so clients whose optimistic prediction diverged from the
- *       authoritative pose see a correction. Locked elements / contended elements naturally do
- *       not move under {@code applyDragBatch}, so the broadcast carries the unchanged pose.</li>
+ *   <li>Every gesture target gets {@code notifyElementChanged}; accepted drags broadcast fresh
+ *       authoritative poses, while locked / contended drags reassert the unchanged pose.</li>
  * </ol>
  *
  * <h2>Threading</h2>
- * {@link #enqueue} is called from the tick thread (via {@code level.submit}); not thread-safe by
- * itself, but the queueing pattern ensures single-thread access. {@link #flush} runs on the same
- * thread.
+ * {@link #enqueue} is called from the level worker thread (via {@code level.submit}); not
+ * thread-safe by itself, but the queueing pattern ensures single-thread access. {@link #flush}
+ * runs on the same worker thread.
  */
 public final class DragAggregator {
 
@@ -51,7 +51,7 @@ public final class DragAggregator {
 
     /**
      * Per-world buffer. Outer key is the world id; inner list is the gestures received against
-     * that world this tick. Multiple gestures with the same {@code (target, gestureId)} pair
+     * that world since the previous flush. Multiple gestures with the same {@code (target, gestureId)} pair
      * accumulate in insertion order — {@link CircuitPhysicsAdapter#applyDragBatch} coalesces them
      * to the latest target per pair.
      */
@@ -70,8 +70,8 @@ public final class DragAggregator {
     }
 
     /**
-     * Whether any gestures are buffered. Exposed for diagnostics / tests; the tick path always
-     * calls {@link #flush} unconditionally so an empty buffer is a no-op solve.
+     * Whether any gestures are buffered. Exposed for diagnostics / tests; pump paths call
+     * {@link #flush} unconditionally so an empty buffer is a no-op solve.
      */
     public boolean isEmpty() {
         return buffered.isEmpty();
@@ -83,10 +83,8 @@ public final class DragAggregator {
      * unified spring solve.
      *
      * <p>After the solve, every gesture's target element is re-notified to clients regardless of
-     * whether its pose actually changed — this is the refusal-broadcast: clients that optimistic-
-     * predicted a move on a locked / contended element will receive the unchanged authoritative
-     * pose and snap back. Clients whose prediction matched will see a no-op delta and the existing
-     * sync infrastructure deduplicates it.
+     * whether its pose actually changed. Accepted drags broadcast the new authoritative pose;
+     * locked / contended drags broadcast the unchanged pose so all clients keep the same mirror.
      */
     public void flush(ServerLevel level) {
         if (level == null || buffered.isEmpty()) {
@@ -127,9 +125,8 @@ public final class DragAggregator {
                 CircuitPhysicsAdapter.applyDragBatch(serverWorld, accepted);
             }
             // Broadcast authoritative pose for every gesture's target, accepted or not. Locked
-            // elements that we refused never moved, so the broadcast snaps the client back.
-            // Successful drags' targets are also re-broadcast in case the client's optimistic
-            // prediction diverged (e.g. multiple players contending → element immobilised).
+            // elements that we refused never moved, so this reasserts the unchanged pose; accepted
+            // targets are also rebroadcast so clients receive the latest server-solved pose.
             for (DragGesture g : gestures) {
                 notifyTarget(level, g.target());
             }
