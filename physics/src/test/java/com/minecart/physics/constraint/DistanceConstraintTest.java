@@ -157,11 +157,11 @@ class DistanceConstraintTest {
 
     @Test
     void position_free_endpoint_translates_but_doesnt_rotate() {
-        // A POSITION_FREE body should translate freely along the constraint axis. Initial set-up:
-        // POSITION_FREE body at (3, 0); locked body at (0, 0); L0 = 1. The POSITION_FREE body
+        // An ORIENTED body should translate freely along the constraint axis. Initial set-up:
+        // ORIENTED body at (3, 0); locked body at (0, 0); L0 = 1. The ORIENTED body
         // must slide from (3,0) toward (1,0) (rest distance from the locked end).
         Body a = Body.locked("a", Vec2.ZERO);
-        Body b = Body.positionFree("b", new Vec2(3.0, 0.0));
+        Body b = Body.oriented("b", new Vec2(3.0, 0.0));
         DistanceConstraint c = new DistanceConstraint(
                 AnchorPoint.atCentre(a), AnchorPoint.atCentre(b), 1.0);
 

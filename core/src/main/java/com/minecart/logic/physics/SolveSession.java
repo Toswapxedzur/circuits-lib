@@ -13,6 +13,8 @@ import com.minecart.physics.SolverResult;
 import com.minecart.physics.Vec2;
 import com.minecart.physics.constraint.Constraint;
 import com.minecart.physics.constraint.DistanceConstraint;
+import com.minecart.physics.constraint.EdgeOrientationConstraint;
+import com.minecart.physics.constraint.EdgePivotConstraint;
 import com.minecart.physics.constraint.PinJointConstraint;
 import com.minecart.physics.constraint.SpringConstraint;
 import com.minecart.registry.AllElementInfos;
@@ -238,12 +240,28 @@ public final class SolveSession {
      */
     public boolean addCentreSpring(CircuitElement element, double targetX, double targetY,
                                    double compliance) {
+        return addAnchorSpring(element, Vec2.ZERO, targetX, targetY, compliance);
+    }
+
+    public boolean addAnchorSpring(CircuitElement element, Vec2 localAnchor,
+                                   double targetX, double targetY, double compliance) {
         Body b = bodyById.get(element.getId());
         if (b == null) {
             return false;
         }
         constraints.add(0, new SpringConstraint(
-                AnchorPoint.atCentre(b), new Vec2(targetX, targetY), compliance));
+                new AnchorPoint(b, localAnchor != null ? localAnchor : Vec2.ZERO),
+                new Vec2(targetX, targetY), compliance));
+        return true;
+    }
+
+    public boolean addNodeSpring(CircuitNode node, double targetX, double targetY,
+                                 double compliance) {
+        AnchorPoint anchor = anchorFor(node);
+        if (anchor == null) {
+            return false;
+        }
+        constraints.add(0, new SpringConstraint(anchor, new Vec2(targetX, targetY), compliance));
         return true;
     }
 
@@ -401,11 +419,11 @@ public final class SolveSession {
         if (bodyById.containsKey(id)) {
             return;
         }
-        PositionInfo centre = comp.getInfo(AllElementInfos.POSITION);
-        double cx = centre != null ? centre.getX() : 0.0;
-        double cy = centre != null ? centre.getY() : 0.0;
         RotationInfo rot = comp.getInfo(AllElementInfos.ROTATION);
         double angle = rot != null ? rot.getAngle() : 0.0;
+        double[] visualCentre = comp.getVisualCenter();
+        double cx = visualCentre[0];
+        double cy = visualCentre[1];
 
         LockState eff = comp.effectiveLockState(1e-6);
         Body body = newBodyForLock(id, cx, cy, angle, eff);
@@ -449,7 +467,7 @@ public final class SolveSession {
         if (p != null && p.isFixed()) {
             body = Body.locked(id, new Vec2(x, y));
         } else {
-            body = Body.positionFree(id, new Vec2(x, y));
+            body = Body.oriented(id, new Vec2(x, y));
         }
         bodyById.put(id, body);
         elementById.put(id, node);
@@ -465,10 +483,10 @@ public final class SolveSession {
         LockMode mode = eff.mode();
         Body body = switch (mode) {
             case FREE -> Body.free(id, centre);
-            case POSITION_FREE -> Body.positionFree(id, centre);
-            case ROTATION_FREE -> {
+            case ORIENTED -> Body.oriented(id, centre);
+            case PIVOTED -> {
                 Vec2 pivot = eff.pivotValid() ? new Vec2(eff.pivotX(), eff.pivotY()) : centre;
-                yield Body.rotationFree(id, centre, pivot);
+                yield Body.pivoted(id, centre, pivot);
             }
             case LOCKED -> Body.locked(id, centre);
         };
@@ -481,16 +499,32 @@ public final class SolveSession {
     // ---------------------------------------------------------------------
 
     private void emitEdgeConstraint(CircuitEdge edge) {
-        RigidityInfo rigid = edge.getInfo(AllElementInfos.RIGIDITY);
-        if (rigid == null || !rigid.isRigid()) {
-            return; // flexible edges contribute nothing
-        }
         AnchorPoint a = anchorFor(edge.getStart());
         AnchorPoint b = anchorFor(edge.getEnd());
         if (a == null || b == null) {
             return;
         }
-        constraints.add(DistanceConstraint.atCurrentLength(a, b));
+        LockState lock = edge.effectiveLockState(1e-6);
+        if (lock.mode() == LockMode.LOCKED) {
+            constraints.add(new PinJointConstraint(a, AnchorPoint.atCentre(
+                    Body.locked(edge.getId() + ":start-lock", a.worldPosition()))));
+            constraints.add(new PinJointConstraint(b, AnchorPoint.atCentre(
+                    Body.locked(edge.getId() + ":end-lock", b.worldPosition()))));
+            return;
+        }
+        if (lock.mode() == LockMode.ORIENTED) {
+            Vec2 d = b.worldPosition().sub(a.worldPosition());
+            if (d.lengthSquared() > 1e-12) {
+                constraints.add(new EdgeOrientationConstraint(a, b, d));
+            }
+        } else if (lock.mode() == LockMode.PIVOTED && lock.pivotValid()) {
+            constraints.add(new EdgePivotConstraint(a, b, new Vec2(lock.pivotX(), lock.pivotY())));
+        }
+
+        RigidityInfo rigid = edge.getInfo(AllElementInfos.RIGIDITY);
+        if (rigid != null && rigid.isRigid()) {
+            constraints.add(DistanceConstraint.atCurrentLength(a, b));
+        }
     }
 
     private void emitSharedPortConstraints(CircuitNode port) {
@@ -568,18 +602,19 @@ public final class SolveSession {
     // ---------------------------------------------------------------------
 
     private void writebackComponent(CircuitComponent comp, Body body) {
-        Vec2 newPos = body.position();
         double newAngle = body.angle();
-        PositionInfo centre = comp.getInfo(AllElementInfos.POSITION);
-        boolean centreMoved = false;
-        if (centre == null) {
-            centre = new PositionInfo();
-            comp.setInfo(AllElementInfos.POSITION, centre);
-            centreMoved = true;
+        double[] pivotOffset = comp.getPivotLocalOffset();
+        Vec2 newPivot = body.localToWorld(new Vec2(pivotOffset[0], pivotOffset[1]));
+        PositionInfo pivot = comp.getInfo(AllElementInfos.POSITION);
+        boolean pivotMoved = false;
+        if (pivot == null) {
+            pivot = new PositionInfo();
+            comp.setInfo(AllElementInfos.POSITION, pivot);
+            pivotMoved = true;
         }
-        if (centre.getX() != newPos.x() || centre.getY() != newPos.y()) {
-            centre.set(newPos.x(), newPos.y());
-            centreMoved = true;
+        if (pivot.getX() != newPivot.x() || pivot.getY() != newPivot.y()) {
+            pivot.set(newPivot.x(), newPivot.y());
+            pivotMoved = true;
         }
         RotationInfo rot = comp.getInfo(AllElementInfos.ROTATION);
         boolean angleMoved = false;
@@ -587,7 +622,7 @@ public final class SolveSession {
             rot.setAngle(newAngle);
             angleMoved = true;
         }
-        if (!centreMoved && !angleMoved) {
+        if (!pivotMoved && !angleMoved) {
             // Body wasn't perturbed — skip the internal-node re-stamp and the notify.
             return;
         }

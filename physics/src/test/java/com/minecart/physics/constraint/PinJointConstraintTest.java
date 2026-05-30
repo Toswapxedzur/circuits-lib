@@ -85,11 +85,11 @@ class PinJointConstraintTest {
 
     @Test
     void rotation_free_body_pinned_to_anchor_orbits_to_match() {
-        // ROTATION_FREE body at (1, 0) with pivot at origin; anchor at its centre. Locked body
+        // PIVOTED body at (1, 0) with pivot at origin; anchor at its centre. Locked body
         // at (0, 1). The pin-joint forces the rotation-free body's anchor to coincide with the
         // locked anchor: the body rotates around its pivot by π/2 so it lands at (0, 1).
         Body locked = Body.locked("locked", new Vec2(0.0, 1.0));
-        Body rotFree = Body.rotationFree("rf", new Vec2(1.0, 0.0), new Vec2(0.0, 0.0));
+        Body rotFree = Body.pivoted("rf", new Vec2(1.0, 0.0), new Vec2(0.0, 0.0));
         PinJointConstraint c = new PinJointConstraint(
                 AnchorPoint.atCentre(locked), AnchorPoint.atCentre(rotFree));
 
@@ -104,10 +104,10 @@ class PinJointConstraintTest {
 
     @Test
     void position_free_body_translates_to_satisfy_pin() {
-        // POSITION_FREE body at (3, 2) — can translate but not rotate. Pinned to a locked anchor
+        // ORIENTED body at (3, 2) — can translate but not rotate. Pinned to a locked anchor
         // at (0, 0): body slides to (0, 0).
         Body locked = Body.locked("l", new Vec2(0.0, 0.0));
-        Body posFree = Body.positionFree("p", new Vec2(3.0, 2.0));
+        Body posFree = Body.oriented("p", new Vec2(3.0, 2.0));
         PinJointConstraint c = new PinJointConstraint(
                 AnchorPoint.atCentre(locked), AnchorPoint.atCentre(posFree));
 

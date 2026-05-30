@@ -6,13 +6,13 @@ import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.registry.AllElementInfos;
-import com.minecart.variant.info.PositionInfo;
 import com.minecart.variant.info.RotationInfo;
 
 /**
- * Renders one {@link CircuitComponent} as its texture centred on its {@link PositionInfo} and rotated by
- * its {@link RotationInfo} (radians). Pose is read every frame so server-driven moves/rotations animate
- * without explicit bookkeeping.
+ * Renders one {@link CircuitComponent} as its texture centred on the component's derived visual
+ * centre and rotated by its {@link RotationInfo} (radians). The component's {@link PositionInfo}
+ * stores its pivot/anchor; {@link CircuitComponent#getVisualCenter()} accounts for any local
+ * pivot offset.
  */
 public class ComponentActor extends Actor {
 
@@ -35,10 +35,8 @@ public class ComponentActor extends Actor {
     @Override
     public void act(float delta) {
         super.act(delta);
-        PositionInfo p = component.getInfo(AllElementInfos.POSITION);
-        if (p != null) {
-            setPosition((float) p.getX() - WORLD_SIZE / 2f, (float) p.getY() - WORLD_SIZE / 2f);
-        }
+        double[] centre = component.getVisualCenter();
+        setPosition((float) centre[0] - WORLD_SIZE / 2f, (float) centre[1] - WORLD_SIZE / 2f);
         RotationInfo r = component.getInfo(AllElementInfos.ROTATION);
         if (r != null) {
             setRotation((float) Math.toDegrees(r.getAngle()));

@@ -145,9 +145,9 @@ public non-sealed class CircuitEdge extends CircuitElement {
         }
         return switch (strict.getMode()) {
             case FREE -> LockState.FREE;
-            case POSITION_FREE -> LockState.positionFree();
-            case ROTATION_FREE -> strict.isPivotSet()
-                    ? LockState.rotationFree(strict.getPivotX(), strict.getPivotY())
+            case ORIENTED -> LockState.oriented();
+            case PIVOTED -> strict.isPivotSet()
+                    ? LockState.pivoted(strict.getPivotX(), strict.getPivotY())
                     : LockState.FREE;
             case LOCKED -> LockState.LOCKED;
         };
@@ -388,11 +388,11 @@ public non-sealed class CircuitEdge extends CircuitElement {
                 LockMode current = lock != null ? lock.getMode() : LockMode.FREE;
                 java.util.List<String> options = java.util.List.of(
                         LockMode.FREE.name(),
-                        LockMode.POSITION_FREE.name(),
-                        LockMode.ROTATION_FREE.name(),
+                        LockMode.ORIENTED.name(),
+                        LockMode.PIVOTED.name(),
                         LockMode.LOCKED.name());
                 builder.add(new DropdownSpec(FIELD_LOCK_MODE, "Lock", options, current.name()));
-                // Pivot fields: only meaningful in ROTATION_FREE but always present so flipping
+                // Pivot fields: only meaningful in PIVOTED but always present so flipping
                 // mode in the panel without re-opening doesn't lose the pivot. Initial seeded
                 // from the LockInfo if set, else from the soft pivot (midpoint of endpoints).
                 double pivotX = 0.0, pivotY = 0.0;
@@ -456,10 +456,10 @@ public non-sealed class CircuitEdge extends CircuitElement {
                 }
             }
 
-            // Endpoint coords. Per-endpoint: only apply when the node is free (no component
-            // owners). Port endpoints need the cascade — drop silently.
-            mutated |= applyEdgeEndpoint(edge.getStart(), snapshot, FIELD_START_X, FIELD_START_Y);
-            mutated |= applyEdgeEndpoint(edge.getEnd(), snapshot, FIELD_END_X, FIELD_END_Y);
+            // Endpoint coords. Edge locks gate these as a single edge edit:
+            // FREE allows independent endpoint movement; ORIENTED allows only equal endpoint
+            // deltas (pure translation); PIVOTED/LOCKED refuse pivot/position edits.
+            mutated |= applyLockedEdgeEndpointEdits(edge, snapshot);
 
             // Rigid toggle: apply last so the next solver pass (driven by any subsequent gesture)
             // sees the freshly-set flag. We lazily create RigidityInfo if absent — the injector
@@ -512,5 +512,58 @@ public non-sealed class CircuitEdge extends CircuitElement {
                     newX - p.getX(), newY - p.getY());
         }
         return true;
+    }
+
+    private static boolean applyLockedEdgeEndpointEdits(CircuitEdge edge,
+                                                        com.minecart.ui.panel.PanelSnapshot snap) {
+        if (edge == null) return false;
+        LockState eff = edge.effectiveLockState(1e-6);
+        LockMode mode = eff.mode();
+        if (mode == LockMode.LOCKED || mode == LockMode.PIVOTED) {
+            return false;
+        }
+        if (mode == LockMode.ORIENTED) {
+            return applyOrientedEdgeEndpointEdits(edge, snap);
+        }
+        boolean mutated = false;
+        mutated |= applyEdgeEndpoint(edge.getStart(), snap, FIELD_START_X, FIELD_START_Y);
+        mutated |= applyEdgeEndpoint(edge.getEnd(), snap, FIELD_END_X, FIELD_END_Y);
+        return mutated;
+    }
+
+    private static boolean applyOrientedEdgeEndpointEdits(CircuitEdge edge,
+                                                          com.minecart.ui.panel.PanelSnapshot snap) {
+        CircuitNode s = edge.getStart();
+        CircuitNode e = edge.getEnd();
+        PositionInfo sp = s != null ? s.getInfo(AllElementInfos.POSITION) : null;
+        PositionInfo ep = e != null ? e.getInfo(AllElementInfos.POSITION) : null;
+        if (sp == null || ep == null) {
+            return false;
+        }
+        Double sx = snap.getDouble(FIELD_START_X).orElse(null);
+        Double sy = snap.getDouble(FIELD_START_Y).orElse(null);
+        Double ex = snap.getDouble(FIELD_END_X).orElse(null);
+        Double ey = snap.getDouble(FIELD_END_Y).orElse(null);
+        if (sx == null || sy == null || ex == null || ey == null) {
+            return false;
+        }
+        if (!Double.isFinite(sx) || !Double.isFinite(sy)
+                || !Double.isFinite(ex) || !Double.isFinite(ey)) {
+            return false;
+        }
+        double sdx = sx - sp.getX();
+        double sdy = sy - sp.getY();
+        double edx = ex - ep.getX();
+        double edy = ey - ep.getY();
+        if (Math.abs(sdx - edx) > 1e-6 || Math.abs(sdy - edy) > 1e-6) {
+            return false;
+        }
+        if (sdx == 0.0 && sdy == 0.0) {
+            return false;
+        }
+        boolean mutated = false;
+        mutated |= applyEdgeEndpoint(s, snap, FIELD_START_X, FIELD_START_Y);
+        mutated |= applyEdgeEndpoint(e, snap, FIELD_END_X, FIELD_END_Y);
+        return mutated;
     }
 }

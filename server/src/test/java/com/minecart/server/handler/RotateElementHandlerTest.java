@@ -10,6 +10,7 @@ import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.info.LockInfo;
 import com.minecart.variant.info.LockMode;
 import com.minecart.variant.info.PositionInfo;
+import com.minecart.variant.info.RotationInfo;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -123,15 +124,15 @@ class RotateElementHandlerTest {
     }
 
     @Test
-    void positionFreeLock_refusesRotationAndKeepsAuthoredPivot() {
-        // POSITION_FREE permits translation only; the engine's effectiveLockState.allowsRotation
+    void orientedLock_refusesRotationAndKeepsAuthoredPivot() {
+        // ORIENTED permits translation only; the engine's effectiveLockState.allowsRotation
         // returns false, so the rotation is refused. The authored pivot is preserved — earlier
         // revisions of the handler would have silently rewritten it to the gesture's pivot, which
         // was the bug that motivated the Phase 1 side-effect removal.
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = placeBJT(w, 0.0, 0.0);
-        LockInfo lock = new LockInfo(LockMode.POSITION_FREE, 7.0, 9.0, true);
+        LockInfo lock = new LockInfo(LockMode.ORIENTED, 7.0, 9.0, true);
         bjt.setInfo(AllElementInfos.LOCK, lock);
 
         double centreXBefore = bjt.getInfo(AllElementInfos.POSITION).getX();
@@ -145,7 +146,7 @@ class RotateElementHandlerTest {
         // Mode preserved, authored pivot preserved (NOT overwritten by the gesture's pivot),
         // and body not rotated.
         LockInfo after = bjt.getInfo(AllElementInfos.LOCK);
-        assertEquals(LockMode.POSITION_FREE, after.getMode());
+        assertEquals(LockMode.ORIENTED, after.getMode());
         assertEquals(7.0, after.getPivotX(), EPS);
         assertEquals(9.0, after.getPivotY(), EPS);
         assertEquals(centreXBefore, bjt.getInfo(AllElementInfos.POSITION).getX(), EPS);
@@ -153,56 +154,56 @@ class RotateElementHandlerTest {
     }
 
     @Test
-    void rotationFreeLock_atMatchingPivot_isAcceptedAndPreservesAuthoredLockState() {
-        // ROTATION_FREE at a stored pivot: engine accepts the rotation iff the gesture's pivot
-        // matches the stored one. With the side-effect removed, the lock survives the gesture
-        // unchanged.
+    void pivotedLock_usesStoredPivotAndPreservesAuthoredLockState() {
+        // PIVOTED rotates around the component's stored pivot even when the gesture includes the
+        // same cursor pivot. The local pivot offset keeps the visual centre at (0,0) initially.
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = placeBJT(w, 0.0, 0.0);
-        LockInfo lock = new LockInfo(LockMode.ROTATION_FREE, 2.0, 0.0, true);
+        bjt.getInfo(AllElementInfos.POSITION).set(2.0, 0.0);
+        LockInfo lock = new LockInfo(LockMode.PIVOTED, 2.0, 0.0, true);
         bjt.setInfo(AllElementInfos.LOCK, lock);
+        bjt.setInfo(AllElementInfos.ROTATION, new RotationInfo());
 
         RotateElementHandler handler = new RotateElementHandler(level);
         handler.handle(new RotateElementPayload(
                 w.getId(), bjt.getId(), 2.0, 0.0, Math.PI / 2.0));
         level.tick();
 
-        // Rotation applied (centre (0,0) → (2,-2) under 90° CCW about (2,0)).
+        // Pivot position stays pinned; rotation angle carries the visual centre around it.
         assertEquals(2.0, bjt.getInfo(AllElementInfos.POSITION).getX(), EPS);
-        assertEquals(-2.0, bjt.getInfo(AllElementInfos.POSITION).getY(), EPS);
-        // Authored ROTATION_FREE lock state untouched.
+        assertEquals(0.0, bjt.getInfo(AllElementInfos.POSITION).getY(), EPS);
+        assertEquals(Math.PI / 2.0, bjt.getInfo(AllElementInfos.ROTATION).getAngle(), EPS);
+        // Authored PIVOTED lock state untouched.
         LockInfo after = bjt.getInfo(AllElementInfos.LOCK);
-        assertEquals(LockMode.ROTATION_FREE, after.getMode());
+        assertEquals(LockMode.PIVOTED, after.getMode());
         assertEquals(2.0, after.getPivotX(), EPS);
         assertEquals(0.0, after.getPivotY(), EPS);
     }
 
     @Test
-    void rotationFreeLock_atMismatchedPivot_isRefusedAndPreservesAuthoredPivot() {
-        // Same setup as above, but the gesture targets a different pivot. The engine's pivot-
-        // coincidence check refuses, and the handler does NOT rewrite the authored pivot to
-        // hide the refusal.
+    void pivotedLock_atMismatchedGesturePivot_usesStoredPivot() {
+        // The gesture targets a different cursor pivot, but PIVOTED normalises to the stored
+        // component pivot instead of refusing or rewriting the authored offset.
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = placeBJT(w, 0.0, 0.0);
-        LockInfo lock = new LockInfo(LockMode.ROTATION_FREE, 2.0, 0.0, true);
+        bjt.getInfo(AllElementInfos.POSITION).set(2.0, 0.0);
+        LockInfo lock = new LockInfo(LockMode.PIVOTED, 2.0, 0.0, true);
         bjt.setInfo(AllElementInfos.LOCK, lock);
-
-        double centreXBefore = bjt.getInfo(AllElementInfos.POSITION).getX();
-        double centreYBefore = bjt.getInfo(AllElementInfos.POSITION).getY();
+        bjt.setInfo(AllElementInfos.ROTATION, new RotationInfo());
 
         RotateElementHandler handler = new RotateElementHandler(level);
         handler.handle(new RotateElementPayload(
                 w.getId(), bjt.getId(), 5.0, 5.0, Math.PI / 2.0));
         level.tick();
 
-        // Body unchanged.
-        assertEquals(centreXBefore, bjt.getInfo(AllElementInfos.POSITION).getX(), EPS);
-        assertEquals(centreYBefore, bjt.getInfo(AllElementInfos.POSITION).getY(), EPS);
+        assertEquals(2.0, bjt.getInfo(AllElementInfos.POSITION).getX(), EPS);
+        assertEquals(0.0, bjt.getInfo(AllElementInfos.POSITION).getY(), EPS);
+        assertEquals(Math.PI / 2.0, bjt.getInfo(AllElementInfos.ROTATION).getAngle(), EPS);
         // Authored pivot preserved.
         LockInfo after = bjt.getInfo(AllElementInfos.LOCK);
-        assertEquals(LockMode.ROTATION_FREE, after.getMode());
+        assertEquals(LockMode.PIVOTED, after.getMode());
         assertEquals(2.0, after.getPivotX(), EPS);
         assertEquals(0.0, after.getPivotY(), EPS);
     }

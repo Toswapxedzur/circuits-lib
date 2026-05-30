@@ -56,7 +56,7 @@ public final class EdgeEndpointChangeHandler implements PayloadHandler<EdgeEndpo
             return;
         }
         // Phase 1 lock enforcement: a strictly LOCKED edge refuses any topological change. The
-        // weaker modes (POSITION_FREE, ROTATION_FREE) are kinematic restrictions that don't have
+        // weaker modes (ORIENTED, PIVOTED) are kinematic restrictions that don't have
         // a clean meaning for rewiring, so we only gate on LOCKED for now; this matches the
         // user-visible "the strict lock should actually do something" contract.
         LockState eff = edge.effectiveLockState(LOCK_EPSILON);

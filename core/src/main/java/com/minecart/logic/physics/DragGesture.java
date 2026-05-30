@@ -33,12 +33,28 @@ public final class DragGesture {
     private final CircuitElement target;
     private final double targetX;
     private final double targetY;
+    private final boolean hasAnchorLocal;
+    private final double anchorLocalX;
+    private final double anchorLocalY;
 
     public DragGesture(UUID gestureId, CircuitElement target, double targetX, double targetY) {
+        this(gestureId, target, targetX, targetY, false, 0.0, 0.0);
+    }
+
+    public DragGesture(UUID gestureId, CircuitElement target, double targetX, double targetY,
+                       double anchorLocalX, double anchorLocalY) {
+        this(gestureId, target, targetX, targetY, true, anchorLocalX, anchorLocalY);
+    }
+
+    private DragGesture(UUID gestureId, CircuitElement target, double targetX, double targetY,
+                        boolean hasAnchorLocal, double anchorLocalX, double anchorLocalY) {
         this.gestureId = Objects.requireNonNull(gestureId, "gestureId");
         this.target = Objects.requireNonNull(target, "target");
         this.targetX = targetX;
         this.targetY = targetY;
+        this.hasAnchorLocal = hasAnchorLocal;
+        this.anchorLocalX = anchorLocalX;
+        this.anchorLocalY = anchorLocalY;
     }
 
     public UUID gestureId() {
@@ -55,6 +71,18 @@ public final class DragGesture {
 
     public double targetY() {
         return targetY;
+    }
+
+    public boolean hasAnchorLocal() {
+        return hasAnchorLocal;
+    }
+
+    public double anchorLocalX() {
+        return anchorLocalX;
+    }
+
+    public double anchorLocalY() {
+        return anchorLocalY;
     }
 
     @Override

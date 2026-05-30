@@ -40,7 +40,7 @@ class AnchorPointTest {
     void anchor_on_rotation_free_body_orbits_around_pivot() {
         // Body at (3, 0) pivoted at the origin. Anchor at body's centre (local offset (0,0)).
         // Rotate body 180°: the body's position should flip to (-3, 0), and so should the anchor.
-        Body body = Body.rotationFree("r", new Vec2(3.0, 0.0), new Vec2(0.0, 0.0));
+        Body body = Body.pivoted("r", new Vec2(3.0, 0.0), new Vec2(0.0, 0.0));
         AnchorPoint anchor = AnchorPoint.atCentre(body);
         assertEquals(new Vec2(3.0, 0.0), anchor.worldPosition());
 

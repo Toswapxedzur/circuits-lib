@@ -3,6 +3,7 @@ package com.minecart.server.handler;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerLevel;
@@ -29,13 +30,13 @@ import java.util.UUID;
  *       trigger the contention policy (immobilise for the current flush).</li>
  *   <li><b>One-shot</b> ({@code gestureId == null}): a panel save, scroll-rotate's translation
  *       sibling, or any other discrete mutation. Routed through
- *       {@link CombineCascadeEngine#tryTranslateComponent} (for components) or
- *       {@link CombineCascadeEngine#tryTranslateFreeNode} (for free nodes) immediately — hard pin
- *       at the target pose, propagated across rigid edges synchronously.</li>
+     *       {@link CombineCascadeEngine#tryTranslateComponent} (for components),
+     *       {@link CombineCascadeEngine#tryTranslateFreeNode} (for free nodes), or the edge
+     *       physics adapter (for edge midpoint/anchor drags) immediately — hard pin at the target
+     *       pose, propagated across rigid edges synchronously.</li>
  * </ul>
  *
- * <p>Silent no-op on unknown world / unknown element / element kind without a single anchor
- * (edges are positionless by construction). The strict-lock preflight lives in
+     * <p>Silent no-op on unknown world / unknown element. The strict-lock preflight lives in
  * {@link com.minecart.logic.physics.DragAggregator#flush} for the streaming path and in the
  * cascade engine entry points for the one-shot path.
  */
@@ -65,8 +66,11 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
         if (gestureId != null) {
             // Streaming drag: queue into the aggregator. The high-frequency drag pump flushes
             // buffered gestures in a single unified solve and broadcasts authority.
-            level.getDragAggregator().enqueue(payload.getWorldId(),
-                    new DragGesture(gestureId, el, payload.getX(), payload.getY()));
+            DragGesture gesture = payload.hasAnchorLocal()
+                    ? new DragGesture(gestureId, el, payload.getX(), payload.getY(),
+                            payload.getAnchorLocalX(), payload.getAnchorLocalY())
+                    : new DragGesture(gestureId, el, payload.getX(), payload.getY());
+            level.getDragAggregator().enqueue(payload.getWorldId(), gesture);
             return;
         }
         // One-shot path (panel save, etc.) — hard-pin the target pose synchronously.
@@ -74,6 +78,9 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
             moveComponent(serverWorld, comp, payload.getX(), payload.getY());
         } else if (el instanceof CircuitNode node) {
             moveFreeNode(serverWorld, node, payload.getX(), payload.getY());
+        } else if (el instanceof CircuitEdge edge) {
+            CombineCascadeEngine.tryMoveEdgeAnchor(serverWorld, edge, payload.getX(), payload.getY(),
+                    payload.hasAnchorLocal(), payload.getAnchorLocalX(), payload.getAnchorLocalY());
         }
     }
 

@@ -55,8 +55,8 @@ public final class ReplaceComponentNodeHandler implements PayloadHandler<Replace
         if (comp == null) {
             return;
         }
-        // Phase 1 lock enforcement: a strictly LOCKED component refuses port swaps. POSITION_FREE
-        // and ROTATION_FREE are kinematic-only restrictions; they don't have a natural meaning
+        // Phase 1 lock enforcement: a strictly LOCKED component refuses port swaps. ORIENTED
+        // and PIVOTED are kinematic-only restrictions; they don't have a natural meaning
         // for topological port replacement, so we only gate on LOCKED for now.
         LockState eff = comp.effectiveLockState(LOCK_EPSILON);
         if (eff.mode() == LockMode.LOCKED) {

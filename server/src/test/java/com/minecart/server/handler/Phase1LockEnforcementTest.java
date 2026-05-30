@@ -61,9 +61,8 @@ class Phase1LockEnforcementTest {
     }
 
     private static void setLock(BJTransistor bjt, LockMode mode) {
-        // ROTATION_FREE must carry a set pivot or CircuitComponent.effectiveLockState collapses
-        // it back to FREE (the "no authored pivot" fallback that lets the soft side decide). For
-        // a deterministic test we always author a pivot.
+        // PIVOTED stores its fixed world pivot on the component PositionInfo; LockInfo's pivot
+        // fields are the local offset from visual centre to pivot.
         LockInfo lock = new LockInfo(mode, 0.0, 0.0, true);
         bjt.setInfo(AllElementInfos.LOCK, lock);
     }
@@ -101,17 +100,17 @@ class Phase1LockEnforcementTest {
     }
 
     @Test
-    void moveComponent_positionFreeLock_isApplied() {
+    void moveComponent_orientedLock_isApplied() {
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = placeBJT(w, 0.0, 0.0);
-        setLock(bjt, LockMode.POSITION_FREE);
+        setLock(bjt, LockMode.ORIENTED);
 
         new MoveElementHandler(level)
                 .handle(new MoveElementPayload(w.getId(), bjt.getId(), 3.0, 5.0));
         level.tick();
 
-        // POSITION_FREE permits translation; drag lands.
+        // ORIENTED permits translation; drag lands.
         assertEquals(3.0, bjt.getInfo(AllElementInfos.POSITION).getX(), EPS);
         assertEquals(5.0, bjt.getInfo(AllElementInfos.POSITION).getY(), EPS);
     }
@@ -133,13 +132,13 @@ class Phase1LockEnforcementTest {
     }
 
     @Test
-    void moveComponent_rotationFreeLock_isRefused() {
-        // ROTATION_FREE permits rotation but NOT translation; LockMode.allowsTranslation()
+    void moveComponent_pivotedLock_isRefused() {
+        // PIVOTED permits rotation but NOT translation; LockMode.allowsTranslation()
         // returns false.
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = placeBJT(w, 1.0, 2.0);
-        setLock(bjt, LockMode.ROTATION_FREE);
+        setLock(bjt, LockMode.PIVOTED);
 
         new MoveElementHandler(level)
                 .handle(new MoveElementPayload(w.getId(), bjt.getId(), 10.0, 10.0));

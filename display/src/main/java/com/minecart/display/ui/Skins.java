@@ -54,6 +54,10 @@ public final class Skins {
         // the visual language stays consistent across the panel — no fancy tick artwork yet.
         addDrawable(skin, "d_check_off", new Color(0.20f, 0.22f, 0.28f, 1f));
         addDrawable(skin, "d_check_on",  new Color(0.30f, 0.55f, 0.85f, 1f));
+        skin.getDrawable("d_check_off").setMinWidth(22f);
+        skin.getDrawable("d_check_off").setMinHeight(22f);
+        skin.getDrawable("d_check_on").setMinWidth(22f);
+        skin.getDrawable("d_check_on").setMinHeight(22f);
 
         BitmapFont font = new BitmapFont();
         skin.add("default-font", font);

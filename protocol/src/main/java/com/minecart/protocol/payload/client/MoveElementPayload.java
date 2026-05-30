@@ -33,6 +33,9 @@ public final class MoveElementPayload implements Payload {
     private UUID gestureId;
     private double x;
     private double y;
+    private boolean hasAnchorLocal;
+    private double anchorLocalX;
+    private double anchorLocalY;
 
     public MoveElementPayload() {
     }
@@ -42,11 +45,24 @@ public final class MoveElementPayload implements Payload {
     }
 
     public MoveElementPayload(UUID worldId, UUID elementId, UUID gestureId, double x, double y) {
+        this(worldId, elementId, gestureId, x, y, false, 0.0, 0.0);
+    }
+
+    public MoveElementPayload(UUID worldId, UUID elementId, UUID gestureId, double x, double y,
+                              double anchorLocalX, double anchorLocalY) {
+        this(worldId, elementId, gestureId, x, y, true, anchorLocalX, anchorLocalY);
+    }
+
+    private MoveElementPayload(UUID worldId, UUID elementId, UUID gestureId, double x, double y,
+                               boolean hasAnchorLocal, double anchorLocalX, double anchorLocalY) {
         this.worldId = worldId;
         this.elementId = elementId;
         this.gestureId = gestureId;
         this.x = x;
         this.y = y;
+        this.hasAnchorLocal = hasAnchorLocal;
+        this.anchorLocalX = anchorLocalX;
+        this.anchorLocalY = anchorLocalY;
     }
 
     @Override
@@ -64,6 +80,9 @@ public final class MoveElementPayload implements Payload {
     public UUID getGestureId() { return gestureId; }
     public double getX() { return x; }
     public double getY() { return y; }
+    public boolean hasAnchorLocal() { return hasAnchorLocal; }
+    public double getAnchorLocalX() { return anchorLocalX; }
+    public double getAnchorLocalY() { return anchorLocalY; }
 
     @Override
     public void save(CompoundTag tag) {
@@ -75,6 +94,10 @@ public final class MoveElementPayload implements Payload {
         }
         tag.putDouble(ProtocolStrings.TAG_X, x);
         tag.putDouble(ProtocolStrings.TAG_Y, y);
+        if (hasAnchorLocal) {
+            tag.putDouble(ProtocolStrings.TAG_ANCHOR_LOCAL_X, anchorLocalX);
+            tag.putDouble(ProtocolStrings.TAG_ANCHOR_LOCAL_Y, anchorLocalY);
+        }
     }
 
     @Override
@@ -91,5 +114,14 @@ public final class MoveElementPayload implements Payload {
         gestureId = TagUtil.getUUID(tag, ProtocolStrings.TAG_GESTURE_ID);
         x = tag.getDouble(ProtocolStrings.TAG_X);
         y = tag.getDouble(ProtocolStrings.TAG_Y);
+        hasAnchorLocal = tag.get(ProtocolStrings.TAG_ANCHOR_LOCAL_X) != null
+                && tag.get(ProtocolStrings.TAG_ANCHOR_LOCAL_Y) != null;
+        if (hasAnchorLocal) {
+            anchorLocalX = tag.getDouble(ProtocolStrings.TAG_ANCHOR_LOCAL_X);
+            anchorLocalY = tag.getDouble(ProtocolStrings.TAG_ANCHOR_LOCAL_Y);
+        } else {
+            anchorLocalX = 0.0;
+            anchorLocalY = 0.0;
+        }
     }
 }

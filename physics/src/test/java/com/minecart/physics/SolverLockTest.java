@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Exhaustively walks the lock-state matrix for a single 2-body constraint and verifies the solver
  * obeys per-axis inverse-inertia gating. The matrix mirrors the domain layer's {@code LockMode}
- * enum: {@code FREE / POSITION_FREE / ROTATION_FREE / LOCKED} on each side, all 16 combinations.
+ * enum: {@code FREE / ORIENTED / PIVOTED / LOCKED} on each side, all 16 combinations.
  *
  * <p>Each case sets up a known initial offset and a single distance or pin constraint and asks
  * the solver to converge. The expected outcome is computed from the available DOFs:
@@ -30,16 +30,16 @@ class SolverLockTest {
 
     private enum Mode {
         FREE,
-        POSITION_FREE,
-        ROTATION_FREE,
+        ORIENTED,
+        PIVOTED,
         LOCKED
     }
 
     private static Body bodyFor(Mode mode, Object id, Vec2 pos, Vec2 pivot) {
         return switch (mode) {
             case FREE -> Body.free(id, pos);
-            case POSITION_FREE -> Body.positionFree(id, pos);
-            case ROTATION_FREE -> Body.rotationFree(id, pos, pivot);
+            case ORIENTED -> Body.oriented(id, pos);
+            case PIVOTED -> Body.pivoted(id, pos, pivot);
             case LOCKED -> Body.locked(id, pos);
         };
     }
@@ -48,12 +48,12 @@ class SolverLockTest {
      * For a 2-body distance / pin constraint, the constraint is satisfiable iff at least one
      * body carries an inverse inertia along the constraint axis (translation) — the only DOF
      * relevant for point-mass anchor bodies. With anchors-at-centre and pivots-at-position,
-     * ROTATION_FREE bodies contribute nothing to translation, so they look "locked" from the
+     * PIVOTED bodies contribute nothing to translation, so they look "locked" from the
      * constraint's perspective.
      */
     private static boolean expectsConvergence(Mode a, Mode b) {
-        boolean aTranslates = a == Mode.FREE || a == Mode.POSITION_FREE;
-        boolean bTranslates = b == Mode.FREE || b == Mode.POSITION_FREE;
+        boolean aTranslates = a == Mode.FREE || a == Mode.ORIENTED;
+        boolean bTranslates = b == Mode.FREE || b == Mode.ORIENTED;
         return aTranslates || bTranslates;
     }
 
@@ -77,7 +77,7 @@ class SolverLockTest {
 
     private static void runDistanceCase(Mode aMode, Mode bMode) {
         // Initial separation = 4, rest length = 2. Both pivots = each body's position (so
-        // rotation-free bodies orbit around their starting point, contributing zero translation
+        // pivoted bodies orbit around their starting point, contributing zero translation
         // and effectively behaving as locked for centre-anchored constraints).
         Vec2 posA = new Vec2(0.0, 0.0);
         Vec2 posB = new Vec2(4.0, 0.0);
@@ -127,31 +127,31 @@ class SolverLockTest {
     }
 
     @Test
-    void position_free_partner_absorbs_translation_when_other_side_is_locked() {
-        // POSITION_FREE body opposite a LOCKED body. Translation is the only feasible motion;
-        // the POSITION_FREE body translates to satisfy the constraint, the locked body stays
+    void oriented_partner_absorbs_translation_when_other_side_is_locked() {
+        // ORIENTED body opposite a LOCKED body. Translation is the only feasible motion;
+        // the ORIENTED body translates to satisfy the constraint, the locked body stays
         // put. Angles unchanged on both sides.
         Body locked = Body.locked("l", new Vec2(0.0, 0.0));
-        Body posFree = Body.positionFree("p", new Vec2(5.0, 0.0));
+        Body posFree = Body.oriented("p", new Vec2(5.0, 0.0));
         DistanceConstraint c = new DistanceConstraint(
                 AnchorPoint.atCentre(locked), AnchorPoint.atCentre(posFree), 1.0);
 
         SolverResult r = Solver.solve(SolverConfig.defaults(), List.of(c));
         assertTrue(r.converged(), () -> "expected convergence; got " + r);
         assertEquals(new Vec2(0.0, 0.0), locked.position());
-        // POSITION_FREE body should land 1 unit from origin along +x.
+        // ORIENTED body should land 1 unit from origin along +x.
         assertEquals(1.0, posFree.position().x(), EPS);
         assertEquals(0.0, posFree.position().y(), EPS);
         assertEquals(0.0, posFree.angle(), EPS);
     }
 
     @Test
-    void rotation_free_with_offset_anchor_can_satisfy_via_rotation_alone() {
-        // Setup: ROTATION_FREE body pivoted at (0, 0) with translational position (1, 0) and
+    void pivoted_with_offset_anchor_can_satisfy_via_rotation_alone() {
+        // Setup: PIVOTED body pivoted at (0, 0) with translational position (1, 0) and
         // anchor at body centre. The body's "anchor world position" is just its position (=
-        // anchor-at-centre). For ROTATION_FREE the only DOF is rotation around the pivot.
+        // anchor-at-centre). For PIVOTED the only DOF is rotation around the pivot.
         // The constraint forces the body's anchor to be at distance 1 from a LOCKED anchor at
-        // (0, 1). The ROTATION_FREE body's anchor moves on a circle of radius 1 around (0, 0),
+        // (0, 1). The PIVOTED body's anchor moves on a circle of radius 1 around (0, 0),
         // so the satisfying poses are the intersections of two circles: the body's circle and
         // the constraint circle of radius 1 around (0, 1).
         //   Intersections: (sin θ, 1 - cos θ) = (cos α, sin α) ... or numerically the unique pose
@@ -165,7 +165,7 @@ class SolverLockTest {
         // pin and demand they coincide. Pin's resolution: rotate the body by π/2 so its anchor
         // moves from (2, 0) to (0, 2). Body angle goes from 0 to π/2.
         Body locked = Body.locked("anchor", new Vec2(0.0, 2.0));
-        Body rotFree = Body.rotationFree("rf", new Vec2(2.0, 0.0), new Vec2(0.0, 0.0));
+        Body rotFree = Body.pivoted("rf", new Vec2(2.0, 0.0), new Vec2(0.0, 0.0));
         PinJointConstraint c = new PinJointConstraint(
                 AnchorPoint.atCentre(locked), AnchorPoint.atCentre(rotFree));
 

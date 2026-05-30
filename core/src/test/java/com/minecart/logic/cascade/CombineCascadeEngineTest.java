@@ -273,10 +273,10 @@ class CombineCascadeEngineTest {
         place(bjt.getPort(0), 1.0, 0.0);
         place(bjt.getCenter(), 0.0, 0.0);
         com.minecart.variant.info.LockInfo strict = new com.minecart.variant.info.LockInfo();
-        strict.setMode(com.minecart.variant.info.LockMode.POSITION_FREE);
+        strict.setMode(com.minecart.variant.info.LockMode.ORIENTED);
         bjt.setInfo(AllElementInfos.LOCK, strict);
 
-        // POSITION_FREE allows translation but not rotation → engine refuses.
+        // ORIENTED allows translation but not rotation → engine refuses.
         assertFalse(CombineCascadeEngine.tryRotateComponent(w, bjt, 0.0, 0.0, Math.PI / 4.0));
         assertEquals(1.0, posX(bjt.getPort(0)), 1e-9);
         assertEquals(0.0, posY(bjt.getPort(0)), 1e-9);

@@ -19,7 +19,7 @@ import java.util.UUID;
  *   <li>Server-side handler routes the request through {@link com.minecart.logic.cascade.CombineCascadeEngine#tryRotateComponent
  *       CombineCascadeEngine.tryRotateComponent} after first updating the element's strict
  *       {@link com.minecart.variant.info.LockInfo} so the pivot coincides with the requested one
- *       (the engine refuses if the strict pivot disagrees, per the ROTATION_FREE pivot rule). This
+ *       (PIVOTED components normalize the gesture to their stored pivot). This
  *       matches the user-spec "gestures update the strictLock state".</li>
  *   <li>Currently scoped to {@link com.minecart.logic.CircuitComponent}; edge rotation requires
  *       per-endpoint cascade and is parked behind a TODO in the handler.</li>

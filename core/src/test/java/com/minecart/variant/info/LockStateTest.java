@@ -6,6 +6,7 @@ import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
 import com.minecart.registry.AllComponents;
 import com.minecart.registry.AllElementInfos;
+import com.minecart.serialization.tag.CompoundTag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,59 +39,59 @@ class LockStateTest {
             assertEquals(LockMode.LOCKED, LockMode.and(LockMode.LOCKED, m));
             assertEquals(LockMode.LOCKED, LockMode.and(m, LockMode.LOCKED));
         }
-        // POSITION_FREE ∩ ROTATION_FREE = LOCKED: their operation sets are disjoint.
+        // ORIENTED ∩ PIVOTED = LOCKED: their operation sets are disjoint.
         assertEquals(LockMode.LOCKED,
-                LockMode.and(LockMode.POSITION_FREE, LockMode.ROTATION_FREE));
+                LockMode.and(LockMode.ORIENTED, LockMode.PIVOTED));
         assertEquals(LockMode.LOCKED,
-                LockMode.and(LockMode.ROTATION_FREE, LockMode.POSITION_FREE));
+                LockMode.and(LockMode.PIVOTED, LockMode.ORIENTED));
     }
 
     @Test
     void lockMode_forNode_collapsesRotationModes() {
         assertEquals(LockMode.FREE, LockMode.FREE.forNode());
-        assertEquals(LockMode.FREE, LockMode.POSITION_FREE.forNode(),
-                "Nodes have no rotation, so POSITION_FREE has the same operation set as FREE");
-        assertEquals(LockMode.LOCKED, LockMode.ROTATION_FREE.forNode(),
+        assertEquals(LockMode.FREE, LockMode.ORIENTED.forNode(),
+                "Nodes have no rotation, so ORIENTED has the same operation set as FREE");
+        assertEquals(LockMode.LOCKED, LockMode.PIVOTED.forNode(),
                 "Nodes have no rotation, so a rotation-only freedom = no motion");
         assertEquals(LockMode.LOCKED, LockMode.LOCKED.forNode());
     }
 
     @Test
-    void lockState_and_rotationFree_pivotsMatch_keepsRotationFree() {
-        LockState a = LockState.rotationFree(5.0, 3.0);
-        LockState b = LockState.rotationFree(5.0, 3.0);
+    void lockState_and_pivoted_pivotsMatch_keepsPivoted() {
+        LockState a = LockState.pivoted(5.0, 3.0);
+        LockState b = LockState.pivoted(5.0, 3.0);
         LockState combined = LockState.and(a, b, EPS);
-        assertEquals(LockMode.ROTATION_FREE, combined.mode());
+        assertEquals(LockMode.PIVOTED, combined.mode());
         assertEquals(5.0, combined.pivotX(), EPS);
         assertEquals(3.0, combined.pivotY(), EPS);
         assertTrue(combined.pivotValid());
     }
 
     @Test
-    void lockState_and_rotationFree_pivotsDisagree_collapseToLocked() {
-        LockState a = LockState.rotationFree(0.0, 0.0);
-        LockState b = LockState.rotationFree(1.0, 1.0);
+    void lockState_and_pivoted_pivotsDisagree_collapseToLocked() {
+        LockState a = LockState.pivoted(0.0, 0.0);
+        LockState b = LockState.pivoted(1.0, 1.0);
         LockState combined = LockState.and(a, b, EPS);
         assertEquals(LockMode.LOCKED, combined.mode(),
                 "Two rotation-only freedoms with different pivots can't be satisfied at once");
     }
 
     @Test
-    void lockState_and_freeBesidesRotationFree_keepsTheRotationPivot() {
-        // FREE ∩ ROTATION_FREE = ROTATION_FREE; the only available pivot is the one carried on the
-        // ROTATION_FREE side, so the result must carry it through.
+    void lockState_and_freeBesidesPivoted_keepsThePivot() {
+        // FREE ∩ PIVOTED = PIVOTED; the only available pivot is the one carried on the
+        // PIVOTED side, so the result must carry it through.
         LockState free = LockState.FREE;
-        LockState rot = LockState.rotationFree(7.0, -2.0);
+        LockState rot = LockState.pivoted(7.0, -2.0);
         LockState combined = LockState.and(free, rot, EPS);
-        assertEquals(LockMode.ROTATION_FREE, combined.mode());
+        assertEquals(LockMode.PIVOTED, combined.mode());
         assertEquals(7.0, combined.pivotX(), EPS);
         assertEquals(-2.0, combined.pivotY(), EPS);
     }
 
     @Test
-    void lockState_and_positionFreeAndRotationFree_lockedRegardlessOfPivots() {
-        LockState a = LockState.positionFree();
-        LockState b = LockState.rotationFree(5.0, 5.0);
+    void lockState_and_orientedAndPivoted_lockedRegardlessOfPivots() {
+        LockState a = LockState.oriented();
+        LockState b = LockState.pivoted(5.0, 5.0);
         assertEquals(LockMode.LOCKED, LockState.and(a, b, EPS).mode());
         assertEquals(LockMode.LOCKED, LockState.and(b, a, EPS).mode());
     }
@@ -142,28 +143,42 @@ class LockStateTest {
         // pre-integration contract this returned LOCKED.
         assertEquals(LockMode.FREE, bjt.effectiveLockState(EPS).mode());
 
-        // Strict POSITION_FREE alone now wins, again ignoring port isFixed counts.
+        // Strict ORIENTED alone now wins, again ignoring port isFixed counts.
         LockInfo strict = new LockInfo();
-        strict.setMode(LockMode.POSITION_FREE);
+        strict.setMode(LockMode.ORIENTED);
         bjt.setInfo(AllElementInfos.LOCK, strict);
-        assertEquals(LockMode.POSITION_FREE, bjt.effectiveLockState(EPS).mode());
+        assertEquals(LockMode.ORIENTED, bjt.effectiveLockState(EPS).mode());
     }
 
     @Test
-    void component_effectiveLock_strictLockInfo_carriesRotationPivotThrough() {
+    void component_effectiveLock_pivotedUsesComponentPivotWorld() {
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
-        bjt.setInfo(AllElementInfos.POSITION, new PositionInfo(0.0, 0.0));
+        bjt.setInfo(AllElementInfos.POSITION, new PositionInfo(7.0, -2.0));
 
-        LockInfo strict = new LockInfo(LockMode.ROTATION_FREE, 7.0, -2.0, true);
+        LockInfo strict = new LockInfo(LockMode.PIVOTED, 1.0, 2.0, true);
         bjt.setInfo(AllElementInfos.LOCK, strict);
 
         LockState eff = bjt.effectiveLockState(EPS);
-        assertEquals(LockMode.ROTATION_FREE, eff.mode());
+        assertEquals(LockMode.PIVOTED, eff.mode());
         assertEquals(7.0, eff.pivotX(), EPS);
         assertEquals(-2.0, eff.pivotY(), EPS);
         assertTrue(eff.pivotValid());
+    }
+
+    @Test
+    void lockInfo_load_mapsLegacyModeNames() {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("mode", "POSITION_FREE");
+        LockInfo oriented = new LockInfo();
+        oriented.load(tag);
+        assertEquals(LockMode.ORIENTED, oriented.getMode());
+
+        tag.putString("mode", "ROTATION_FREE");
+        LockInfo pivoted = new LockInfo();
+        pivoted.load(tag);
+        assertEquals(LockMode.PIVOTED, pivoted.getMode());
     }
 
     @Test

@@ -10,8 +10,8 @@ import java.util.Objects;
 
 /**
  * Per-{@link CircuitElementType} description of where each port of a {@link CircuitComponent} sits relative
- * to the component's centre, used by the renderer (sprite layout, click hit-test) and by the server (to
- * compute world coordinates for each internal port node when a component is placed or rotated).
+ * to the component's visual centre, used by the renderer (sprite layout, click hit-test) and by the server
+ * (to compute world coordinates for each internal port node when a component is placed or rotated).
  *
  * <p>Anchor offsets are in the same world units as {@link com.minecart.variant.info.PositionInfo}. Rotation
  * is applied via {@link #worldPositionOf(Anchor, double, double, double)} using the component's
@@ -47,7 +47,7 @@ public final class ComponentAnchorRegistry {
 
     /**
      * Rotates {@code anchor}'s offset by {@code angle} (radians, counter-clockwise) and translates by the
-     * component's centre {@code (cx, cy)}. Used by the server to keep each internal port node's
+     * component's visual centre {@code (cx, cy)}. Used by the server to keep each internal port node's
      * {@link com.minecart.variant.info.PositionInfo} consistent with the component's pose, and by the client
      * to figure out where to draw / hit-test each port.
      */
@@ -60,7 +60,7 @@ public final class ComponentAnchorRegistry {
     }
 
     /**
-     * One port of a component at a fixed offset from its centre.
+     * One port of a component at a fixed offset from its visual centre.
      *
      * @param portIndex matches {@link CircuitComponent#getPort(int)} on the component instance
      * @param offsetX   world units along the component's local +X axis (before rotation)

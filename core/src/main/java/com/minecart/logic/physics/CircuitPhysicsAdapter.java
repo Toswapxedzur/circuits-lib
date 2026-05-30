@@ -1,10 +1,16 @@
 package com.minecart.logic.physics;
 
 import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerWorld;
 import com.minecart.physics.SolverResult;
+import com.minecart.physics.Vec2;
+import com.minecart.registry.AllElementInfos;
+import com.minecart.variant.info.LockMode;
+import com.minecart.variant.info.LockState;
+import com.minecart.variant.info.RigidityInfo;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -112,6 +118,53 @@ public final class CircuitPhysicsAdapter {
     }
 
     /**
+     * Applies an edge drag sample to the edge's effective lock mode.
+     * The edge contributes lock constraints through {@link SolveSession}; the drag itself is just
+     * a spring on the nearest endpoint anchor. Rigidity remains an independent distance constraint.
+     */
+    public static SolverResult dragEdgeAnchor(ServerWorld world, CircuitEdge edge,
+                                              double targetX, double targetY,
+                                              boolean hasLocalAnchor,
+                                              double localAnchorX, double localAnchorY) {
+        if (world == null || edge == null) {
+            return new SolverResult(0, 0.0, true);
+        }
+        LockState eff = edge.effectiveLockState(1e-6);
+        LockMode mode = eff.mode();
+        if (mode == LockMode.LOCKED) {
+            notifyEdgeAuthority(world, edge);
+            return new SolverResult(0, 0.0, true);
+        }
+
+        CircuitNode dragged = chooseDraggedEndpoint(edge, hasLocalAnchor, localAnchorX);
+        CircuitElement movable = endpointMovable(dragged);
+        if (dragged == null || movable == null) {
+            notifyEdgeAuthority(world, edge);
+            return new SolverResult(0, 0.0, true);
+        }
+
+        SolveSession session = SolveSession.buildMulti(world, java.util.List.of(movable));
+        RigidityInfo rigid = edge.getInfo(AllElementInfos.RIGIDITY);
+        boolean isRigid = rigid != null && rigid.isRigid();
+        if (!isRigid && mode == LockMode.ORIENTED) {
+            CircuitNode other = edge.getOther(dragged);
+            CircuitElement otherMovable = endpointMovable(other);
+            if (otherMovable != null) {
+                session.lockBodyInPlace(otherMovable);
+            }
+        }
+
+        if (!session.addNodeSpring(dragged, targetX, targetY, DEFAULT_DRAG_COMPLIANCE)) {
+            notifyEdgeAuthority(world, edge);
+            return new SolverResult(0, 0.0, true);
+        }
+        SolverResult result = session.solve();
+        session.writeback();
+        world.getLevel().notifyElementChanged(edge);
+        return result;
+    }
+
+    /**
      * Multi-drag entry point: applies every gesture in {@code gestures} as a soft-spring pull
      * toward its target pose, running a single unified physics solve over the union sub-graph.
      * This is the drag aggregator's hot path — replaces the hard-pin-per-gesture model with
@@ -142,7 +195,13 @@ public final class CircuitPhysicsAdapter {
             return new SolverResult(0, 0.0, true);
         }
 
-        // For each target element, collect the distinct gesture ids and the latest gesture per
+        // Edge drags are first-class edge gestures rather than decomposed client-side endpoint
+        // moves, so the edge's own LockInfo can decide how the endpoint movables transform.
+        Map<UUID, Set<UUID>> distinctEdgeGesturesPerTarget = new LinkedHashMap<>();
+        Map<UUID, CircuitEdge> edgeTargetById = new LinkedHashMap<>();
+        Map<TargetGestureKey, DragGesture> latestPerEdgeTargetGesture = new LinkedHashMap<>();
+
+        // For each non-edge target element, collect the distinct gesture ids and the latest gesture per
         // (gestureId). Linked maps preserve insertion order for deterministic spring ordering.
         Map<UUID, Set<UUID>> distinctGesturesPerTarget = new LinkedHashMap<>();
         Map<UUID, CircuitElement> targetById = new LinkedHashMap<>();
@@ -150,6 +209,14 @@ public final class CircuitPhysicsAdapter {
         for (DragGesture g : gestures) {
             if (g == null || g.target() == null) continue;
             UUID targetId = g.target().getId();
+            if (g.target() instanceof CircuitEdge edge) {
+                edgeTargetById.putIfAbsent(targetId, edge);
+                distinctEdgeGesturesPerTarget
+                        .computeIfAbsent(targetId, k -> new LinkedHashSet<>())
+                        .add(g.gestureId());
+                latestPerEdgeTargetGesture.put(new TargetGestureKey(targetId, g.gestureId()), g);
+                continue;
+            }
             targetById.putIfAbsent(targetId, g.target());
             distinctGesturesPerTarget
                     .computeIfAbsent(targetId, k -> new LinkedHashSet<>())
@@ -157,8 +224,29 @@ public final class CircuitPhysicsAdapter {
             // Last-write-wins per (target, gesture) — coalesces streaming samples.
             latestPerTargetGesture.put(new TargetGestureKey(targetId, g.gestureId()), g);
         }
-        if (targetById.isEmpty()) {
+        if (targetById.isEmpty() && edgeTargetById.isEmpty()) {
             return new SolverResult(0, 0.0, true);
+        }
+
+        SolverResult result = new SolverResult(0, 0.0, true);
+
+        Set<UUID> contendedEdgeTargetIds = new LinkedHashSet<>();
+        for (Map.Entry<UUID, Set<UUID>> e : distinctEdgeGesturesPerTarget.entrySet()) {
+            if (e.getValue().size() >= 2) {
+                contendedEdgeTargetIds.add(e.getKey());
+            }
+        }
+        for (DragGesture g : latestPerEdgeTargetGesture.values()) {
+            if (contendedEdgeTargetIds.contains(g.target().getId())) {
+                notifyEdgeAuthority(world, (CircuitEdge) g.target());
+                continue;
+            }
+            result = dragEdgeAnchor(world, (CircuitEdge) g.target(), g.targetX(), g.targetY(),
+                    g.hasAnchorLocal(), g.anchorLocalX(), g.anchorLocalY());
+        }
+
+        if (targetById.isEmpty()) {
+            return result;
         }
 
         Set<UUID> contendedTargetIds = new LinkedHashSet<>();
@@ -184,12 +272,59 @@ public final class CircuitPhysicsAdapter {
             if (contendedTargetIds.contains(g.target().getId())) {
                 continue;
             }
-            session.addCentreSpring(g.target(), g.targetX(), g.targetY(), DEFAULT_DRAG_COMPLIANCE);
+            if (g.hasAnchorLocal()) {
+                session.addAnchorSpring(g.target(), new Vec2(g.anchorLocalX(), g.anchorLocalY()),
+                        g.targetX(), g.targetY(), DEFAULT_DRAG_COMPLIANCE);
+            } else {
+                session.addCentreSpring(g.target(), g.targetX(), g.targetY(), DEFAULT_DRAG_COMPLIANCE);
+            }
         }
 
-        SolverResult result = session.solve();
+        result = session.solve();
         session.writeback();
         return result;
+    }
+
+    private static CircuitNode chooseDraggedEndpoint(CircuitEdge edge, boolean hasLocalAnchor,
+                                                     double localAnchorX) {
+        if (edge == null) {
+            return null;
+        }
+        if (hasLocalAnchor && localAnchorX > 0.0) {
+            return edge.getEnd();
+        }
+        return edge.getStart();
+    }
+
+    private static CircuitElement endpointMovable(CircuitNode endpoint) {
+        if (endpoint == null) {
+            return null;
+        }
+        CircuitComponent owner = endpoint.getComponent();
+        if (owner != null) {
+            return owner.isPort(endpoint) ? owner : null;
+        }
+        return endpoint;
+    }
+
+    private static void notifyEdgeAuthority(ServerWorld world, CircuitEdge edge) {
+        if (world == null || edge == null) {
+            return;
+        }
+        world.getLevel().notifyElementChanged(edge);
+        notifyEndpointAuthority(world, edge.getStart());
+        notifyEndpointAuthority(world, edge.getEnd());
+    }
+
+    private static void notifyEndpointAuthority(ServerWorld world, CircuitNode endpoint) {
+        if (endpoint == null) {
+            return;
+        }
+        world.getLevel().notifyElementChanged(endpoint);
+        CircuitComponent owner = endpoint.getComponent();
+        if (owner != null) {
+            world.getLevel().notifyElementChanged(owner);
+        }
     }
 
     /**

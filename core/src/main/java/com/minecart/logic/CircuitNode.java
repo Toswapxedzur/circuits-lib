@@ -234,8 +234,8 @@ public non-sealed class CircuitNode extends CircuitElement {
     /**
      * Snapshot key for the node's "is fixed" lock toggle. Nodes have no rotation degree of
      * freedom, so the four-mode {@link com.minecart.variant.info.LockMode} collapses to this
-     * 2-state via {@link com.minecart.variant.info.LockMode#forNode()} (POSITION_FREE ≡ FREE,
-     * ROTATION_FREE ≡ LOCKED) — the panel exposes the collapsed form directly.
+     * 2-state via {@link com.minecart.variant.info.LockMode#forNode()} (ORIENTED ≡ FREE,
+     * PIVOTED ≡ LOCKED) — the panel exposes the collapsed form directly.
      */
     public static final String FIELD_LOCK_FIXED = "core:lock.isFixed";
 

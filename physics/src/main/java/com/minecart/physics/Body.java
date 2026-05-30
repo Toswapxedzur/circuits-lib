@@ -20,17 +20,17 @@ import java.util.Objects;
  *
  * <ul>
  *   <li>{@code invMassT == 0}: the body cannot translate (positional lock). Used for permanently
- *       anchored bodies and for the {@code ROTATION_FREE} lock state.</li>
+ *       anchored bodies and for the {@code PIVOTED} lock state.</li>
  *   <li>{@code invMassT >  0}: the body translates with weight proportional to its value.
  *       Uniform mass = {@code 1.0}.</li>
  *   <li>{@code invMassR == 0}: the body cannot rotate. Used for permanently anchored bodies and
- *       for the {@code POSITION_FREE} lock state.</li>
+ *       for the {@code ORIENTED} lock state.</li>
  *   <li>{@code invMassR >  0}: the body rotates with weight proportional to its value.</li>
  * </ul>
  *
  * <p>The four canonical combinations (mirroring the domain layer's {@code LockMode}) are
  * pre-built via {@link #free(Object, Vec2)}, {@link #locked(Object, Vec2)},
- * {@link #positionFree(Object, Vec2)}, and {@link #rotationFree(Object, Vec2, Vec2)}, but callers
+ * {@link #oriented(Object, Vec2)}, and {@link #pivoted(Object, Vec2, Vec2)}, but callers
  * can construct arbitrary {@code (invMassT, invMassR)} pairs via the full constructor for
  * weighted-inertia experiments.
  *
@@ -75,19 +75,19 @@ public final class Body {
     }
 
     /**
-     * Translation-only body: can move freely but cannot rotate (the {@code POSITION_FREE} state in
+     * Translation-only body: can move freely but cannot rotate (the {@code ORIENTED} state in
      * the domain layer's lock vocabulary).
      */
-    public static Body positionFree(Object id, Vec2 position) {
+    public static Body oriented(Object id, Vec2 position) {
         return new Body(id, position, 0.0, position, 1.0, 0.0);
     }
 
     /**
      * Rotation-only body around a specified pivot: cannot translate, but rotates around the given
-     * world-space pivot (the {@code ROTATION_FREE} state). The pivot is in world coordinates and
+     * world-space pivot (the {@code PIVOTED} state). The pivot is in world coordinates and
      * does NOT move when the body's {@link #angle} changes; the position rotates around it.
      */
-    public static Body rotationFree(Object id, Vec2 position, Vec2 pivot) {
+    public static Body pivoted(Object id, Vec2 position, Vec2 pivot) {
         return new Body(id, position, 0.0, pivot, 0.0, 1.0);
     }
 
@@ -147,9 +147,9 @@ public final class Body {
      *
      * <p>The body's {@link #rotationPivot} is moved by the same applied delta. This keeps the
      * rotation reference frame attached to the body for any body that can translate — which is
-     * what the constraint Jacobian assumes for the FREE and POSITION_FREE canonical lock modes.
-     * Bodies that don't translate (LOCKED / ROTATION_FREE both have {@code invMassT == 0}) skip
-     * the whole call, so a world-anchored pivot used by a ROTATION_FREE body is preserved.
+     * what the constraint Jacobian assumes for the FREE and ORIENTED canonical lock modes.
+     * Bodies that don't translate (LOCKED / PIVOTED both have {@code invMassT == 0}) skip
+     * the whole call, so a world-anchored pivot used by a PIVOTED body is preserved.
      */
     public void translate(Vec2 delta) {
         if (invMassT == 0.0) {

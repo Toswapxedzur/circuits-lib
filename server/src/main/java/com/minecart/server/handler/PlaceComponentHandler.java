@@ -20,7 +20,7 @@ import java.util.Set;
 
 /**
  * Server-side handler for {@link PlaceComponentPayload}: creates a fresh {@link CircuitComponent} of the
- * requested type (with its internal nodes/edges generated), stamps centre {@link PositionInfo} +
+ * requested type (with its internal nodes/edges generated), stamps pivot/anchor {@link PositionInfo} +
  * {@link RotationInfo}, then walks {@link ComponentAnchorRegistry#getAnchors} so each port node's
  * {@link PositionInfo} ends up at the rotated world coordinate of its anchor.
  *
@@ -58,12 +58,12 @@ public final class PlaceComponentHandler implements PayloadHandler<PlaceComponen
         } catch (ClassCastException | IllegalStateException ex) {
             return;
         }
-        PositionInfo centre = comp.getInfo(AllElementInfos.POSITION);
-        if (centre == null) {
-            centre = new PositionInfo();
-            comp.setInfo(AllElementInfos.POSITION, centre);
+        PositionInfo pivot = comp.getInfo(AllElementInfos.POSITION);
+        if (pivot == null) {
+            pivot = new PositionInfo();
+            comp.setInfo(AllElementInfos.POSITION, pivot);
         }
-        centre.set(payload.getX(), payload.getY());
+        pivot.set(payload.getX(), payload.getY());
 
         RotationInfo rot = comp.getInfo(AllElementInfos.ROTATION);
         if (rot == null) {

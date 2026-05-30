@@ -178,12 +178,10 @@ public final class CombineCascadeEngine {
      * the component's centre {@link PositionInfo}: gestures and the panel-driven motion paths use
      * this directly with the cursor or user-chosen pivot.
      *
-     * <p>ROTATION_FREE strict additionally constrains the pivot: it must coincide (within
-     * {@link #PIVOT_EPSILON}) with the authored strict pivot. A gesture targeting a different
-     * pivot is refused outright rather than partially applied — matches the user's "rotation
-     * lock always wins" contract for the seed body. Bodies <em>elsewhere</em> in the chain with
-     * rotation-locked inverse inertias also refuse to spin, but that's enforced naturally by the
-     * solver's inverse-inertia weighting (no special handling needed here).
+     * <p>PIVOTED components ignore the gesture-supplied pivot and rotate around their authored
+     * world pivot instead. Bodies <em>elsewhere</em> in the chain with rotation-locked inverse
+     * inertias also refuse to spin, but that's enforced naturally by the solver's inverse-inertia
+     * weighting (no special handling needed here).
      */
     public static boolean tryRotateComponent(ServerWorld world, CircuitComponent component,
                                              double pivotX, double pivotY, double deltaRadians) {
@@ -198,14 +196,28 @@ public final class CombineCascadeEngine {
             broadcastAuthoritativeComponent(world, component);
             return false;
         }
-        if (eff.mode() == LockMode.ROTATION_FREE && eff.pivotValid()) {
-            if (Math.abs(eff.pivotX() - pivotX) > PIVOT_EPSILON
-                    || Math.abs(eff.pivotY() - pivotY) > PIVOT_EPSILON) {
-                broadcastAuthoritativeComponent(world, component);
-                return false;
-            }
+        if (eff.mode() == LockMode.PIVOTED && eff.pivotValid()) {
+            pivotX = eff.pivotX();
+            pivotY = eff.pivotY();
         }
         CircuitPhysicsAdapter.rotate(world, component, pivotX, pivotY, deltaRadians);
+        return true;
+    }
+
+    /**
+     * Applies a drag target to an edge-local grabbed point. The physics adapter interprets the
+     * edge's effective lock: FREE/ORIENTED translate the whole edge, PIVOTED rotates around the
+     * stored pivot, and LOCKED refuses with an authoritative rebroadcast.
+     */
+    public static boolean tryMoveEdgeAnchor(ServerWorld world, CircuitEdge edge,
+                                            double targetX, double targetY,
+                                            boolean hasLocalAnchor,
+                                            double localAnchorX, double localAnchorY) {
+        if (world == null || edge == null) {
+            return false;
+        }
+        CircuitPhysicsAdapter.dragEdgeAnchor(world, edge, targetX, targetY,
+                hasLocalAnchor, localAnchorX, localAnchorY);
         return true;
     }
 

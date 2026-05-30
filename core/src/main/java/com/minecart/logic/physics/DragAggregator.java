@@ -2,6 +2,7 @@ package com.minecart.logic.physics;
 
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerLevel;
@@ -134,11 +135,10 @@ public final class DragAggregator {
     }
 
     /**
-     * Returns {@code true} when {@code element} carries a strict {@code LOCKED} or movement-
-     * blocking lock state that should refuse drag translations. {@code ROTATION_FREE} elements
-     * (locked translation, free rotation) reject translations; {@code POSITION_FREE} elements
-     * still translate. {@code LOCKED} and unset state (treated as fully locked when set by the
-     * player) refuse outright.
+     * Returns {@code true} when {@code element} carries a strict {@code LOCKED} state that should
+     * refuse drag gestures outright. ORIENTED and PIVOTED components/edges still enter the
+     * physics adapter: their infinite rotation / pinned-pivot inertias decide how much of the
+     * drag can be satisfied.
      *
      * <p>The check uses the same {@code effectiveLockState} the physics adapter consults, but
      * specialised here to "is this translation legal?". Rotation gestures don't go through the
@@ -149,7 +149,11 @@ public final class DragAggregator {
         if (element instanceof CircuitComponent comp) {
             LockState eff = comp.effectiveLockState(1e-6);
             LockMode mode = eff.mode();
-            return mode == LockMode.LOCKED || mode == LockMode.ROTATION_FREE;
+            return mode == LockMode.LOCKED;
+        }
+        if (element instanceof CircuitEdge edge) {
+            LockState eff = edge.effectiveLockState(1e-6);
+            return eff.mode() == LockMode.LOCKED;
         }
         if (element instanceof CircuitNode node) {
             if (!node.getComponents().isEmpty()) {

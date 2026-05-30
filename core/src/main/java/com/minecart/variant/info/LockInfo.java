@@ -6,7 +6,7 @@ import com.minecart.variant.ElementInfo;
 /**
  * Player-set ("strict") lock state attached to a {@link com.minecart.logic.CircuitElement}. Stores the
  * authored {@link LockMode}, the rotation pivot it should rotate around when {@code mode ==
- * ROTATION_FREE}, and a {@code mutableByPlayer} flag — when {@code false} the lock can't be edited
+ * PIVOTED}, and a {@code mutableByPlayer} flag — when {@code false} the lock can't be edited
  * via the panel / gestures (intended for elements whose lock is part of their structural definition).
  *
  * <h2>Strict vs. soft</h2>
@@ -18,10 +18,10 @@ import com.minecart.variant.ElementInfo;
  *
  * <h2>Pivot semantics</h2>
  * <ul>
- *   <li>When {@link #mode} is {@link LockMode#ROTATION_FREE}, the pivot is the world-space point any
+ *   <li>When {@link #mode} is {@link LockMode#PIVOTED}, the pivot is the world-space point any
  *       rotation must spin around. The panel exposes editable {@code pivotX} / {@code pivotY}, and
  *       the long-right-press gesture (Phase 3c) updates it to the cursor's world position.</li>
- *   <li>For other modes the pivot is still stored (so toggling to ROTATION_FREE later restores the
+ *   <li>For other modes the pivot is still stored (so toggling to PIVOTED later restores the
  *       last-used pivot rather than snapping to 0,0), but isn't enforced by drag / cascade code.</li>
  *   <li>If no pivot has ever been authored the field defaults to the element's anchor (component
  *       centre or edge midpoint) — set by the placement handler at creation time. We don't compute
@@ -130,18 +130,29 @@ public class LockInfo implements ElementInfo {
         String modeName = tag.getString(TAG_MODE);
         LockMode parsed = LockMode.FREE;
         if (modeName != null && !modeName.isEmpty()) {
-            try {
-                parsed = LockMode.valueOf(modeName);
-            } catch (IllegalArgumentException ignored) {
-                // Unknown / corrupt mode string: fall back to FREE rather than throwing, matching
-                // the project's overall "forgiving load, strict apply" persistence policy.
-                parsed = LockMode.FREE;
-            }
+            parsed = parseMode(modeName);
         }
         this.mode = parsed;
         this.pivotX = tag.getDouble(TAG_PIVOT_X);
         this.pivotY = tag.getDouble(TAG_PIVOT_Y);
         this.pivotSet = tag.get(TAG_PIVOT_SET) != null && tag.getBoolean(TAG_PIVOT_SET);
         this.mutableByPlayer = tag.get(TAG_MUTABLE) == null || tag.getBoolean(TAG_MUTABLE);
+    }
+
+    private static LockMode parseMode(String modeName) {
+        return switch (modeName) {
+            // Compatibility with saves written before POSITION_FREE/ROTATION_FREE were renamed.
+            case "POSITION_FREE" -> LockMode.ORIENTED;
+            case "ROTATION_FREE" -> LockMode.PIVOTED;
+            default -> {
+                try {
+                    yield LockMode.valueOf(modeName);
+                } catch (IllegalArgumentException ignored) {
+                    // Unknown / corrupt mode string: fall back to FREE rather than throwing, matching
+                    // the project's overall "forgiving load, strict apply" persistence policy.
+                    yield LockMode.FREE;
+                }
+            }
+        };
     }
 }

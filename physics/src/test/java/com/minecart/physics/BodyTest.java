@@ -40,7 +40,7 @@ class BodyTest {
 
     @Test
     void position_free_body_translates_but_does_not_rotate() {
-        Body body = Body.positionFree("p", new Vec2(1.0, 1.0));
+        Body body = Body.oriented("p", new Vec2(1.0, 1.0));
 
         body.translate(new Vec2(2.0, 3.0));
         // Position advanced by exactly the delta (unit inverse mass).
@@ -55,7 +55,7 @@ class BodyTest {
     @Test
     void rotation_free_body_rotates_around_pivot_only() {
         // Body at (3, 0) pivoted at the origin: rotating by π/2 CCW should move it to (0, 3).
-        Body body = Body.rotationFree("r", new Vec2(3.0, 0.0), new Vec2(0.0, 0.0));
+        Body body = Body.pivoted("r", new Vec2(3.0, 0.0), new Vec2(0.0, 0.0));
 
         body.translate(new Vec2(1.0, 1.0));
         // Translation is fully absorbed: still at (3, 0).

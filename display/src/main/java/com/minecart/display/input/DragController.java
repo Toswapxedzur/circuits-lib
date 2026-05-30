@@ -112,6 +112,9 @@ public class DragController extends InputAdapter {
      */
     private double currentDx;
     private double currentDy;
+    /** Body-local point grabbed on a component drag, relative to the component's visual centre. */
+    private double componentGrabLocalX;
+    private double componentGrabLocalY;
     /**
      * Gesture id allocated at drag start and threaded through every {@link MoveElementPayload} and
      * {@link CombineCascadePayload} emitted by this drag. The server uses it to:
@@ -286,7 +289,7 @@ public class DragController extends InputAdapter {
             return true;
         }
         if (el instanceof CircuitComponent comp) {
-            beginDrag(comp);
+            beginDrag(comp, w[0], w[1]);
             clickedId = comp.getId();
             dragStartWorldX = w[0];
             dragStartWorldY = w[1];
@@ -300,7 +303,7 @@ public class DragController extends InputAdapter {
             // somehow didn't get linked client-side (stale mirror, replication race) still resists
             // being dragged off; it can still receive a click via clickedId though.
             if (node.getComponent() != null) {
-                beginDrag(node.getComponent());
+                beginDrag(node.getComponent(), w[0], w[1]);
                 clickedId = node.getId();
             } else if (isPositionFixed(node)) {
                 clickedId = node.getId();
@@ -324,7 +327,7 @@ public class DragController extends InputAdapter {
             if (edge.getComponent() != null) {
                 return true;
             }
-            beginDragEdge(edge);
+            beginDragEdge(edge, w[0], w[1]);
             clickedId = edge.getId();
             dragStartWorldX = w[0];
             dragStartWorldY = w[1];
@@ -338,13 +341,16 @@ public class DragController extends InputAdapter {
         return p != null && p.isFixed();
     }
 
-    private void beginDrag(CircuitComponent comp) {
+    private void beginDrag(CircuitComponent comp, double grabWorldX, double grabWorldY) {
         draggingId = comp.getId();
         dragKind = DragKind.COMPONENT;
         movedSinceDown = false;
         lastStreamSendNanos = 0L;
         currentDx = 0.0;
         currentDy = 0.0;
+        double[] localGrab = comp.worldToLocalFromVisualCenter(grabWorldX, grabWorldY);
+        componentGrabLocalX = localGrab[0];
+        componentGrabLocalY = localGrab[1];
         PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
@@ -365,6 +371,8 @@ public class DragController extends InputAdapter {
         lastStreamSendNanos = 0L;
         currentDx = 0.0;
         currentDy = 0.0;
+        componentGrabLocalX = 0.0;
+        componentGrabLocalY = 0.0;
         PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
@@ -379,63 +387,54 @@ public class DragController extends InputAdapter {
     }
 
     /**
-     * Captures everything needed to translate an edge while keeping its endpoints' relative offset
-     * stable. Each endpoint maps to a "movable":
-     * <ul>
-     *     <li>If the endpoint is a port of a component, the movable is the component centre — moving
-     *         the centre by Δ replays through {@link com.minecart.registry.ComponentAnchorRegistry}
-     *         and re-stamps every port at the new pose, which is exactly Δ-translated when there's
-     *         no rotation (which we deliberately suppress during edge drag).</li>
-     *     <li>Otherwise it's the free node itself.</li>
-     * </ul>
-     * Two endpoints owned by the same component collapse to a single movable (the component drags as
-     * one). An endpoint that's an intrinsic non-port internal — which shouldn't normally appear here
-     * because the renderer hides those — is silently skipped to avoid corrupting a component's pose.
+     * Captures the point grabbed on the edge in edge-local coordinates. The server receives the
+     * edge itself as the drag target so the edge's own LockInfo can decide whether that grabbed
+     * point translates freely, translates without rotation (ORIENTED), rotates around a fixed
+     * pivot (PIVOTED), or refuses motion (LOCKED).
      */
-    private void beginDragEdge(CircuitEdge edge) {
+    private void beginDragEdge(CircuitEdge edge, double grabWorldX, double grabWorldY) {
         draggingId = edge.getId();
         dragKind = DragKind.EDGE;
         movedSinceDown = false;
         lastStreamSendNanos = 0L;
         currentDx = 0.0;
         currentDy = 0.0;
+        componentGrabLocalX = 0.0;
+        componentGrabLocalY = 0.0;
         edgeMovableIds.clear();
         edgeMovableOrigins.clear();
         edgeMovableIsComponent.clear();
         combineTargetId = null;
 
+        CircuitNode start = edge.getStart();
+        CircuitNode end = edge.getEnd();
+        PositionInfo sp = start != null ? start.getInfo(AllElementInfos.POSITION) : null;
+        PositionInfo ep = end != null ? end.getInfo(AllElementInfos.POSITION) : null;
+        if (sp == null || ep == null) {
+            draggingId = null;
+            dragKind = null;
+            return;
+        }
         for (int i = 0; i < 2; i++) {
             CircuitNode endpoint = edge.getConnection(i);
-            if (endpoint == null) {
-                continue;
-            }
-            CircuitComponent owner = endpoint.getComponent();
-            if (owner != null) {
-                if (!owner.isPort(endpoint)) {
-                    // Intrinsic internal — not user-movable on its own, and dragging the parent here
-                    // would be misleading because the user grabbed the wire, not the body. Bail out
-                    // entirely so half-an-edge doesn't drag.
-                    draggingId = null;
-                    dragKind = null;
-                    return;
-                }
-                UUID id = owner.getId();
-                if (edgeMovableIds.add(id)) {
-                    PositionInfo p = owner.getInfo(AllElementInfos.POSITION);
-                    edgeMovableOrigins.put(id,
-                            new double[]{p != null ? p.getX() : 0.0, p != null ? p.getY() : 0.0});
-                    edgeMovableIsComponent.put(id, Boolean.TRUE);
-                }
-            } else {
-                UUID id = endpoint.getId();
-                if (edgeMovableIds.add(id)) {
-                    PositionInfo p = endpoint.getInfo(AllElementInfos.POSITION);
-                    edgeMovableOrigins.put(id,
-                            new double[]{p != null ? p.getX() : 0.0, p != null ? p.getY() : 0.0});
-                    edgeMovableIsComponent.put(id, Boolean.FALSE);
-                }
+            CircuitComponent owner = endpoint != null ? endpoint.getComponent() : null;
+            if (owner != null && !owner.isPort(endpoint)) {
+                // Intrinsic internal — not user-movable on its own, and dragging the parent here
+                // would be misleading because the user grabbed the wire, not the body.
+                draggingId = null;
+                dragKind = null;
+                return;
             }
         }
+        double cx = (sp.getX() + ep.getX()) * 0.5;
+        double cy = (sp.getY() + ep.getY()) * 0.5;
+        double angle = Math.atan2(ep.getY() - sp.getY(), ep.getX() - sp.getX());
+        double cos = Math.cos(-angle);
+        double sin = Math.sin(-angle);
+        double dx = grabWorldX - cx;
+        double dy = grabWorldY - cy;
+        componentGrabLocalX = dx * cos - dy * sin;
+        componentGrabLocalY = dx * sin + dy * cos;
 
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
@@ -532,14 +531,14 @@ public class DragController extends InputAdapter {
         if (button == Input.Buttons.RIGHT) {
             return endRightPress();
         }
-        if (button != Input.Buttons.LEFT || draggingId == null) {
+        if (button != Input.Buttons.LEFT || (draggingId == null && clickedId == null)) {
             return false;
         }
         UUID worldId = selectedWorldId.get();
-        UUID id = draggingId;
+        UUID id = draggingId != null ? draggingId : clickedId;
         UUID click = clickedId;
         DragKind kind = dragKind;
-        boolean overTrash = isOverTrash(screenX, screenY);
+        boolean overTrash = draggingId != null && isOverTrash(screenX, screenY);
         boolean moved = movedSinceDown;
         UUID combineTarget = combineTargetId;
         // Snapshot drag-time tables before clearing so the touchUp dispatch path can still walk the
@@ -594,8 +593,7 @@ public class DragController extends InputAdapter {
                 }
                 sendFreeNodeMove(worldId, id);
             }
-            case EDGE -> sendEdgeMovableMoves(worldId, movables, movableOrigins, movableIsComp,
-                    currentDx, currentDy);
+            case EDGE -> sendEdgeMove(worldId, id);
         }
         dragGestureId = null;
         return true;
@@ -632,9 +630,7 @@ public class DragController extends InputAdapter {
         switch (dragKind) {
             case COMPONENT -> sendComponentMove(worldId, draggingId);
             case NODE -> sendFreeNodeMove(worldId, draggingId);
-            case EDGE -> sendEdgeMovableMoves(worldId,
-                    edgeMovableIds, edgeMovableOrigins, edgeMovableIsComponent,
-                    currentDx, currentDy);
+            case EDGE -> sendEdgeMove(worldId, draggingId);
         }
     }
 
@@ -650,7 +646,8 @@ public class DragController extends InputAdapter {
             return;
         }
         connection.send(new MoveElementPayload(worldId, id, dragGestureId,
-                originX + currentDx, originY + currentDy));
+                dragStartWorldX + currentDx, dragStartWorldY + currentDy,
+                componentGrabLocalX, componentGrabLocalY));
     }
 
     private void sendFreeNodeMove(UUID worldId, UUID id) {
@@ -659,6 +656,15 @@ public class DragController extends InputAdapter {
         }
         connection.send(new MoveElementPayload(worldId, id, dragGestureId,
                 originX + currentDx, originY + currentDy));
+    }
+
+    private void sendEdgeMove(UUID worldId, UUID id) {
+        if (findEdge(id) == null) {
+            return;
+        }
+        connection.send(new MoveElementPayload(worldId, id, dragGestureId,
+                dragStartWorldX + currentDx, dragStartWorldY + currentDy,
+                componentGrabLocalX, componentGrabLocalY));
     }
 
     /**
@@ -765,6 +771,11 @@ public class DragController extends InputAdapter {
     private CircuitNode findFreeNode(UUID id) {
         var actor = stage.getNodeActor(id);
         return actor != null ? actor.getNode() : null;
+    }
+
+    private CircuitEdge findEdge(UUID id) {
+        var actor = stage.getEdgeActor(id);
+        return actor != null ? actor.getEdge() : null;
     }
 
     /**
@@ -888,12 +899,9 @@ public class DragController extends InputAdapter {
         if (comp == null) {
             return;
         }
-        PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
-        if (pos == null) {
-            return;
-        }
-        double cx = pos.getX();
-        double cy = pos.getY();
+        double[] centre = comp.getVisualCenter();
+        double cx = centre[0];
+        double cy = centre[1];
         double prevAlpha = Math.atan2(rightPressPrevWorldY - cy, rightPressPrevWorldX - cx);
         double curAlpha = Math.atan2(w[1] - cy, w[0] - cx);
         double delta = normaliseAngle(curAlpha - prevAlpha);

@@ -20,6 +20,7 @@ import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
 import com.minecart.ui.panel.InfoPanelRegistry;
 import com.minecart.ui.panel.fields.DropdownSpec;
+import com.minecart.ui.panel.fields.LabelSpec;
 import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.info.RotationInfo;
 
@@ -320,13 +321,62 @@ public non-sealed class CircuitComponent extends CircuitElement {
     }
 
     /**
+     * Local offset from the component's visual centre to its pivot/anchor, in component-local
+     * coordinates. The existing {@link LockInfo} pivot fields store this offset for components.
+     * A component with no authored pivot offset behaves as if the offset were {@code (0, 0)}, so
+     * its pivot/anchor coincides with its visual centre.
+     */
+    public double[] getPivotLocalOffset() {
+        LockInfo lock = getInfo(AllElementInfos.LOCK);
+        if (lock != null && lock.isPivotSet()) {
+            return new double[] { lock.getPivotX(), lock.getPivotY() };
+        }
+        return new double[] { 0.0, 0.0 };
+    }
+
+    /** Returns the component's pivot/anchor world position. */
+    public double[] getPivotWorldPosition() {
+        PositionInfo pivot = getInfo(AllElementInfos.POSITION);
+        return new double[] { pivot != null ? pivot.getX() : 0.0, pivot != null ? pivot.getY() : 0.0 };
+    }
+
+    /**
+     * Returns the visual centre derived from the stored pivot/anchor position, rotation, and local
+     * pivot offset. Rendering, anchor stamping, and physics body construction use this as the
+     * rigid body's centre.
+     */
+    public double[] getVisualCenter() {
+        double[] pivot = getPivotWorldPosition();
+        double[] offset = getPivotLocalOffset();
+        RotationInfo rot = getInfo(AllElementInfos.ROTATION);
+        double angle = rot != null ? rot.getAngle() : 0.0;
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+        double ox = offset[0] * cos - offset[1] * sin;
+        double oy = offset[0] * sin + offset[1] * cos;
+        return new double[] { pivot[0] - ox, pivot[1] - oy };
+    }
+
+    /** Converts a world-space point to the component's local frame relative to its visual centre. */
+    public double[] worldToLocalFromVisualCenter(double worldX, double worldY) {
+        double[] centre = getVisualCenter();
+        RotationInfo rot = getInfo(AllElementInfos.ROTATION);
+        double angle = rot != null ? rot.getAngle() : 0.0;
+        double cos = Math.cos(-angle);
+        double sin = Math.sin(-angle);
+        double dx = worldX - centre[0];
+        double dy = worldY - centre[1];
+        return new double[] { dx * cos - dy * sin, dx * sin + dy * cos };
+    }
+
+    /**
      * Default rotation pivot for a component with no authored pivot — the component centre when
      * known, otherwise an "empty" {@link LockState#FREE}. Always reports {@link LockMode#FREE};
      * the historical "soft-lock from internal port isFixed counts" derivation has been retired
      * now that the physics solver fully encodes the kinematic constraints of locked ports via
      * its body / constraint graph (a port pinned to other anchors contributes {@code invMass=0}
      * weight or distance / pin constraints, so the solver naturally refuses motion that the old
-     * soft-lock would have flagged as LOCKED / ROTATION_FREE).
+     * soft-lock would have flagged as LOCKED / PIVOTED).
      *
      * <p>Retained as a thin convenience for the UI panels and rotation-gesture defaults: they
      * still want a sensible "where should the rotation pivot live by default" answer, and the
@@ -348,7 +398,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
      * retired (see {@link #getSoftLockState()} javadoc), strict is the sole authoritative source
      * for "what motion does the player permit on this element"; the kinematic constraints that
      * the old soft-lock used to encode (multiple anchored ports ⇒ LOCKED; one anchored port ⇒
-     * ROTATION_FREE) are now expressed directly to the physics solver as pin / distance
+     * PIVOTED) are now expressed directly to the physics solver as pin / distance
      * constraints on the body graph.
      *
      * <p>{@code epsilon} is retained on the signature for API stability with prior call sites,
@@ -362,10 +412,11 @@ public non-sealed class CircuitComponent extends CircuitElement {
         }
         return switch (strict.getMode()) {
             case FREE -> LockState.FREE;
-            case POSITION_FREE -> LockState.positionFree();
-            case ROTATION_FREE -> strict.isPivotSet()
-                    ? LockState.rotationFree(strict.getPivotX(), strict.getPivotY())
-                    : LockState.FREE; // No pivot authored ⇒ treat as FREE so the gesture picks its own.
+            case ORIENTED -> LockState.oriented();
+            case PIVOTED -> {
+                double[] pivot = getPivotWorldPosition();
+                yield new LockState(LockMode.PIVOTED, pivot[0], pivot[1], true);
+            }
             case LOCKED -> LockState.LOCKED;
         };
     }
@@ -632,7 +683,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
         }
     }
 
-    /** Snapshot keys for the component's centre position, rotation, and strict lock. */
+    /** Snapshot keys for the component's pivot/anchor position, rotation, and strict lock. */
     public static final String FIELD_POSITION_X = "core:position.x";
     public static final String FIELD_POSITION_Y = "core:position.y";
     public static final String FIELD_ROTATION = "core:rotation.angle";
@@ -642,36 +693,41 @@ public non-sealed class CircuitComponent extends CircuitElement {
 
     static {
         InfoPanelRegistry.registerComponentFragment((component, builder) -> {
-            PositionInfo centre = component.getInfo(AllElementInfos.POSITION);
-            if (centre != null) {
-                builder.add(new NumberFieldSpec(FIELD_POSITION_X, "X", centre.getX()));
-                builder.add(new NumberFieldSpec(FIELD_POSITION_Y, "Y", centre.getY()));
+            PositionInfo pivot = component.getInfo(AllElementInfos.POSITION);
+            LockInfo lock = component.getInfo(AllElementInfos.LOCK);
+            LockMode current = lock != null ? lock.getMode() : LockMode.FREE;
+            boolean pivoted = current == LockMode.PIVOTED;
+            if (pivot != null) {
+                if (pivoted) {
+                    builder.add(new LabelSpec(FIELD_POSITION_X + ".readonly", "Pivot X", Double.toString(pivot.getX())));
+                    builder.add(new LabelSpec(FIELD_POSITION_Y + ".readonly", "Pivot Y", Double.toString(pivot.getY())));
+                } else {
+                    builder.add(new NumberFieldSpec(FIELD_POSITION_X, "Pivot X", pivot.getX()));
+                    builder.add(new NumberFieldSpec(FIELD_POSITION_Y, "Pivot Y", pivot.getY()));
+                }
             }
             RotationInfo rotation = component.getInfo(AllElementInfos.ROTATION);
             if (rotation != null) {
                 builder.add(new NumberFieldSpec(FIELD_ROTATION, "Rotation (rad)", rotation.getAngle()));
             }
-            LockInfo lock = component.getInfo(AllElementInfos.LOCK);
             boolean lockEditable = lock == null || lock.isMutableByPlayer();
             if (lockEditable) {
-                LockMode current = lock != null ? lock.getMode() : LockMode.FREE;
                 java.util.List<String> options = java.util.List.of(
                         LockMode.FREE.name(),
-                        LockMode.POSITION_FREE.name(),
-                        LockMode.ROTATION_FREE.name(),
+                        LockMode.ORIENTED.name(),
+                        LockMode.PIVOTED.name(),
                         LockMode.LOCKED.name());
                 builder.add(new DropdownSpec(FIELD_LOCK_MODE, "Lock", options, current.name()));
-                double pivotX = 0.0, pivotY = 0.0;
-                if (lock != null && lock.isPivotSet()) {
-                    pivotX = lock.getPivotX();
-                    pivotY = lock.getPivotY();
-                } else if (centre != null) {
-                    // Default rotation pivot for a free component = its centre.
-                    pivotX = centre.getX();
-                    pivotY = centre.getY();
+                double[] offset = component.getPivotLocalOffset();
+                if (pivoted) {
+                    builder.add(new LabelSpec(FIELD_LOCK_PIVOT_X + ".readonly", "Pivot Offset X",
+                            Double.toString(offset[0])));
+                    builder.add(new LabelSpec(FIELD_LOCK_PIVOT_Y + ".readonly", "Pivot Offset Y",
+                            Double.toString(offset[1])));
+                } else {
+                    builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_X, "Pivot Offset X", offset[0]));
+                    builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_Y, "Pivot Offset Y", offset[1]));
                 }
-                builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_X, "Pivot X", pivotX));
-                builder.add(new NumberFieldSpec(FIELD_LOCK_PIVOT_Y, "Pivot Y", pivotY));
             }
         });
 
@@ -695,11 +751,25 @@ public non-sealed class CircuitComponent extends CircuitElement {
                         mutated = true;
                     }
                     if (lock != null && lock.isMutableByPlayer()) {
+                        boolean wasPivoted = lock.getMode() == LockMode.PIVOTED;
                         if (lock.setMode(parsed)) mutated = true;
-                        if (pivotX != null && pivotY != null
+                        if (!wasPivoted
+                                && pivotX != null && pivotY != null
                                 && Double.isFinite(pivotX) && Double.isFinite(pivotY)
                                 && (!lock.isPivotSet() || pivotX != lock.getPivotX() || pivotY != lock.getPivotY())) {
+                            double[] visualBefore = component.getVisualCenter();
                             lock.setPivot(pivotX, pivotY);
+                            PositionInfo pivotPos = component.getInfo(AllElementInfos.POSITION);
+                            RotationInfo rot = component.getInfo(AllElementInfos.ROTATION);
+                            double angle = rot != null ? rot.getAngle() : 0.0;
+                            double cos = Math.cos(angle);
+                            double sin = Math.sin(angle);
+                            double worldOffsetX = pivotX * cos - pivotY * sin;
+                            double worldOffsetY = pivotX * sin + pivotY * cos;
+                            if (pivotPos != null) {
+                                pivotPos.set(visualBefore[0] + worldOffsetX,
+                                        visualBefore[1] + worldOffsetY);
+                            }
                             mutated = true;
                         }
                     }
@@ -712,14 +782,15 @@ public non-sealed class CircuitComponent extends CircuitElement {
             // strict-lock-just-applied → translate-refused interaction works the same as before.
             ServerWorld sw = component.getWorld() instanceof ServerWorld w ? w : null;
 
-            // Component position: convert "new centre" to a translation delta.
-            PositionInfo centre = component.getInfo(AllElementInfos.POSITION);
+            // Component pivot/anchor position: convert "new pivot" to a translation delta.
+            PositionInfo pivot = component.getInfo(AllElementInfos.POSITION);
             Double newX = snapshot.getDouble(FIELD_POSITION_X).orElse(null);
             Double newY = snapshot.getDouble(FIELD_POSITION_Y).orElse(null);
-            if (sw != null && centre != null && newX != null && newY != null
+            boolean pivotedNow = component.effectiveLockState(1e-6).mode() == LockMode.PIVOTED;
+            if (!pivotedNow && sw != null && pivot != null && newX != null && newY != null
                     && Double.isFinite(newX) && Double.isFinite(newY)) {
-                double dx = newX - centre.getX();
-                double dy = newY - centre.getY();
+                double dx = newX - pivot.getX();
+                double dy = newY - pivot.getY();
                 if (dx != 0.0 || dy != 0.0) {
                     if (CombineCascadeEngine.tryTranslateComponent(sw, component, dx, dy)) {
                         mutated = true;
@@ -727,16 +798,17 @@ public non-sealed class CircuitComponent extends CircuitElement {
                 }
             }
 
-            // Component rotation: convert "new angle" to a delta, rotate around the current centre
-            // (the panel doesn't author a separate rotation pivot — that's the gesture surface).
+            // Component rotation: convert "new angle" to a delta, rotate around the component's
+            // current pivot/anchor. FREE components have a zero pivot offset by default, so this
+            // is equivalent to centre rotation until the user authors a pivot offset.
             RotationInfo rotation = component.getInfo(AllElementInfos.ROTATION);
             Double newAngle = snapshot.getDouble(FIELD_ROTATION).orElse(null);
-            if (sw != null && rotation != null && centre != null
+            if (sw != null && rotation != null && pivot != null
                     && newAngle != null && Double.isFinite(newAngle)) {
                 double delta = newAngle - rotation.getAngle();
                 if (delta != 0.0) {
-                    if (CombineCascadeEngine.tryRotateComponent(sw, component, centre.getX(),
-                            centre.getY(), delta)) {
+                    if (CombineCascadeEngine.tryRotateComponent(sw, component, pivot.getX(),
+                            pivot.getY(), delta)) {
                         mutated = true;
                     }
                 }

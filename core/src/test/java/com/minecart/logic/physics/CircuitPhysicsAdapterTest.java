@@ -196,6 +196,100 @@ class CircuitPhysicsAdapterTest {
                 "right component should be pushed away by the rigid wire");
     }
 
+    @Test
+    void dragEdgeAnchor_orientedFlexibleEdge_movesDraggedEndpointAlongLockedDirection() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        place(a, 0.0, 0.0);
+        place(b, 2.0, 0.0);
+        Resistor edge = w.connect(AllComponents.RESISTOR, a, b);
+        assertNotNull(edge);
+        edge.setInfo(AllElementInfos.LOCK, new LockInfo(LockMode.ORIENTED, 0.0, 0.0, true));
+
+        CircuitPhysicsAdapter.dragEdgeAnchor(w, edge, 5.0, 3.0,
+                true, 1.0, 0.0);
+
+        // Flexible ORIENTED edges preserve direction, not length. The other endpoint stays put
+        // while the dragged endpoint slides along the locked horizontal line.
+        assertEquals(0.0, x(a), EPS);
+        assertEquals(0.0, y(a), EPS);
+        assertEquals(5.0, x(b), 0.05);
+        assertEquals(0.0, y(b), 0.05);
+    }
+
+    @Test
+    void dragEdgeAnchor_pivotedRigidEdge_rotatesGrabbedPointAroundStoredPivot() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        place(a, 1.0, 0.0);
+        place(b, 3.0, 0.0);
+        Resistor edge = w.connect(AllComponents.RESISTOR, a, b);
+        assertNotNull(edge);
+        edge.setInfo(AllElementInfos.LOCK, new LockInfo(LockMode.PIVOTED, 0.0, 0.0, true));
+        markRigid(edge);
+
+        // Local anchor (1, 0) is the end endpoint at (3, 0). Pulling it to (0, 3)
+        // requests a 90-degree rotation around the stored pivot (0, 0). Rigidity separately
+        // preserves the two-unit endpoint distance.
+        CircuitPhysicsAdapter.dragEdgeAnchor(w, edge, 0.0, 3.0,
+                true, 1.0, 0.0);
+
+        double crossWithPivot = x(a) * y(b) - y(a) * x(b);
+        double length = Math.hypot(x(b) - x(a), y(b) - y(a));
+        assertEquals(0.0, crossWithPivot, 0.02);
+        assertEquals(2.0, length, 0.02);
+        assertEquals(0.0, x(b), 0.02);
+        assertEquals(3.0, y(b), 0.02);
+    }
+
+    @Test
+    void dragEdgeAnchor_pivotedFlexibleEdge_keepsLineThroughPivotButCanStretch() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        place(a, 1.0, 0.0);
+        place(b, 3.0, 0.0);
+        Resistor edge = w.connect(AllComponents.RESISTOR, a, b);
+        assertNotNull(edge);
+        edge.setInfo(AllElementInfos.LOCK, new LockInfo(LockMode.PIVOTED, 0.0, 0.0, true));
+
+        CircuitPhysicsAdapter.dragEdgeAnchor(w, edge, 0.0, 4.0,
+                true, 1.0, 0.0);
+
+        // Pivoted flexible edges constrain the edge line through the pivot but do not preserve
+        // endpoint distance unless RigidityInfo also contributes a DistanceConstraint.
+        double crossWithPivot = x(a) * y(b) - y(a) * x(b);
+        assertEquals(0.0, crossWithPivot, 0.05);
+        assertEquals(0.0, x(b), 0.1);
+        assertEquals(4.0, y(b), 0.1);
+    }
+
+    @Test
+    void dragEdgeAnchor_lockedEdge_refusesMotion() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        place(a, 0.0, 0.0);
+        place(b, 2.0, 0.0);
+        Resistor edge = w.connect(AllComponents.RESISTOR, a, b);
+        assertNotNull(edge);
+        edge.setInfo(AllElementInfos.LOCK, new LockInfo(LockMode.LOCKED, 0.0, 0.0, true));
+
+        CircuitPhysicsAdapter.dragEdgeAnchor(w, edge, 5.0, 3.0,
+                false, 0.0, 0.0);
+
+        assertEquals(0.0, x(a), EPS);
+        assertEquals(0.0, y(a), EPS);
+        assertEquals(2.0, x(b), EPS);
+        assertEquals(0.0, y(b), EPS);
+    }
+
     // ---------------------------------------------------------------------
     // Rotation
     // ---------------------------------------------------------------------

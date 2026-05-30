@@ -11,7 +11,7 @@
  *   <li>Every {@link com.minecart.logic.CircuitComponent} reachable from the seed becomes a
  *       {@link com.minecart.physics.Body}. Inverse-inertias come from
  *       {@link com.minecart.logic.CircuitComponent#effectiveLockState}: FREE → {@code (1,1)},
- *       POSITION_FREE → {@code (1,0)}, ROTATION_FREE → {@code (0,1)} pivoted at the strict
+ *       ORIENTED → {@code (1,0)}, PIVOTED → {@code (0,1)} pivoted at the strict
  *       authored point, LOCKED → {@code (0,0)}.</li>
  *   <li>Every free {@link com.minecart.logic.CircuitNode} (no owning component) reachable from the
  *       seed becomes a {@link com.minecart.physics.Body} too. Nodes have no rotation DOF, so

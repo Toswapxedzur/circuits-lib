@@ -22,7 +22,7 @@ import java.util.UUID;
  * of strict {@link com.minecart.variant.info.LockInfo} and the soft-lock derivation) and refuses
  * silently if rotation is forbidden. The handler itself does NOT mutate the component's strict
  * {@link com.minecart.variant.info.LockInfo} — earlier revisions did, attempting to coax the
- * engine's pivot-coincidence check into accepting the gesture by promoting FREE → ROTATION_FREE
+ * engine's pivot-coincidence check into accepting the gesture by promoting FREE → PIVOTED
  * and rewriting the stored pivot, but the side-effect corrupted the player's authored lock state
  * even when the rotation was ultimately refused. With the side-effect removed, an unmovable
  * lock stays unmovable, and a mutable lock keeps the {@code (mode, pivot)} the player authored.

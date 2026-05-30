@@ -48,6 +48,9 @@ public final class ProtocolStrings {
     public static final String TAG_ELEMENT_TYPE_ID = "element_type_id";
     public static final String TAG_X = "x";
     public static final String TAG_Y = "y";
+    /** Optional MoveElementPayload body-local anchor for component drags. */
+    public static final String TAG_ANCHOR_LOCAL_X = "anchor_local_x";
+    public static final String TAG_ANCHOR_LOCAL_Y = "anchor_local_y";
     public static final String TAG_ANGLE = "angle";
     public static final String TAG_START_NODE_ID = "start_node_id";
     public static final String TAG_END_NODE_ID = "end_node_id";

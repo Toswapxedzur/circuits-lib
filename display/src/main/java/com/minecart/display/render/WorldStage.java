@@ -148,6 +148,10 @@ public class WorldStage extends Stage {
         return edgesLayer;
     }
 
+    public EdgeActor getEdgeActor(UUID id) {
+        return edgeActors.get(id);
+    }
+
     public Group getComponentsLayer() {
         return componentsLayer;
     }
