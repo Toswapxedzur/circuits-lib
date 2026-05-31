@@ -5,6 +5,11 @@ import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
+import com.minecart.ui.panel.InfoPanelElementType;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.InfoPanelTypes;
+import com.minecart.ui.panel.PanelFieldKey;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations.BatteryInfo;
 import com.minecart.math.LinearSystem.RelationProvider;
@@ -17,6 +22,13 @@ import java.util.Objects;
 public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInfo> {
 
     protected BatteryInfo info;
+
+    public static final InfoPanelElementType<Battery> PANEL_TYPE =
+            new InfoPanelElementType<>("battery", Battery.class, InfoPanelTypes.EDGE);
+    public static final PanelFieldKey<Double> FIELD_VOLTAGE =
+            PanelFieldKey.doubleKey("battery:voltage");
+    public static final PanelFieldKey<Double> FIELD_RESISTANCE =
+            PanelFieldKey.doubleKey("battery:resistance");
 
     public Battery(World world) {
         super(world);
@@ -98,5 +110,22 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
     static {
         AllComponents.BATTERY.addActionHandler(ActionTypes.SET_RESISTANCE, (battery, action) -> battery.handleResistance(action));
         AllComponents.BATTERY.addActionHandler(ActionTypes.SET_VOLTAGE, (battery, action) -> battery.handleVoltage(action));
+        InfoPanelRegistry.bind(AllComponents.BATTERY, PANEL_TYPE);
+        InfoPanelRegistry.registerPanel(PANEL_TYPE, (battery, builder) -> {
+            builder.add(new NumberFieldSpec(FIELD_VOLTAGE, "Voltage", battery.info.getVoltage()),
+                    (b, ctx) -> ctx.doubleValue(FIELD_VOLTAGE)
+                            .filter(Double::isFinite)
+                            .ifPresent(v -> {
+                                b.info.setVoltage(v);
+                                ctx.markChanged(b);
+                            }));
+            builder.add(new NumberFieldSpec(FIELD_RESISTANCE, "Internal Resistance", battery.info.getResistance()),
+                    (b, ctx) -> ctx.doubleValue(FIELD_RESISTANCE)
+                            .filter(v -> Double.isFinite(v) && v > 0.0)
+                            .ifPresent(v -> {
+                                b.info.setResistance(v);
+                                ctx.markChanged(b);
+                            }));
+        });
     }
 }

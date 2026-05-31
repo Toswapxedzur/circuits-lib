@@ -8,6 +8,7 @@ import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
@@ -41,6 +42,7 @@ import com.minecart.display.render.UiIcons;
 import com.minecart.display.render.WireTextureRegistry;
 import com.minecart.display.render.WorldStage;
 import com.minecart.display.render.WorldViewState;
+import com.minecart.display.render.WorldViewStorage;
 import com.minecart.foundation.World;
 import com.minecart.protocol.payload.client.CreateWorldPayload;
 import com.minecart.protocol.payload.client.DeleteWorldPayload;
@@ -117,6 +119,8 @@ public class GameScreen extends ScreenAdapter {
 
     /** Currently-selected target world for placement; {@code null} until the user picks one. */
     private UUID selectedWorldId;
+    /** Preferred selected world restored from local view state once the server snapshot arrives. */
+    private UUID preferredSelectedWorldId;
 
     /**
      * Per-world snapshot of the camera pan + zoom. Indexed by world id so switching worlds restores both
@@ -186,6 +190,7 @@ public class GameScreen extends ScreenAdapter {
         this.paletteTilesTable = new Table();
         this.worldListBody = new Table();
         this.worldDropdown = new Table();
+        loadPersistedViewState();
 
         this.dropdownHeader = new Label("Worlds", skin);
         this.dropdownHeader.setFontScale(1.1f);
@@ -543,8 +548,33 @@ public class GameScreen extends ScreenAdapter {
         closeWorldDropdown();
     }
 
+    private void loadPersistedViewState() {
+        if (!isSingleplayer() || integrated.saveDir() == null) {
+            return;
+        }
+        WorldViewStorage.Snapshot snapshot = WorldViewStorage.load(integrated.saveDir());
+        preferredSelectedWorldId = snapshot.selectedWorldId();
+        worldViews.putAll(snapshot.views());
+    }
+
+    private void savePersistedViewState() {
+        if (!isSingleplayer() || integrated.saveDir() == null) {
+            return;
+        }
+        snapshotCurrentWorldView();
+        try {
+            WorldViewStorage.save(integrated.saveDir(), selectedWorldId, worldViews);
+        } catch (IOException ex) {
+            log.warn("Failed to save editor view state", ex);
+        }
+    }
+
     /** Two-step delete so a stray click doesn't nuke a world. */
     private void openConfirmDeleteWorldDialog(World w) {
+        if (clientLevel.getWorlds().size() <= 1) {
+            openLastWorldWarningDialog();
+            return;
+        }
         String label = (w.getName() != null && !w.getName().isEmpty()) ? w.getName() : w.getId().toString().substring(0, 8);
         Dialog dialog = new Dialog("Delete world?", skin);
         Table content = dialog.getContentTable();
@@ -570,14 +600,45 @@ public class GameScreen extends ScreenAdapter {
         dialog.show(uiStage);
     }
 
+    private void openLastWorldWarningDialog() {
+        Dialog dialog = new Dialog("Cannot delete world", skin);
+        Table content = dialog.getContentTable();
+        content.pad(10f);
+        content.add(new Label("You must keep at least one world in the level.", skin)).left().row();
+        content.add(new Label("Create another world before deleting this one.", skin, "muted")).left().padTop(4f).row();
+        dialog.button("OK");
+        dialog.show(uiStage);
+    }
+
     private void requestDeleteWorld(UUID id) {
+        if (clientLevel.getWorlds().size() <= 1) {
+            openLastWorldWarningDialog();
+            return;
+        }
         connection.send(new DeleteWorldPayload(id));
         if (id.equals(selectedWorldId)) {
-            selectedWorldId = null;
+            selectedWorldId = pickFallbackWorldExcept(id);
+            applyWorldView(selectedWorldId);
             refreshSelectedWorldLabel();
         }
         flashStatus("Deleting world...");
         if (worldDropdownOpen) rebuildWorldDropdown();
+    }
+
+    private UUID pickFallbackWorldExcept(UUID excludedId) {
+        UUID firstUnnamed = null;
+        for (World w : clientLevel.getWorlds()) {
+            UUID id = w.getId();
+            if (id == null || id.equals(excludedId)) continue;
+            String name = w.getName();
+            if (name != null && !name.isEmpty()) {
+                return id;
+            }
+            if (firstUnnamed == null) {
+                firstUnnamed = id;
+            }
+        }
+        return firstUnnamed;
     }
 
     private void openModifyWorldDialog(World w) {
@@ -782,6 +843,7 @@ public class GameScreen extends ScreenAdapter {
         shuttingDown = true;
         flashStatus("Saving...");
         if (isSingleplayer()) {
+            savePersistedViewState();
             try {
                 if (connection != null) connection.close();
             } catch (Throwable t) {
@@ -815,6 +877,7 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void shutdownSessionNoSave() {
+        savePersistedViewState();
         try {
             if (connection != null) connection.close();
         } catch (Throwable t) {
@@ -1184,7 +1247,23 @@ public class GameScreen extends ScreenAdapter {
             //
             // We do BOTH whenever the revision moves (not only when the dropdown is open) so a remote
             // delete is reflected in the canvas + label immediately, regardless of dropdown state.
-            if (selectedWorldId != null && clientLevel.findWorld(selectedWorldId) == null) {
+            if (selectedWorldId == null) {
+                UUID fallback = preferredSelectedWorldId != null
+                        && clientLevel.findWorld(preferredSelectedWorldId) != null
+                        ? preferredSelectedWorldId
+                        : pickFallbackWorld();
+                if (fallback != null) {
+                    selectedWorldId = fallback;
+                    applyWorldView(fallback);
+                    refreshSelectedWorldLabel();
+                    preferredSelectedWorldId = null;
+                    World fw = clientLevel.findWorld(fallback);
+                    String name = fw != null && fw.getName() != null && !fw.getName().isEmpty()
+                            ? fw.getName()
+                            : fallback.toString().substring(0, 8);
+                    flashStatus("Selected world: " + name);
+                }
+            } else if (clientLevel.findWorld(selectedWorldId) == null) {
                 // Drop the deleted world's saved view so a recreated world with the same id starts fresh
                 // instead of inheriting a stale pan/zoom from the prior life. The new id (if any) gets a
                 // default view via applyWorldView below.
@@ -1226,9 +1305,33 @@ public class GameScreen extends ScreenAdapter {
     @Override public void resize(int width, int height) {
         worldStage.getViewport().update(width, height, false);
         uiStage.getViewport().update(width, height, true);
+        if (worldDropdownOpen) {
+            rebuildWorldDropdown();
+        }
         if (trashOverlay.isVisible()) {
             positionTrashOverlay();
         }
+        relayoutOpenDialogs();
+    }
+
+    private void relayoutOpenDialogs() {
+        for (Actor actor : uiStage.getActors()) {
+            if (actor instanceof Dialog dialog) {
+                fitDialogToStage(dialog);
+            }
+        }
+    }
+
+    private void fitDialogToStage(Dialog dialog) {
+        dialog.invalidateHierarchy();
+        dialog.pack();
+        float margin = 12f;
+        float maxWidth = Math.max(120f, uiStage.getWidth() - margin * 2f);
+        float maxHeight = Math.max(80f, uiStage.getHeight() - margin * 2f);
+        dialog.setSize(Math.min(dialog.getWidth(), maxWidth), Math.min(dialog.getHeight(), maxHeight));
+        dialog.setPosition(
+                (uiStage.getWidth() - dialog.getWidth()) / 2f,
+                (uiStage.getHeight() - dialog.getHeight()) / 2f);
     }
 
     @Override public void hide() {

@@ -43,6 +43,21 @@ public class ServerLevel extends Level {
     }
 
     /**
+     * Ensures the level always has at least one world for clients to select. Returns an existing
+     * first world when present, otherwise creates and names a default one.
+     */
+    public ServerWorld ensureDefaultWorld() {
+        for (World world : getWorlds()) {
+            if (world instanceof ServerWorld sw) {
+                return sw;
+            }
+        }
+        ServerWorld world = createWorld();
+        world.setName("World 1");
+        return world;
+    }
+
+    /**
      * Creates a network with a fixed id if none with that id exists yet.
      *
      * @return the existing {@link ServerWorld} with {@code worldId}, or a newly registered one

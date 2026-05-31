@@ -19,19 +19,24 @@ import java.util.Objects;
  */
 public abstract class PanelField {
 
-    private final String key;
+    private final PanelFieldKey<?> key;
     private final String label;
 
     protected PanelField(String key, String label) {
+        this(PanelFieldKey.stringKey(key), label);
+    }
+
+    protected PanelField(PanelFieldKey<?> key, String label) {
         this.key = Objects.requireNonNull(key, "key");
         this.label = Objects.requireNonNull(label, "label");
-        if (key.isEmpty()) {
-            throw new IllegalArgumentException("key must be non-empty");
-        }
     }
 
     /** Stable identifier used both as the snapshot map key and as the panel-field uniqueness key. */
     public final String getKey() {
+        return key.id();
+    }
+
+    public final PanelFieldKey<?> fieldKey() {
         return key;
     }
 

@@ -3,6 +3,7 @@ package com.minecart.display.screen;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
@@ -150,8 +151,9 @@ public class WorldListScreen extends ScreenAdapter {
             protected void result(Object obj) {
                 if (Boolean.TRUE.equals(obj)) {
                     String entered = nameField.getText();
-                    if (worlds.create(entered) != null) {
-                        refresh();
+                    WorldEntry created = worlds.create(entered);
+                    if (created != null) {
+                        joinWorld(created);
                     } else {
                         log.warn("Invalid or duplicate world name: '{}'", entered);
                     }
@@ -201,6 +203,27 @@ public class WorldListScreen extends ScreenAdapter {
 
     @Override public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
+        relayoutOpenDialogs();
+    }
+
+    private void relayoutOpenDialogs() {
+        for (Actor actor : stage.getActors()) {
+            if (actor instanceof Dialog dialog) {
+                fitDialogToStage(dialog);
+            }
+        }
+    }
+
+    private void fitDialogToStage(Dialog dialog) {
+        dialog.invalidateHierarchy();
+        dialog.pack();
+        float margin = 12f;
+        float maxWidth = Math.max(120f, stage.getWidth() - margin * 2f);
+        float maxHeight = Math.max(80f, stage.getHeight() - margin * 2f);
+        dialog.setSize(Math.min(dialog.getWidth(), maxWidth), Math.min(dialog.getHeight(), maxHeight));
+        dialog.setPosition(
+                (stage.getWidth() - dialog.getWidth()) / 2f,
+                (stage.getHeight() - dialog.getHeight()) / 2f);
     }
 
     @Override public void dispose() {

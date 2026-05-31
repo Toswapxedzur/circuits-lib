@@ -15,6 +15,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Array;
 import com.minecart.ui.panel.InfoPanelSchema;
+import com.minecart.ui.panel.PanelActionSpec;
 import com.minecart.ui.panel.PanelField;
 import com.minecart.ui.panel.PanelSnapshot;
 import com.minecart.ui.panel.fields.CheckboxSpec;
@@ -25,6 +26,7 @@ import com.minecart.ui.panel.fields.SliderSpec;
 import com.minecart.ui.panel.fields.TextFieldSpec;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -48,7 +50,9 @@ public final class InfoPanelRenderer {
      * {@code .hide()} it programmatically (used to enforce the single-panel invariant when the
      * user clicks a different element while a panel is already open).
      */
-    public static Dialog open(Stage stage, Skin skin, InfoPanelSchema schema, Consumer<PanelSnapshot> onSave) {
+    public static Dialog open(Stage stage, Skin skin, InfoPanelSchema schema,
+                              Consumer<PanelSnapshot> onSave,
+                              Consumer<String> onAction) {
         final Map<String, Actor> editors = new LinkedHashMap<>();
 
         Dialog dialog = new Dialog(schema.getTitle(), skin);
@@ -85,6 +89,18 @@ public final class InfoPanelRenderer {
         Table buttons = dialog.getButtonTable();
         buttons.pad(8f);
         buttons.add(saveBtn).width(100f).height(36f).padRight(8f);
+        for (PanelActionSpec action : schema.getActions()) {
+            TextButton actionBtn = new TextButton(action.label(), skin);
+            actionBtn.addListener(new ClickListener() {
+                @Override public void clicked(InputEvent e, float x, float y) {
+                    dialog.hide();
+                    if (onAction != null) {
+                        onAction.accept(action.key());
+                    }
+                }
+            });
+            buttons.add(actionBtn).width(140f).height(36f).padRight(8f);
+        }
         buttons.add(cancelBtn).width(100f).height(36f);
 
         dialog.show(stage);
@@ -93,7 +109,7 @@ public final class InfoPanelRenderer {
 
     private static Actor buildEditor(PanelField field, Skin skin) {
         if (field instanceof LabelSpec ls) {
-            return new Label(ls.getValue(), skin, "muted");
+            return new Label(formatLabelValue(ls.getValue()), skin, "muted");
         }
         if (field instanceof TextFieldSpec tfs) {
             TextField tf = new TextField(tfs.getInitialValue(), skin);
@@ -149,7 +165,10 @@ public final class InfoPanelRenderer {
             if (field instanceof TextFieldSpec) {
                 b.put(field.getKey(), ((TextField) a).getText());
             } else if (field instanceof NumberFieldSpec nfs) {
-                double parsed = parseDoubleOrInitial(((TextField) a).getText(), nfs.getInitialValue());
+                String text = ((TextField) a).getText();
+                double parsed = text != null && text.trim().equals(formatDouble(nfs.getInitialValue()))
+                        ? nfs.getInitialValue()
+                        : parseDoubleOrInitial(text, nfs.getInitialValue());
                 b.put(field.getKey(), parsed);
             } else if (field instanceof CheckboxSpec) {
                 b.put(field.getKey(), ((CheckBox) a).isChecked());
@@ -182,11 +201,21 @@ public final class InfoPanelRenderer {
     }
 
     private static String formatDouble(double v) {
-        // Trim trailing zeros so a clean integer reads "1" rather than "1.0"; the underlying parse
-        // still accepts either. We don't use String.format here because we want "1e-3" to round-trip.
-        if (v == Math.floor(v) && !Double.isInfinite(v)) {
-            return Long.toString((long) v);
+        if (!Double.isFinite(v)) {
+            return Double.toString(v);
         }
-        return Double.toString(v);
+        String s = String.format(Locale.ROOT, "%.3f", v);
+        return s.replaceAll("0+$", "").replaceAll("\\.$", "");
+    }
+
+    private static String formatLabelValue(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return formatDouble(Double.parseDouble(value.trim()));
+        } catch (NumberFormatException ignored) {
+            return value;
+        }
     }
 }

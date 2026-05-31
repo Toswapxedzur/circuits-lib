@@ -3,6 +3,7 @@ package com.minecart.ui.panel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -19,10 +20,12 @@ public final class InfoPanelSchema {
 
     private final String title;
     private final List<PanelField> fields;
+    private final List<PanelActionSpec> actions;
 
-    private InfoPanelSchema(String title, List<PanelField> fields) {
+    private InfoPanelSchema(String title, List<PanelField> fields, List<PanelActionSpec> actions) {
         this.title = title;
         this.fields = fields;
+        this.actions = actions;
     }
 
     /** Title displayed at the top of the panel window. */
@@ -35,6 +38,18 @@ public final class InfoPanelSchema {
         return fields;
     }
 
+    public List<PanelActionSpec> getActions() {
+        return actions;
+    }
+
+    public Set<String> fieldKeys() {
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        for (PanelField field : fields) {
+            keys.add(field.getKey());
+        }
+        return Collections.unmodifiableSet(keys);
+    }
+
     public static Builder builder(String title) {
         return new Builder(title);
     }
@@ -43,13 +58,14 @@ public final class InfoPanelSchema {
      * Accumulates fields and enforces key-uniqueness at build time so a stray duplicate doesn't
      * silently clobber values in the snapshot. Not thread-safe; build the schema on one thread.
      */
-    public static final class Builder {
+    public static class Builder {
 
         private final String title;
         private final List<PanelField> fields = new ArrayList<>();
+        private final List<PanelActionSpec> actions = new ArrayList<>();
         private final Set<String> keys = new HashSet<>();
 
-        private Builder(String title) {
+        protected Builder(String title) {
             this.title = Objects.requireNonNull(title, "title");
         }
 
@@ -62,8 +78,15 @@ public final class InfoPanelSchema {
             return this;
         }
 
+        public Builder addAction(PanelActionSpec action) {
+            actions.add(Objects.requireNonNull(action, "action"));
+            return this;
+        }
+
         public InfoPanelSchema build() {
-            return new InfoPanelSchema(title, Collections.unmodifiableList(new ArrayList<>(fields)));
+            return new InfoPanelSchema(title,
+                    Collections.unmodifiableList(new ArrayList<>(fields)),
+                    Collections.unmodifiableList(new ArrayList<>(actions)));
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.minecart.ui.panel.fields;
 
 import com.minecart.ui.panel.PanelField;
+import com.minecart.ui.panel.PanelFieldKey;
 
 /**
  * Single-line text input. Renders as a libGDX {@code TextField}. Snapshot value is a non-null
@@ -11,6 +12,11 @@ public final class TextFieldSpec extends PanelField {
     private final String initialValue;
 
     public TextFieldSpec(String key, String label, String initialValue) {
+        super(key, label);
+        this.initialValue = initialValue == null ? "" : initialValue;
+    }
+
+    public TextFieldSpec(PanelFieldKey<String> key, String label, String initialValue) {
         super(key, label);
         this.initialValue = initialValue == null ? "" : initialValue;
     }

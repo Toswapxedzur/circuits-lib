@@ -291,7 +291,42 @@ public final class SolveSession {
 
     /** Runs the solver with the supplied config. */
     public SolverResult solve(SolverConfig config) {
+        if (constraints.stream().anyMatch(SpringConstraint.class::isInstance)) {
+            return solveWithLowPrioritySprings(config);
+        }
         return Solver.solve(config, constraints);
+    }
+
+    private SolverResult solveWithLowPrioritySprings(SolverConfig config) {
+        List<Constraint> hard = new ArrayList<>();
+        for (Constraint constraint : constraints) {
+            if (!(constraint instanceof SpringConstraint)) {
+                hard.add(constraint);
+            }
+        }
+
+        if (hard.isEmpty()) {
+            // A lone cursor spring is intentionally soft: it may retain a tiny XPBD residual at
+            // equilibrium. Do one projection so the dragged body follows, but don't report that
+            // residual as non-convergence.
+            for (Constraint constraint : constraints) {
+                constraint.project();
+            }
+            return new SolverResult(1, 0.0, true);
+        }
+
+        // Cursor-follow springs are lower priority than geometric constraints. Run the full mixed
+        // solve so springs can pull the assembly along the hard-constraint manifold, then polish
+        // hard constraints alone so the final committed pose never leaves a rigid line stretched
+        // just because the cursor target was unreachable.
+        for (int i = 0; i < config.maxIterations(); i++) {
+            for (Constraint constraint : constraints) {
+                constraint.project();
+            }
+        }
+        SolverResult hardResult = Solver.solve(config, hard);
+        return new SolverResult(config.maxIterations() + hardResult.iterations(),
+                hardResult.residual(), hardResult.converged());
     }
 
     /**

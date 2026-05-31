@@ -3,7 +3,10 @@ package com.minecart.server.persistence;
 import com.minecart.elements.edge.Diode;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
+import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
+import com.minecart.logic.ServerCircuit;
 import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
 import com.minecart.registry.AllComponents;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -82,5 +86,64 @@ class WorldStorageTest {
         assertTrue(WorldStorage.load(tmp, level));
         assertNotNull(level.findWorld(worldId), "world id from writeEmpty should round-trip");
         assertEquals(0, level.findWorld(worldId).getCircuits().size(), "no circuits expected");
+    }
+
+    @Test
+    void saveAndLoad_keepsComponentInternalsInComponentCircuit(@TempDir Path tmp) throws IOException {
+        ServerLevel src = new ServerLevel();
+        ServerWorld w = src.createWorld();
+        CircuitComponent transistor = w.createComponent(AllComponents.BJ_TRANSISTOR);
+
+        WorldStorage.save(src, tmp);
+
+        ServerLevel dst = new ServerLevel();
+        assertTrue(WorldStorage.load(tmp, dst));
+        CircuitComponent loaded = (CircuitComponent) dst.findWorld(w.getId()).findElement(transistor.getId());
+
+        assertNotNull(loaded);
+        assertFalse(loaded.getNodes().isEmpty(), "component nodes should reload");
+        assertFalse(loaded.getEdges().isEmpty(), "component edges should reload");
+        for (CircuitNode node : loaded.getNodes()) {
+            assertEquals(loaded.getCircuit(), node.getCircuit(), "component-owned node must share owner circuit");
+            assertTrue(node.getComponents().contains(loaded), "component-owned node must restore component backlink");
+        }
+        for (CircuitEdge edge : loaded.getEdges()) {
+            assertEquals(loaded.getCircuit(), edge.getCircuit(), "component-owned edge must share owner circuit");
+            assertEquals(loaded, edge.getComponent(), "component-owned edge must restore component backlink");
+        }
+    }
+
+    @Test
+    void load_migratesLegacyComponentInternalsFromSeparateCircuit(@TempDir Path tmp) throws IOException {
+        ServerLevel src = new ServerLevel();
+        ServerWorld w = src.createWorld();
+        CircuitComponent transistor = w.createComponent(AllComponents.BJ_TRANSISTOR);
+        Circuit componentCircuit = transistor.getCircuit();
+        ServerCircuit legacyInternalCircuit = new ServerCircuit();
+        w.addCircuit(legacyInternalCircuit);
+
+        for (CircuitNode node : new ArrayList<>(transistor.getNodes())) {
+            componentCircuit.nodes().remove(node);
+            legacyInternalCircuit.addNode(node);
+        }
+        for (CircuitEdge edge : new ArrayList<>(transistor.getEdges())) {
+            componentCircuit.edges().remove(edge);
+            legacyInternalCircuit.addEdge(edge);
+        }
+
+        WorldStorage.save(src, tmp);
+
+        ServerLevel dst = new ServerLevel();
+        assertTrue(WorldStorage.load(tmp, dst));
+        CircuitComponent loaded = (CircuitComponent) dst.findWorld(w.getId()).findElement(transistor.getId());
+
+        assertNotNull(loaded);
+        assertEquals(1, dst.findWorld(w.getId()).getCircuits().size(), "empty legacy internal circuit should be removed");
+        for (CircuitNode node : loaded.getNodes()) {
+            assertEquals(loaded.getCircuit(), node.getCircuit(), "legacy node should migrate to component circuit");
+        }
+        for (CircuitEdge edge : loaded.getEdges()) {
+            assertEquals(loaded.getCircuit(), edge.getCircuit(), "legacy edge should migrate to component circuit");
+        }
     }
 }

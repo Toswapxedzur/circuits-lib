@@ -6,6 +6,11 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
+import com.minecart.ui.panel.InfoPanelElementType;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.InfoPanelTypes;
+import com.minecart.ui.panel.PanelFieldKey;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations.*;
 
@@ -13,6 +18,15 @@ import java.util.Objects;
 
 public class Capacitor extends CircuitEdge implements ElectricalVariate<CapacitorInfo> {
     protected CapacitorInfo info;
+
+    public static final InfoPanelElementType<Capacitor> PANEL_TYPE =
+            new InfoPanelElementType<>("capacitor", Capacitor.class, InfoPanelTypes.EDGE);
+    public static final PanelFieldKey<Double> FIELD_CAPACITANCE =
+            PanelFieldKey.doubleKey("capacitor:capacitance");
+    public static final PanelFieldKey<Double> FIELD_CHARGE =
+            PanelFieldKey.doubleKey("capacitor:charge");
+    public static final PanelFieldKey<Double> FIELD_INTERNAL_RESISTANCE =
+            PanelFieldKey.doubleKey("capacitor:internalResistance");
 
     public Capacitor(World world) {
         super(world);
@@ -106,5 +120,30 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
     static {
         AllComponents.CAPACITOR.addActionHandler(ActionTypes.SET_CAPACITANCE, (capacitor, action) -> capacitor.handleCapacitance(action));
         AllComponents.CAPACITOR.addActionHandler(ActionTypes.SET_RESISTANCE, (capacitor, setResistanceAction) -> capacitor.handleResistance(setResistanceAction));
+        InfoPanelRegistry.bind(AllComponents.CAPACITOR, PANEL_TYPE);
+        InfoPanelRegistry.registerPanel(PANEL_TYPE, (capacitor, builder) -> {
+            builder.add(new NumberFieldSpec(FIELD_CAPACITANCE, "Capacitance (F)", capacitor.info.getCapacitance()),
+                    (c, ctx) -> ctx.doubleValue(FIELD_CAPACITANCE)
+                            .filter(v -> Double.isFinite(v) && v > 0.0)
+                            .ifPresent(v -> {
+                                c.info.setCapacitance(v);
+                                ctx.markChanged(c);
+                            }));
+            builder.add(new NumberFieldSpec(FIELD_CHARGE, "Charge (C)", capacitor.info.getCharge()),
+                    (c, ctx) -> ctx.doubleValue(FIELD_CHARGE)
+                            .filter(Double::isFinite)
+                            .ifPresent(v -> {
+                                c.info.setCharge(v);
+                                ctx.markChanged(c);
+                            }));
+            builder.add(new NumberFieldSpec(FIELD_INTERNAL_RESISTANCE, "Internal Resistance (Ω)",
+                            capacitor.info.getInternalResistance()),
+                    (c, ctx) -> ctx.doubleValue(FIELD_INTERNAL_RESISTANCE)
+                            .filter(v -> Double.isFinite(v) && v > 0.0)
+                            .ifPresent(v -> {
+                                c.info.setInternalResistance(v);
+                                ctx.markChanged(c);
+                            }));
+        });
     }
 }

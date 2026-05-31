@@ -3,6 +3,7 @@ package com.minecart.server.handler;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
+import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerCircuit;
@@ -15,9 +16,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Server-side handler for {@link DeleteElementPayload}: removes a free node or a whole component from the
- * world. Edges are positionless so the editor never offers them as drag targets; we silently ignore other
- * kinds to keep the protocol forgiving for misbehaving clients.
+ * Server-side handler for {@link DeleteElementPayload}: removes a free node, a whole component, or
+ * disconnects a free edge while leaving its endpoint nodes intact.
  */
 public final class DeleteElementHandler implements PayloadHandler<DeleteElementPayload> {
 
@@ -53,6 +53,12 @@ public final class DeleteElementHandler implements PayloadHandler<DeleteElementP
                 return;
             }
             serverWorld.destroy(node);
+        } else if (el instanceof CircuitEdge edge) {
+            if (edge.getComponent() != null) {
+                // Component-internal edges are owned by the component and should not be orphaned directly.
+                return;
+            }
+            serverWorld.disconnect(edge);
         }
     }
 

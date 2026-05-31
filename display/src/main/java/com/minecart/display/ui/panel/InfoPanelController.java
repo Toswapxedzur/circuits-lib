@@ -6,7 +6,9 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.display.render.WorldStage;
 import com.minecart.logic.CircuitElement;
+import com.minecart.protocol.payload.client.DeleteElementPayload;
 import com.minecart.protocol.payload.client.ElementInfoUpdatePayload;
+import com.minecart.ui.panel.PanelActionSpec;
 import com.minecart.ui.panel.InfoPanelRegistry;
 import com.minecart.ui.panel.InfoPanelSchema;
 import org.slf4j.Logger;
@@ -105,6 +107,17 @@ public final class InfoPanelController {
             } finally {
                 openDialog = null;
                 endLocalEdit();
+            }
+        }, actionKey -> {
+            if (PanelActionSpec.DELETE.key().equals(actionKey)) {
+                try {
+                    connection.send(new DeleteElementPayload(worldId, elementId));
+                } catch (Throwable t) {
+                    log.warn("Failed to send DeleteElementPayload for element {}", elementId, t);
+                } finally {
+                    openDialog = null;
+                    endLocalEdit();
+                }
             }
         });
     }

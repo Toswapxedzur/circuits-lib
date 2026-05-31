@@ -324,8 +324,9 @@ public non-sealed class CircuitEdge extends CircuitElement {
         if (startId == null || endId == null) {
             throw new IllegalArgumentException("Edge missing start/end: " + getId());
         }
-        CircuitNode n1 = circuit.findNode(startId);
-        CircuitNode n2 = circuit.findNode(endId);
+        World w = circuit.getWorld();
+        CircuitNode n1 = w != null ? w.findNode(startId) : circuit.findNode(startId);
+        CircuitNode n2 = w != null ? w.findNode(endId) : circuit.findNode(endId);
         if (n1 == null || n2 == null) {
             throw new IllegalArgumentException("Missing endpoint node for edge " + getId());
         }

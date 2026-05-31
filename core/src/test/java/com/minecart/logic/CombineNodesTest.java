@@ -230,7 +230,7 @@ class CombineNodesTest {
     }
 
     @Test
-    void changeEdgeEndpoint_mergesCircuitsWhenNewEndpointsCrossCircuits() {
+    void changeEdgeEndpoint_mergesNewEndpointCircuitWithoutSplittingOldEndpoint() {
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         CircuitNode a = w.createNode(AllComponents.CONNECTION);
@@ -245,16 +245,16 @@ class CombineNodesTest {
         boolean changed = w.changeEdgeEndpoint(ab, a, c);
         assertTrue(changed);
 
-        // a and c are now connected by the wire so they share a circuit. b lost its only edge so it
-        // gets split off into its own circuit (same outcome as if we'd disconnected the original
-        // a-b wire by hand).
+        // a and c are now connected by the wire so their ownership containers merge. Circuits are
+        // no longer split by connectivity, so b remains in the same container even after losing the
+        // original edge.
         assertSame(a.getCircuit(), c.getCircuit());
-        assertNotSame(a.getCircuit(), b.getCircuit(),
-                "b should be split off into its own circuit after losing its only edge");
+        assertSame(a.getCircuit(), b.getCircuit(),
+                "b should remain in the merged ownership circuit after losing its only edge");
     }
 
     @Test
-    void changeEdgeEndpoint_splitsCircuitWhenRemovedEndpointStrandsASubgraph() {
+    void changeEdgeEndpoint_keepsDisconnectedSubgraphInSameCircuit() {
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();
         // Build a — wire1 — b — wire2 — c. All in one circuit. Change wire2's start from b to a.
@@ -278,15 +278,14 @@ class CombineNodesTest {
         assertSame(shared, a.getCircuit());
         assertSame(shared, b.getCircuit());
         assertSame(shared, c.getCircuit());
-        // Now repoint wire1 from (a,b) to (a,c). Leaves b with no incident edges → b is alone in its
-        // own (still-original) circuit and a/c form the other component. With seed=b we'd split off
-        // {b}; with seed=a we'd split off {a, c}. Either way two components must result.
+        // Now repoint wire1 from (a,b) to (a,c). Leaves b with no incident edges, but the ownership
+        // circuit remains intact because circuit membership is no longer strong connectivity.
         assertTrue(w.changeEdgeEndpoint(wire1, a, c));
 
         Set<Circuit> circuits = new HashSet<>();
         for (CircuitNode n : new CircuitNode[]{a, b, c}) {
             circuits.add(n.getCircuit());
         }
-        assertEquals(2, circuits.size(), "b should be split from a/c after losing its only edge");
+        assertEquals(1, circuits.size(), "b should stay in the same ownership circuit after losing its only edge");
     }
 }

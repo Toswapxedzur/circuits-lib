@@ -1,6 +1,7 @@
 package com.minecart.ui.panel.fields;
 
 import com.minecart.ui.panel.PanelField;
+import com.minecart.ui.panel.PanelFieldKey;
 
 /**
  * Bounded numeric slider. Renders as a libGDX {@code Slider}. Snapshot value is a {@code Double}.
@@ -20,6 +21,22 @@ public final class SliderSpec extends PanelField {
     private final double initialValue;
 
     public SliderSpec(String key, String label, double min, double max, double step, double initialValue) {
+        super(key, label);
+        if (!(min < max)) {
+            throw new IllegalArgumentException("min (" + min + ") must be less than max (" + max + ")");
+        }
+        if (!(step > 0.0)) {
+            throw new IllegalArgumentException("step must be positive");
+        }
+        this.min = min;
+        this.max = max;
+        this.step = step;
+        // Clamp so callers can't construct a spec whose rendered initial position would be outside
+        // the bar; cheaper than burdening every caller with the clamp themselves.
+        this.initialValue = Math.max(min, Math.min(max, initialValue));
+    }
+
+    public SliderSpec(PanelFieldKey<Double> key, String label, double min, double max, double step, double initialValue) {
         super(key, label);
         if (!(min < max)) {
             throw new IllegalArgumentException("min (" + min + ") must be less than max (" + max + ")");

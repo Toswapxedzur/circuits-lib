@@ -6,6 +6,11 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
+import com.minecart.ui.panel.InfoPanelElementType;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.InfoPanelTypes;
+import com.minecart.ui.panel.PanelFieldKey;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations;
 
@@ -16,6 +21,11 @@ import java.util.Objects;
  */
 public class Junction extends CircuitNode implements ElectricalVariate<Informations.JunctionInfo> {
     Informations.JunctionInfo info;
+
+    public static final InfoPanelElementType<Junction> PANEL_TYPE =
+            new InfoPanelElementType<>("junction", Junction.class, InfoPanelTypes.NODE);
+    public static final PanelFieldKey<Double> FIELD_MAX_CONNECTIONS =
+            PanelFieldKey.doubleKey("junction:maxConnections");
 
     public Junction(World world) {
         super(world);
@@ -71,5 +81,15 @@ public class Junction extends CircuitNode implements ElectricalVariate<Informati
 
     static {
         AllComponents.JUNCTION.addActionHandler(ActionTypes.SET_CONNECTION, (circuitNode, action) -> circuitNode.handleConnection(action));
+        InfoPanelRegistry.bind(AllComponents.JUNCTION, PANEL_TYPE);
+        InfoPanelRegistry.registerPanel(PANEL_TYPE, (junction, builder) ->
+                builder.add(new NumberFieldSpec(FIELD_MAX_CONNECTIONS, "Max Connections",
+                                junction.info.getConnection()),
+                        (j, ctx) -> ctx.doubleValue(FIELD_MAX_CONNECTIONS)
+                                .filter(v -> Double.isFinite(v) && v >= 0.0)
+                                .ifPresent(v -> {
+                                    j.info.setConnection((int) Math.round(v));
+                                    ctx.markChanged(j);
+                                })));
     }
 }

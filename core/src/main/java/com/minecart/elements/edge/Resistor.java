@@ -6,8 +6,10 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.ui.panel.InfoPanelElementType;
 import com.minecart.ui.panel.InfoPanelRegistry;
-import com.minecart.ui.panel.InfoPanelSchema;
+import com.minecart.ui.panel.InfoPanelTypes;
+import com.minecart.ui.panel.PanelFieldKey;
 import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations.ResistorInfo;
@@ -21,6 +23,11 @@ import java.util.Objects;
 public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorInfo> {
 
     protected ResistorInfo info;
+
+    public static final InfoPanelElementType<Resistor> PANEL_TYPE =
+            new InfoPanelElementType<>("resistor", Resistor.class, InfoPanelTypes.EDGE);
+    public static final PanelFieldKey<Double> FIELD_RESISTANCE =
+            PanelFieldKey.doubleKey("resistance");
 
     public Resistor(World world) {
         super(world);
@@ -128,30 +135,14 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
     static {
         AllComponents.RESISTOR.addActionHandler(ActionTypes.SET_RESISTANCE, (resistor, action) -> resistor.handleResistance(action));
 
-        // Info panel: a single Resistance number field, seeded with the resistor's current value
-        // so the panel always opens at "the current state". The schema is rebuilt every time the
-        // panel opens (rather than cached) so the seed reflects whatever the simulator has been
-        // doing since the last open.
-        InfoPanelRegistry.register(AllComponents.RESISTOR, r ->
-                InfoPanelSchema.builder("Resistor")
-                        .add(new NumberFieldSpec("resistance", "Resistance (Ω)", r.info.getResistance()))
-                        .build());
-
-        // Save handler: validate "resistance > 0" here on the server side rather than client side,
-        // per the project policy of "no client validation, server is the final arbiter". An invalid
-        // entry results in the field NOT being applied; the next sync pulse will reassert the
-        // unchanged authoritative value back to the client, and reopening the panel shows the old
-        // resistance — exactly the design's "reopen panel sees the old data" behaviour.
-        InfoPanelRegistry.registerSaveHandler(AllComponents.RESISTOR, (r, snap) ->
-                snap.getDouble("resistance")
-                        .filter(v -> Double.isFinite(v) && v > 0.0)
-                        .ifPresent(v -> {
-                            r.info.setResistance(v);
-                            // Mark the resistor as changed so the standard delta sync replicates
-                            // the new value back to every client mirror this tick.
-                            if (r.getWorld() != null) {
-                                r.getWorld().getLevel().notifyElementChanged(r);
-                            }
-                        }));
+        InfoPanelRegistry.bind(AllComponents.RESISTOR, PANEL_TYPE);
+        InfoPanelRegistry.registerPanel(PANEL_TYPE, (r, builder) ->
+                builder.add(new NumberFieldSpec(FIELD_RESISTANCE, "Resistance (Ω)", r.info.getResistance()),
+                        (resistor, ctx) -> ctx.doubleValue(FIELD_RESISTANCE)
+                                .filter(v -> Double.isFinite(v) && v > 0.0)
+                                .ifPresent(v -> {
+                                    resistor.info.setResistance(v);
+                                    ctx.markChanged(resistor);
+                                })));
     }
 }

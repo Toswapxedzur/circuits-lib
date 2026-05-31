@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Immutable record of the values the user had in each input field when they clicked Save. The
@@ -67,6 +68,39 @@ public final class PanelSnapshot {
         return v instanceof Boolean b ? Optional.of(b) : Optional.empty();
     }
 
+    public <T> Optional<T> get(PanelFieldKey<T> key) {
+        if (key == null) {
+            return Optional.empty();
+        }
+        Object v = values.get(key.id());
+        if (v == null) {
+            return Optional.empty();
+        }
+        if (key.valueType() == Double.class && v instanceof Number n) {
+            return Optional.of(key.valueType().cast(n.doubleValue()));
+        }
+        if (key.valueType() == Long.class && v instanceof Number n) {
+            return Optional.of(key.valueType().cast(n.longValue()));
+        }
+        if (key.valueType().isInstance(v)) {
+            return Optional.of(key.valueType().cast(v));
+        }
+        return Optional.empty();
+    }
+
+    public PanelSnapshot filteredTo(Set<String> allowedKeys) {
+        if (allowedKeys == null) {
+            return this;
+        }
+        LinkedHashMap<String, Object> filtered = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            if (allowedKeys.contains(entry.getKey())) {
+                filtered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return new PanelSnapshot(Collections.unmodifiableMap(filtered));
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -95,6 +129,10 @@ public final class PanelSnapshot {
 
         public Builder put(String key, boolean value) {
             return putRaw(key, value);
+        }
+
+        public <T> Builder put(PanelFieldKey<T> key, T value) {
+            return putRaw(Objects.requireNonNull(key, "key").id(), Objects.requireNonNull(value, "value"));
         }
 
         /**

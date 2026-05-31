@@ -1,6 +1,7 @@
 package com.minecart.ui.panel.fields;
 
 import com.minecart.ui.panel.PanelField;
+import com.minecart.ui.panel.PanelFieldKey;
 
 /**
  * On/off toggle. Renders as a libGDX {@code CheckBox}. Snapshot value is a {@code Boolean}.
@@ -10,6 +11,11 @@ public final class CheckboxSpec extends PanelField {
     private final boolean initialValue;
 
     public CheckboxSpec(String key, String label, boolean initialValue) {
+        super(key, label);
+        this.initialValue = initialValue;
+    }
+
+    public CheckboxSpec(PanelFieldKey<Boolean> key, String label, boolean initialValue) {
         super(key, label);
         this.initialValue = initialValue;
     }

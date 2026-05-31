@@ -160,6 +160,8 @@ public class DragController extends InputAdapter {
 
     /** Element targeted by the active right-press gesture (component, or null when not gesturing). */
     private UUID rightGestureElementId;
+    /** Element that should open its panel if this right press ends without becoming a rotate gesture. */
+    private UUID rightPressClickedElementId;
     /** Millis at which the current right-press began, or 0 when no right-press is being tracked. */
     private long rightPressStartMs;
     /** Once the 1-second threshold has been crossed, becomes {@code true} and cursor motion rotates. */
@@ -305,9 +307,6 @@ public class DragController extends InputAdapter {
             if (node.getComponent() != null) {
                 beginDrag(node.getComponent(), w[0], w[1]);
                 clickedId = node.getId();
-            } else if (isPositionFixed(node)) {
-                clickedId = node.getId();
-                return true;
             } else {
                 beginDragFreeNode(node);
                 clickedId = node.getId();
@@ -451,6 +450,9 @@ public class DragController extends InputAdapter {
             processRightPressDrag(screenX, screenY);
             return true;
         }
+        if (rightPressClickedElementId != null) {
+            return true;
+        }
         if (draggingId == null) {
             return false;
         }
@@ -563,24 +565,15 @@ public class DragController extends InputAdapter {
             return true;
         }
         if (overTrash) {
-            // Edges aren't deletable through the trashcan — they don't have their own delete
-            // semantics in the protocol; the user removes wires by trashing one of their endpoints.
-            // Keep the no-op silent rather than sending a payload the server would reject.
-            if (kind != DragKind.EDGE) {
-                connection.send(new DeleteElementPayload(worldId, id));
-            }
+            // Trash is cursor-driven, not physics-driven: if the cursor is over the can on release,
+            // delete the original drag target even if constraints kept the element away from it.
+            connection.send(new DeleteElementPayload(worldId, id));
             dragGestureId = null;
             return true;
         }
-        if (!moved) {
-            // Pure click — emit a "clicked element" signal so the editor can open the info panel
-            // for the element the user actually aimed at, which may differ from the drag target
-            // when the click landed on a port node owned by a component (drag drags the component,
-            // click selects the port). Falls back to the drag id if no separate click target was
-            // recorded. We don't open the panel here directly to keep DragController's dependency
-            // footprint small (no UI Stage, no Skin, no payload imports). Swallow either way so
-            // the click doesn't propagate to other input processors.
-            onElementClicked.accept(worldId, click != null ? click : id);
+        if (kind == null || !moved) {
+            // Left-click no longer opens the edit panel; right-click owns that path. Swallow the
+            // click so it doesn't fall through to camera pan / placement side effects.
             dragGestureId = null;
             return true;
         }
@@ -855,16 +848,19 @@ public class DragController extends InputAdapter {
     private boolean beginRightPress(int screenX, int screenY) {
         float[] w = stage.screenToWorld(screenX, screenY);
         CircuitElement el = stage.hitTestWorld(w[0], w[1]);
-        CircuitComponent target = resolveRotationTarget(el);
-        if (target == null) {
+        if (!(el instanceof CircuitComponent
+                || el instanceof CircuitNode
+                || (el instanceof CircuitEdge edge && edge.getComponent() == null))) {
             return false;
         }
+        rightPressClickedElementId = el.getId();
+        CircuitComponent target = resolveRotationTarget(el);
         // Lock-while-editing applies to the 1s right-press rotation too: claim the event so the
         // camera doesn't start panning either, but don't start the rotation timer.
-        if (isEditingTarget(target)) {
+        if (target != null && isEditingTarget(target)) {
             return true;
         }
-        rightGestureElementId = target.getId();
+        rightGestureElementId = target != null ? target.getId() : null;
         rightPressStartMs = System.currentTimeMillis();
         rightPressActive = false;
         rightPressPrevWorldX = w[0];
@@ -925,12 +921,19 @@ public class DragController extends InputAdapter {
      * resolve a pan-stop normally.
      */
     private boolean endRightPress() {
-        if (rightGestureElementId == null) {
+        UUID clicked = rightPressClickedElementId;
+        boolean active = rightPressActive;
+        if (rightGestureElementId == null && clicked == null) {
             return false;
         }
         rightGestureElementId = null;
+        rightPressClickedElementId = null;
         rightPressStartMs = 0L;
         rightPressActive = false;
+        if (!active && clicked != null) {
+            UUID worldId = selectedWorldId.get();
+            onElementClicked.accept(worldId, clicked);
+        }
         return true;
     }
 

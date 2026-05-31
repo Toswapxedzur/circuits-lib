@@ -35,6 +35,9 @@ public final class DeleteWorldHandler implements PayloadHandler<DeleteWorldPaylo
         if (w == null) {
             return;
         }
+        if (level.getWorlds().size() <= 1) {
+            return;
+        }
         level.destroyWorld(w);
         broadcast.accept(WorldLifecyclePayload.remove(payload.getWorldId()));
     }

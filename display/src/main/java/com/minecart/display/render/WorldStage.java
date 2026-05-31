@@ -2,10 +2,16 @@ package com.minecart.display.render;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.g2d.Batch;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.client.logic.ClientLevel;
+import com.minecart.display.render.bounds.BoundingBoxRegistry;
+import com.minecart.display.render.bounds.DefaultBoundingBoxes;
+import com.minecart.display.render.registry.DefaultRenderRegistrations;
+import com.minecart.display.render.registry.RenderContext;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
@@ -115,6 +121,8 @@ public class WorldStage extends Stage {
      */
     public WorldStage(ClientLevel level, Textures textures, Supplier<UUID> selectedWorldId) {
         super(new ScreenViewport(new OrthographicCamera()));
+        DefaultRenderRegistrations.install();
+        BoundingBoxRegistry.installDefaults();
         this.level = level;
         this.textures = textures;
         this.selectedWorldId = selectedWorldId;
@@ -134,6 +142,25 @@ public class WorldStage extends Stage {
 
     public Textures getTextures() {
         return textures;
+    }
+
+    public RenderContext createRenderContext(CircuitElement element, Actor actor, Batch batch, float parentAlpha) {
+        UUID id = element.getId();
+        boolean dragged = id != null && id.equals(draggedElementId);
+        boolean combine = id != null && id.equals(combineTargetId);
+        return new RenderContext(
+                this,
+                actor,
+                textures,
+                batch,
+                parentAlpha,
+                actor.getColor(),
+                id != null && id.equals(hoveredElementId),
+                dragged,
+                dragged && draggedOverTrash,
+                id != null && id.equals(editingElementId),
+                combine,
+                combine && combineTargetValid);
     }
 
     public OrthographicCamera getCamera() {
@@ -422,12 +449,12 @@ public class WorldStage extends Stage {
      */
     public CircuitElement hitTestWorld(float worldX, float worldY) {
         for (NodeActor a : nodeActors.values()) {
-            if (contains(a, worldX, worldY)) {
+            if (BoundingBoxRegistry.contains(a.getNode(), a, worldX, worldY)) {
                 return a.getNode();
             }
         }
         for (ComponentActor a : componentActors.values()) {
-            if (contains(a, worldX, worldY)) {
+            if (BoundingBoxRegistry.contains(a.getComponent(), a, worldX, worldY)) {
                 return a.getComponent();
             }
         }
@@ -449,61 +476,32 @@ public class WorldStage extends Stage {
         EdgeActor best = null;
         for (EdgeActor a : edgeActors.values()) {
             CircuitEdge e = a.getEdge();
+            if (!BoundingBoxRegistry.contains(e, a, worldX, worldY)) {
+                continue;
+            }
             CircuitNode n1 = e.getConnection(0);
             CircuitNode n2 = e.getConnection(1);
             if (n1 == null || n2 == null) {
-                continue;
+                return a;
             }
             com.minecart.variant.info.PositionInfo p1 =
                     n1.getInfo(com.minecart.registry.AllElementInfos.POSITION);
             com.minecart.variant.info.PositionInfo p2 =
                     n2.getInfo(com.minecart.registry.AllElementInfos.POSITION);
             if (p1 == null || p2 == null) {
-                continue;
+                return a;
             }
             float ax = (float) p1.getX();
             float ay = (float) p1.getY();
             float bx = (float) p2.getX();
             float by = (float) p2.getY();
-            float d = pointToSegmentDistance(worldX, worldY, ax, ay, bx, by);
-            if (d <= EdgeActor.THICKNESS && d < bestDist) {
+            float d = DefaultBoundingBoxes.pointToSegmentDistance(worldX, worldY, ax, ay, bx, by);
+            if (d < bestDist) {
                 bestDist = d;
                 best = a;
             }
         }
         return best;
-    }
-
-    /**
-     * Standard point-to-line-segment distance, parameterised in world units. Returns the perpendicular
-     * distance when the foot of the perpendicular falls between the segment endpoints, otherwise the
-     * distance to the nearer endpoint. Degenerate (zero-length) segments fall back to the
-     * distance-to-A reading.
-     */
-    private static float pointToSegmentDistance(float px, float py,
-                                                float ax, float ay,
-                                                float bx, float by) {
-        float dx = bx - ax;
-        float dy = by - ay;
-        float lenSq = dx * dx + dy * dy;
-        if (lenSq < 1e-8f) {
-            float ex = px - ax;
-            float ey = py - ay;
-            return (float) Math.sqrt(ex * ex + ey * ey);
-        }
-        float t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-        if (t < 0f) t = 0f;
-        else if (t > 1f) t = 1f;
-        float fx = ax + t * dx;
-        float fy = ay + t * dy;
-        float ex = px - fx;
-        float ey = py - fy;
-        return (float) Math.sqrt(ex * ex + ey * ey);
-    }
-
-    private static boolean contains(com.badlogic.gdx.scenes.scene2d.Actor a, float wx, float wy) {
-        return wx >= a.getX() && wx <= a.getX() + a.getWidth()
-                && wy >= a.getY() && wy <= a.getY() + a.getHeight();
     }
 
     public GridBackgroundActor getGridBackground() {
@@ -537,7 +535,7 @@ public class WorldStage extends Stage {
             if (excludeId != null && excludeId.equals(a.getNode().getId())) {
                 continue;
             }
-            if (!contains(a, worldX, worldY)) {
+            if (!BoundingBoxRegistry.contains(a.getNode(), a, worldX, worldY)) {
                 continue;
             }
             float cx = a.getX() + a.getWidth() * 0.5f;

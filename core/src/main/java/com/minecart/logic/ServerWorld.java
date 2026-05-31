@@ -78,24 +78,31 @@ public class ServerWorld extends World {
     }
 
     public <T extends CircuitNode> T createNode(CircuitElementType<T> type) {
-        return createNodeInternal(type, false);
+        return createNodeInternal(type, false, null);
     }
 
     /**
      * Creates a node when building internal structure from {@link CircuitComponent} (allows {@link CircuitElementType#isUnusual()} types).
      */
     protected <T extends CircuitNode> T createNodeForComponent(CircuitElementType<T> type) {
-        return createNodeInternal(type, true);
+        return createNodeInternal(type, true, null);
     }
 
-    private <T extends CircuitNode> T createNodeInternal(CircuitElementType<T> type, boolean allowUnusual) {
+    protected <T extends CircuitNode> T createNodeForComponent(ServerCircuit circuit, CircuitElementType<T> type) {
+        return createNodeInternal(type, true, circuit);
+    }
+
+    private <T extends CircuitNode> T createNodeInternal(
+            CircuitElementType<T> type, boolean allowUnusual, ServerCircuit ownerCircuit) {
         T node = type.create(this, allowUnusual);
         node.setWorld(this);
-        ServerCircuit circuit = createCircuit();
+        ServerCircuit circuit = ownerCircuit != null ? ownerCircuit : createCircuit();
         node.setCircuit(circuit);
         post(new ElementInfoInjectEvent(this, node));
         if (post(new ElementEvent.ElementInsertEvent(this, node))) {
-            removeCircuit(circuit);
+            if (ownerCircuit == null) {
+                removeCircuit(circuit);
+            }
             throw new IllegalStateException("Circuit element insert cancelled");
         }
         circuit.nodes().add(node);
@@ -119,6 +126,13 @@ public class ServerWorld extends World {
     protected <T extends CircuitNode & ElectricalVariate<O>, O extends ElectricalInfo> T createNodeForComponent(
             CircuitElementType<T> type, O propertyInfo) {
         T node = createNodeForComponent(type);
+        node.set(propertyInfo);
+        return node;
+    }
+
+    protected <T extends CircuitNode & ElectricalVariate<O>, O extends ElectricalInfo> T createNodeForComponent(
+            ServerCircuit circuit, CircuitElementType<T> type, O propertyInfo) {
+        T node = createNodeForComponent(circuit, type);
         node.set(propertyInfo);
         return node;
     }
@@ -259,18 +273,23 @@ public class ServerWorld extends World {
     boolean disconnectWithoutRemoveEvent(CircuitEdge edge) {
         CircuitNode node1 = edge.getConnection(0);
         CircuitNode node2 = edge.getConnection(1);
-        if (node1.getCircuit() != node2.getCircuit()) {
-            return false;
-        }
-        ServerCircuit circuit = (ServerCircuit) node1.getCircuit();
         if (!node1.disconnect(edge, true) || !node2.disconnect(edge, true) || !edge.disconnect(true)) {
             return false;
         }
-        ServerCircuit newCircuit = new ServerCircuit();
-        newCircuit.setWorld(this);
-        boolean createCircuit = circuit.seperate(node1, node2, edge, newCircuit);
-        if (createCircuit) {
-            addCircuit(newCircuit);
+        node1.disconnect(edge, false);
+        if (node2 != node1) {
+            node2.disconnect(edge, false);
+        }
+        edge.disconnect(false);
+        Circuit circuit = edge.getCircuit();
+        if (circuit != null) {
+            circuit.edges().remove(edge);
+            if (circuit instanceof ServerCircuit sc) {
+                sc.markDirty();
+            }
+            if (circuit.nodes().isEmpty() && circuit.edges().isEmpty() && circuit.components().isEmpty()) {
+                removeCircuit(circuit);
+            }
         }
         return true;
     }
@@ -399,27 +418,9 @@ public class ServerWorld extends World {
         // validated the move.
         edge.replaceEndpointsBypassingGuards(newStart, newEnd);
 
-        // Topology fix-up: if removing the old endpoint(s) from this edge has left the host circuit in
-        // two disconnected components, peel one off into a fresh ServerCircuit (same outcome as a
-        // free-wire disconnect taking a chunk of the graph with it). The split is run from the side that
-        // the *removed* node still belongs to so external observers see the original circuit retain its
-        // identity; only the marooned subgraph migrates and fires rebind events. Endpoints that haven't
-        // changed at all (== newStart / newEnd) are skipped.
-        java.util.HashSet<ServerCircuit> visitedSplits = new java.util.HashSet<>();
-        for (CircuitNode old : new CircuitNode[]{oldStart, oldEnd}) {
-            if (old == null || old == newStart || old == newEnd) {
-                continue;
-            }
-            ServerCircuit oldCircuit = (ServerCircuit) old.getCircuit();
-            if (oldCircuit == null || !visitedSplits.add(oldCircuit)) {
-                continue;
-            }
-            splitOffIfDisconnected(oldCircuit, old);
-        }
-
-        // Merge: if the new endpoints sit in different circuits, fuse them into a single one and move
-        // the edge along. mergeInto pushes ElementCircuitChangedEvents for every relocated element so
-        // rebind CHANGE ops reach the client mirror in the same payload.
+        // Merge: if the new endpoints sit in different ownership circuits, fuse them into a
+        // single container and move the edge along. Circuits are no longer split on disconnect:
+        // disconnected subgraphs may remain in one circuit for persistence/replication stability.
         ServerCircuit startCircuit = (ServerCircuit) newStart.getCircuit();
         ServerCircuit endCircuit = (ServerCircuit) newEnd.getCircuit();
         ServerCircuit edgeNewCircuit;
@@ -450,47 +451,6 @@ public class ServerWorld extends World {
             removeCircuit(edgeCircuit);
         }
         return true;
-    }
-
-    /**
-     * BFS-walks from {@code seed} through {@code circuit}'s edges and, if the reachable subgraph is
-     * smaller than the circuit's full node count, peels it off into a freshly registered
-     * {@link ServerCircuit}. Posts {@link com.minecart.event.events.ElementCircuitChangedEvent} for every
-     * migrated element so the listener emits matching rebind CHANGE ops to the client mirror.
-     *
-     * <p>The seed convention — pick the *removed* old endpoint as the seed — keeps the original
-     * circuit's identity stable when the change reduces it: callers that watch {@code circuit.getId()}
-     * (analytics, save files) see the larger surviving component continue to use the original id.
-     * If the removed node is now isolated (no incident edges left in {@code circuit}), only that single
-     * node moves.
-     */
-    private void splitOffIfDisconnected(ServerCircuit circuit, CircuitNode seed) {
-        if (circuit == null || seed == null || seed.getCircuit() != circuit) {
-            return;
-        }
-        java.util.LinkedHashSet<CircuitNode> reachableNodes = new java.util.LinkedHashSet<>();
-        java.util.LinkedHashSet<CircuitEdge> reachableEdges = new java.util.LinkedHashSet<>();
-        circuit.bfs(seed, reachableNodes::add, reachableEdges::add);
-        if (reachableNodes.size() == circuit.nodes().size()) {
-            return;
-        }
-        ServerCircuit splitInto = new ServerCircuit();
-        splitInto.setWorld(this);
-        addCircuit(splitInto);
-        for (CircuitNode n : reachableNodes) {
-            circuit.nodes().remove(n);
-            splitInto.nodes().add(n);
-            n.setCircuit(splitInto);
-            post(new com.minecart.event.events.ElementCircuitChangedEvent(this, n, circuit, splitInto));
-        }
-        for (CircuitEdge e : reachableEdges) {
-            circuit.edges().remove(e);
-            splitInto.edges().add(e);
-            e.setCircuit(splitInto);
-            post(new com.minecart.event.events.ElementCircuitChangedEvent(this, e, circuit, splitInto));
-        }
-        circuit.markDirty();
-        splitInto.markDirty();
     }
 
     /**

@@ -220,6 +220,46 @@ class CircuitPhysicsAdapterTest {
     }
 
     @Test
+    void dragEdgeAnchor_rigidFreeEdge_preservesLengthWhenCursorIsUnreachable() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        place(a, 0.0, 0.0);
+        place(b, 2.0, 0.0);
+        Resistor edge = w.connect(AllComponents.RESISTOR, a, b);
+        assertNotNull(edge);
+        markRigid(edge);
+
+        var result = CircuitPhysicsAdapter.dragEdgeAnchor(w, edge, 20.0, 12.0,
+                true, 1.0, 0.0);
+
+        double length = Math.hypot(x(b) - x(a), y(b) - y(a));
+        assertTrue(result.converged(), "hard constraints should converge even if the drag spring does not");
+        assertEquals(2.0, length, 1e-4, "rigid edge length must have priority over cursor following");
+    }
+
+    @Test
+    void dragEdgeAnchor_grabbedMiddleDoesNotSnapEndpointToCursor() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        place(a, 0.0, 0.0);
+        place(b, 2.0, 0.0);
+        Resistor edge = w.connect(AllComponents.RESISTOR, a, b);
+        assertNotNull(edge);
+
+        CircuitPhysicsAdapter.dragEdgeAnchor(w, edge, 5.0, 0.0,
+                true, 0.0, 0.0);
+
+        assertEquals(4.0, x(a), 0.05, "start endpoint should preserve its offset from the grabbed midpoint");
+        assertEquals(0.0, y(a), 0.05);
+        assertEquals(2.0, x(b), EPS, "flexible free edge should not drag the other endpoint");
+        assertEquals(0.0, y(b), EPS);
+    }
+
+    @Test
     void dragEdgeAnchor_pivotedRigidEdge_rotatesGrabbedPointAroundStoredPivot() {
         ServerLevel level = new ServerLevel();
         ServerWorld w = level.createWorld();

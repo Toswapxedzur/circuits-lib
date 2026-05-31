@@ -1,6 +1,7 @@
 package com.minecart.ui.panel.fields;
 
 import com.minecart.ui.panel.PanelField;
+import com.minecart.ui.panel.PanelFieldKey;
 
 import java.util.Collections;
 import java.util.List;
@@ -17,6 +18,20 @@ public final class DropdownSpec extends PanelField {
     private final String initialValue;
 
     public DropdownSpec(String key, String label, List<String> options, String initialValue) {
+        super(key, label);
+        Objects.requireNonNull(options, "options");
+        if (options.isEmpty()) {
+            throw new IllegalArgumentException("dropdown must have at least one option");
+        }
+        this.options = List.copyOf(options);
+        // Default to the first option if the caller passes null or something that isn't in the list,
+        // so the rendered widget is always in a valid state.
+        this.initialValue = (initialValue != null && options.contains(initialValue))
+                ? initialValue
+                : options.get(0);
+    }
+
+    public DropdownSpec(PanelFieldKey<String> key, String label, List<String> options, String initialValue) {
         super(key, label);
         Objects.requireNonNull(options, "options");
         if (options.isEmpty()) {

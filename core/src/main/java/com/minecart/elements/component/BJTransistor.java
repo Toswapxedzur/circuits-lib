@@ -11,6 +11,11 @@ import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.ui.panel.InfoPanelElementType;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.InfoPanelTypes;
+import com.minecart.ui.panel.PanelFieldKey;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations.BJTInfo;
 
@@ -37,6 +42,11 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
     protected Wire edgeBase;
     protected CircuitEdge edgeCollector;
     protected Resistor edgeEmitter;
+
+    public static final InfoPanelElementType<BJTransistor> PANEL_TYPE =
+            new InfoPanelElementType<>("bj_transistor", BJTransistor.class, InfoPanelTypes.COMPONENT);
+    public static final PanelFieldKey<Double> FIELD_BETA =
+            PanelFieldKey.doubleKey("bjt:beta");
 
     public BJTransistor() {
         super();
@@ -184,5 +194,17 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
     private static com.minecart.logic.CircuitEdge findEdgeInWorld(Circuit c, java.util.UUID id) {
         if (id == null) return null;
         return c.getWorld() != null ? c.getWorld().findEdge(id) : c.findEdge(id);
+    }
+
+    static {
+        InfoPanelRegistry.bind(AllComponents.BJ_TRANSISTOR, PANEL_TYPE);
+        InfoPanelRegistry.registerPanel(PANEL_TYPE, (transistor, builder) ->
+                builder.add(new NumberFieldSpec(FIELD_BETA, "Beta (β)", transistor.info.getBeta()),
+                        (bjt, ctx) -> ctx.doubleValue(FIELD_BETA)
+                                .filter(v -> Double.isFinite(v) && v > 0.0)
+                                .ifPresent(v -> {
+                                    bjt.info.setBeta(v);
+                                    ctx.markChanged(bjt);
+                                })));
     }
 }

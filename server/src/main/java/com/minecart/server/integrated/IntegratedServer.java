@@ -199,6 +199,7 @@ public class IntegratedServer {
         if (saveDir != null) {
             WorldStorage.load(saveDir, level);
         }
+        level.ensureDefaultWorld();
         // Attach AFTER load so persisted circuits (loaded via addCircuit during WorldStorage.load) don't
         // generate spurious CircuitLifecyclePayload INSERTs — those circuits are already published to new
         // clients via sendInitialSnapshot.

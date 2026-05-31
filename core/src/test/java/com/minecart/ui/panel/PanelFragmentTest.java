@@ -1,7 +1,11 @@
 package com.minecart.ui.panel;
 
 import com.minecart.elements.component.BJTransistor;
+import com.minecart.elements.edge.Battery;
+import com.minecart.elements.edge.Capacitor;
+import com.minecart.elements.edge.Diode;
 import com.minecart.elements.edge.Resistor;
+import com.minecart.elements.node.Junction;
 import com.minecart.event.events.ElementInfoUpdateEvent;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
@@ -9,6 +13,7 @@ import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
 import com.minecart.registry.AllComponents;
 import com.minecart.registry.AllElementInfos;
+import com.minecart.registry.CircuitElementType;
 import com.minecart.variant.info.LockInfo;
 import com.minecart.variant.info.LockMode;
 import com.minecart.variant.info.PositionInfo;
@@ -16,6 +21,8 @@ import com.minecart.variant.info.RotationInfo;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -266,5 +273,118 @@ class PanelFragmentTest {
         assertEquals(0.0, bjt.getInfo(AllElementInfos.POSITION).getX(), 1e-9,
                 "translate must be refused once the strict lock locks the component");
         assertEquals(-1.0, bjt.getPort(0).getInfo(AllElementInfos.POSITION).getX(), 1e-9);
+    }
+
+    @Test
+    void treePanel_childCanRemoveParentFieldAndFilterSavePayload() {
+        PanelFieldKey<Double> parentValue = PanelFieldKey.doubleKey("test:" + UUID.randomUUID() + ".parent");
+        PanelFieldKey<Double> childValue = PanelFieldKey.doubleKey("test:" + UUID.randomUUID() + ".child");
+        InfoPanelElementType<CircuitNode> parentType = new InfoPanelElementType<>(
+                "test:" + UUID.randomUUID() + ".parentType", CircuitNode.class, InfoPanelTypes.NODE);
+        InfoPanelElementType<CircuitNode> childType = new InfoPanelElementType<>(
+                "test:" + UUID.randomUUID() + ".childType", CircuitNode.class, parentType);
+        CircuitElementType<CircuitNode> elementType = CircuitElementType.build(
+                "test:" + UUID.randomUUID() + ".element", CircuitNode::new);
+
+        AtomicBoolean parentSaveRan = new AtomicBoolean(false);
+        AtomicBoolean childSaveRan = new AtomicBoolean(false);
+        InfoPanelRegistry.registerPanel(parentType, (node, builder) ->
+                builder.add(new com.minecart.ui.panel.fields.NumberFieldSpec(parentValue, "Parent", 1.0),
+                        (n, ctx) -> parentSaveRan.set(true)));
+        InfoPanelRegistry.registerPanel(childType, (node, builder) -> {
+            builder.remove(parentValue);
+            builder.add(new com.minecart.ui.panel.fields.NumberFieldSpec(childValue, "Child", 2.0),
+                    (n, ctx) -> childSaveRan.set(ctx.doubleValue(childValue).orElse(0.0) == 7.0));
+        });
+        InfoPanelRegistry.bind(elementType, childType);
+
+        ServerLevel level = new ServerLevel();
+        ServerWorld world = level.createWorld();
+        InfoPanelRegistry.installLevelListener(level);
+        CircuitNode node = elementType.create(world);
+
+        InfoPanelSchema schema = InfoPanelRegistry.buildSchema(node);
+        assertNotNull(schema);
+        Set<String> keys = schema.fieldKeys();
+        assertFalse(keys.contains(parentValue.id()), "child panel type should remove parent field");
+        assertTrue(keys.contains(childValue.id()), "child panel field should remain active");
+
+        PanelSnapshot snapshot = PanelSnapshot.builder()
+                .put(parentValue, 99.0)
+                .put(childValue, 7.0)
+                .build();
+        level.post(new ElementInfoUpdateEvent(node, snapshot));
+
+        assertFalse(parentSaveRan.get(), "removed parent field save must not consume stale payload values");
+        assertTrue(childSaveRan.get(), "active child field save should consume its value");
+    }
+
+    @Test
+    void buildSchema_allSpecificBuiltInsExposeEditableFields() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        a.setInfo(AllElementInfos.POSITION, new PositionInfo(0.0, 0.0));
+        b.setInfo(AllElementInfos.POSITION, new PositionInfo(1.0, 0.0));
+
+        Battery battery = w.connect(AllComponents.BATTERY, a, b);
+        Capacitor capacitor = w.connect(AllComponents.CAPACITOR, a, b);
+        Diode diode = w.connect(AllComponents.DIODE, a, b);
+        Junction junction = (Junction) w.createNode(AllComponents.JUNCTION);
+        BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
+
+        assertTrue(InfoPanelRegistry.buildSchema(battery).fieldKeys().contains(Battery.FIELD_VOLTAGE.id()));
+        assertTrue(InfoPanelRegistry.buildSchema(capacitor).fieldKeys().contains(Capacitor.FIELD_CAPACITANCE.id()));
+        assertTrue(InfoPanelRegistry.buildSchema(diode).fieldKeys().contains(Diode.FIELD_FORWARD_RESISTANCE.id()));
+        assertTrue(InfoPanelRegistry.buildSchema(junction).fieldKeys().contains(Junction.FIELD_MAX_CONNECTIONS.id()));
+        assertTrue(InfoPanelRegistry.buildSchema(bjt).fieldKeys().contains(BJTransistor.FIELD_BETA.id()));
+    }
+
+    @Test
+    void dispatch_specificBuiltInFieldsApply() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        InfoPanelRegistry.installLevelListener(level);
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        a.setInfo(AllElementInfos.POSITION, new PositionInfo(0.0, 0.0));
+        b.setInfo(AllElementInfos.POSITION, new PositionInfo(1.0, 0.0));
+
+        Battery battery = w.connect(AllComponents.BATTERY, a, b);
+        Capacitor capacitor = w.connect(AllComponents.CAPACITOR, a, b);
+        Diode diode = w.connect(AllComponents.DIODE, a, b);
+        Junction junction = (Junction) w.createNode(AllComponents.JUNCTION);
+        BJTransistor bjt = w.createComponent(AllComponents.BJ_TRANSISTOR);
+
+        level.post(new ElementInfoUpdateEvent(battery, PanelSnapshot.builder()
+                .put(Battery.FIELD_VOLTAGE, 9.0)
+                .put(Battery.FIELD_RESISTANCE, 0.5)
+                .build()));
+        level.post(new ElementInfoUpdateEvent(capacitor, PanelSnapshot.builder()
+                .put(Capacitor.FIELD_CAPACITANCE, 2.5)
+                .put(Capacitor.FIELD_CHARGE, 3.5)
+                .put(Capacitor.FIELD_INTERNAL_RESISTANCE, 0.2)
+                .build()));
+        level.post(new ElementInfoUpdateEvent(diode, PanelSnapshot.builder()
+                .put(Diode.FIELD_FORWARD_RESISTANCE, 0.1)
+                .put(Diode.FIELD_REVERSE_RESISTANCE, 1000.0)
+                .build()));
+        level.post(new ElementInfoUpdateEvent(junction, PanelSnapshot.builder()
+                .put(Junction.FIELD_MAX_CONNECTIONS, 4.0)
+                .build()));
+        level.post(new ElementInfoUpdateEvent(bjt, PanelSnapshot.builder()
+                .put(BJTransistor.FIELD_BETA, 42.0)
+                .build()));
+
+        assertEquals(9.0, battery.get().getVoltage(), 1e-9);
+        assertEquals(0.5, battery.get().getResistance(), 1e-9);
+        assertEquals(2.5, capacitor.get().getCapacitance(), 1e-9);
+        assertEquals(3.5, capacitor.get().getCharge(), 1e-9);
+        assertEquals(0.2, capacitor.get().getInternalResistance(), 1e-9);
+        assertEquals(0.1, diode.get().getForwardResistance(), 1e-9);
+        assertEquals(1000.0, diode.get().getReverseResistance(), 1e-9);
+        assertEquals(4, junction.get().getConnection());
+        assertEquals(42.0, bjt.get().getBeta(), 1e-9);
     }
 }

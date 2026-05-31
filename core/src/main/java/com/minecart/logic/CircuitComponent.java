@@ -87,7 +87,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
     // 1. Basic Node Creation
     protected <T extends CircuitNode> T newNode(CircuitElementType<T> type){
         ServerWorld serverWorld = (ServerWorld) getWorld();
-        T node = serverWorld.createNodeForComponent(type);
+        T node = serverWorld.createNodeForComponent((ServerCircuit) getCircuit(), type);
         nodes.add(node);
         node.setComponent(this);
         return node;
@@ -96,7 +96,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
     protected <T extends CircuitNode & ElectricalVariate<O>, O extends ElectricalInfo> T newNode(
             CircuitElementType<T> type, O propertyInfo) {
         ServerWorld serverWorld = (ServerWorld) getWorld();
-        T node = serverWorld.createNodeForComponent(type, propertyInfo);
+        T node = serverWorld.createNodeForComponent((ServerCircuit) getCircuit(), type, propertyInfo);
         nodes.add(node);
         node.setComponent(this);
         return node;
@@ -105,7 +105,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
     protected <T extends CircuitNode & ElectricalVariate<?>> T newNode(
             CircuitElementType<T> type, int propertyIndex, Object property) {
         ServerWorld serverWorld = (ServerWorld) getWorld();
-        T node = serverWorld.createNodeForComponent(type);
+        T node = serverWorld.createNodeForComponent((ServerCircuit) getCircuit(), type);
         node.set(propertyIndex, property);
         nodes.add(node);
         node.setComponent(this);
@@ -643,6 +643,7 @@ public non-sealed class CircuitComponent extends CircuitElement {
                 }
             }
         }
+        moveInternalsToComponentCircuit(c);
         // Restore back-pointers via addComponent (multi-owner aware): if a Phase 2b cascade saved a
         // shared port, the same node appears in two components' NODE_IDS lists and each component's
         // load() should add ITSELF to the node's owner set without clearing the other. setComponent
@@ -680,6 +681,39 @@ public non-sealed class CircuitComponent extends CircuitElement {
                     portsByIndex.put(idx, portNode);
                 }
             }
+        }
+    }
+
+    private void moveInternalsToComponentCircuit(Circuit componentCircuit) {
+        if (componentCircuit == null) {
+            return;
+        }
+        for (CircuitNode node : nodes) {
+            Circuit current = node.getCircuit();
+            if (current != null && current != componentCircuit) {
+                current.nodes().remove(node);
+                if (current instanceof ServerCircuit sc) {
+                    sc.markDirty();
+                }
+            }
+            if (current != componentCircuit) {
+                componentCircuit.addNode(node);
+            }
+        }
+        for (CircuitEdge edge : edges) {
+            Circuit current = edge.getCircuit();
+            if (current != null && current != componentCircuit) {
+                current.edges().remove(edge);
+                if (current instanceof ServerCircuit sc) {
+                    sc.markDirty();
+                }
+            }
+            if (current != componentCircuit) {
+                componentCircuit.addEdge(edge);
+            }
+        }
+        if (componentCircuit instanceof ServerCircuit sc) {
+            sc.markDirty();
         }
     }
 

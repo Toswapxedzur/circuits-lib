@@ -1,6 +1,7 @@
 package com.minecart.ui.panel.fields;
 
 import com.minecart.ui.panel.PanelField;
+import com.minecart.ui.panel.PanelFieldKey;
 
 /**
  * Free-form numeric input (rendered as a libGDX {@code TextField} restricted to digits / minus /
@@ -19,6 +20,11 @@ public final class NumberFieldSpec extends PanelField {
     private final double initialValue;
 
     public NumberFieldSpec(String key, String label, double initialValue) {
+        super(key, label);
+        this.initialValue = initialValue;
+    }
+
+    public NumberFieldSpec(PanelFieldKey<Double> key, String label, double initialValue) {
         super(key, label);
         this.initialValue = initialValue;
     }

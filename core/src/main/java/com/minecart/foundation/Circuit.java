@@ -114,9 +114,9 @@ public class Circuit {
     }
 
     /**
-     * Merge all nodes and edges into {@code toMerge}; this circuit is left empty of those elements. Posts
-     * one {@link ElementCircuitChangedEvent} per moved element so the server's replication listener can
-     * emit a corresponding {@code CHANGE} delta and keep the client mirror's circuit membership in sync.
+     * Merge all owned elements into {@code toMerge}; this circuit is left empty. Posts one
+     * {@link ElementCircuitChangedEvent} per moved element so the server's replication listener can emit
+     * corresponding rebind deltas and keep the client mirror's circuit membership in sync.
      */
     public void mergeInto(Circuit toMerge) {
         for (CircuitNode node : nodes) {
@@ -133,6 +133,16 @@ public class Circuit {
                 world.post(new ElementCircuitChangedEvent(world, edge, this, toMerge));
             }
         }
+        for (CircuitComponent component : components) {
+            component.setCircuit(toMerge);
+            toMerge.components().add(component);
+            if (world != null) {
+                world.post(new ElementCircuitChangedEvent(world, component, this, toMerge));
+            }
+        }
+        nodes.clear();
+        edges.clear();
+        components.clear();
     }
 
     public void bfs(CircuitNode startNode, Consumer<CircuitNode> nodeConsumer, Consumer<CircuitEdge> edgeConsumer) {
@@ -279,6 +289,20 @@ public class Circuit {
             throw new IllegalArgumentException(CoreStrings.CIRCUIT_ID + " mismatch");
         }
 
+        loadNodesAndEdges(world, tag);
+        loadComponents(world, tag);
+    }
+
+    /**
+     * Restores only nodes and edges. World persistence uses this as phase one so component
+     * internals can be resolved world-wide after every circuit's endpoints exist.
+     */
+    public void loadNodesAndEdges(World world, CompoundTag tag) {
+        if (world == null) {
+            throw new IllegalArgumentException("world is required to load a circuit");
+        }
+        this.world = world;
+        requireMatchingCircuitId(tag);
         Tag nodesTag = tag.get(CoreStrings.NODES);
         if (nodesTag instanceof ListTag nl) {
             for (int i = 0; i < nl.size(); i++) {
@@ -294,13 +318,34 @@ public class Circuit {
                 loadEdge(world, ec);
             }
         }
+    }
 
+    /**
+     * Restores only components. Call after all saved circuits have run {@link #loadNodesAndEdges}
+     * when loading a whole world.
+     */
+    public void loadComponents(World world, CompoundTag tag) {
+        if (world == null) {
+            throw new IllegalArgumentException("world is required to load a circuit");
+        }
+        this.world = world;
+        requireMatchingCircuitId(tag);
         Tag compsTag = tag.get(CoreStrings.COMPONENTS);
         if (compsTag instanceof ListTag cl) {
             for (int i = 0; i < cl.size(); i++) {
                 CompoundTag cc = TagUtil.requireCompoundTag(cl.get(i), CoreStrings.COMPONENTS + "[" + i + "]");
                 loadComponent(world, cc);
             }
+        }
+    }
+
+    private void requireMatchingCircuitId(CompoundTag tag) {
+        UUID circuitId = TagUtil.getUUID(tag, CoreStrings.CIRCUIT_ID);
+        if (circuitId == null) {
+            throw new IllegalArgumentException("Missing '" + CoreStrings.CIRCUIT_ID + "'");
+        }
+        if (!circuitId.equals(getId())) {
+            throw new IllegalArgumentException(CoreStrings.CIRCUIT_ID + " mismatch");
         }
     }
 

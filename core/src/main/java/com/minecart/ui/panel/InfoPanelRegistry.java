@@ -10,6 +10,7 @@ import com.minecart.registry.CircuitElementType;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,6 +55,9 @@ public final class InfoPanelRegistry {
 
     private static final Map<String, InfoPanelDefinition<?>> DEFINITIONS = new HashMap<>();
     private static final Map<String, BiConsumer<? extends CircuitElement, PanelSnapshot>> SAVE_HANDLERS = new HashMap<>();
+    private static final Map<String, InfoPanelElementType<?>> TYPE_BINDINGS = new HashMap<>();
+    private static final Map<InfoPanelElementType<?>, List<PanelTreeContribution<?>>> TREE_CONTRIBUTIONS =
+            new LinkedHashMap<>();
 
     /**
      * Cross-cutting fragments grouped by element kind. Lists rather than singletons because more
@@ -80,6 +84,20 @@ public final class InfoPanelRegistry {
                     "Info panel already registered for element type '" + type.getTypeId() + "'");
         }
         DEFINITIONS.put(type.getTypeId(), definition);
+    }
+
+    public static <T extends CircuitElement> void bind(CircuitElementType<T> type,
+                                                       InfoPanelElementType<? super T> panelType) {
+        Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(panelType, "panelType");
+        TYPE_BINDINGS.put(type.getTypeId(), panelType);
+    }
+
+    public static <T extends CircuitElement> void registerPanel(
+            InfoPanelElementType<T> panelType, PanelTreeContribution<T> contribution) {
+        Objects.requireNonNull(panelType, "panelType");
+        Objects.requireNonNull(contribution, "contribution");
+        TREE_CONTRIBUTIONS.computeIfAbsent(panelType, k -> new ArrayList<>()).add(contribution);
     }
 
     public static <T extends CircuitElement> void registerSaveHandler(CircuitElementType<T> type,
@@ -162,6 +180,12 @@ public final class InfoPanelRegistry {
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static InfoPanelSchema buildSchema(CircuitElement element) {
+        ComposeResult result = compose(element);
+        return result != null ? result.schema() : null;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static ComposeResult compose(CircuitElement element) {
         if (element == null) return null;
         InfoPanelDefinition<?> typeDef = DEFINITIONS.get(element.getRegistryTypeId());
 
@@ -187,37 +211,72 @@ public final class InfoPanelRegistry {
         } else {
             title = defaultTitleFor(element);
         }
-        InfoPanelSchema.Builder builder = InfoPanelSchema.builder(title);
+        PanelTreeBuilder treeBuilder = new PanelTreeBuilder(title);
+
+        for (InfoPanelElementType<?> panelType : ancestryFor(element)) {
+            List<PanelTreeContribution<?>> contributions = TREE_CONTRIBUTIONS.get(panelType);
+            if (contributions == null) {
+                continue;
+            }
+            for (PanelTreeContribution contribution : contributions) {
+                contribution.contribute(element, treeBuilder);
+            }
+        }
 
         // Apply matching kind fragments first so position / rotation / lock rows appear at the
         // top — they're the "frame" the element-specific rows fill in.
         if (element instanceof CircuitNode node) {
             for (InfoPanelFragment<CircuitNode> f : NODE_FRAGMENTS) {
-                f.contribute(node, builder);
+                f.contribute(node, new LegacyBuilderAdapter(treeBuilder));
             }
         } else if (element instanceof CircuitEdge edge) {
             for (InfoPanelFragment<CircuitEdge> f : EDGE_FRAGMENTS) {
-                f.contribute(edge, builder);
+                f.contribute(edge, new LegacyBuilderAdapter(treeBuilder));
             }
         } else if (element instanceof CircuitComponent comp) {
             for (InfoPanelFragment<CircuitComponent> f : COMPONENT_FRAGMENTS) {
-                f.contribute(comp, builder);
+                f.contribute(comp, new LegacyBuilderAdapter(treeBuilder));
             }
         }
 
         if (typeSchema != null) {
             for (PanelField f : typeSchema.getFields()) {
-                builder.add(f);
+                treeBuilder.add(f);
             }
         }
+        treeBuilder.action(PanelActionSpec.DELETE);
 
-        InfoPanelSchema built = builder.build();
+        InfoPanelSchema built = treeBuilder.buildSchema();
         if (built.getFields().isEmpty()) {
             // No fragment contributed and no type-specific definition — preserve the legacy "no
             // panel for this element" signal.
             return null;
         }
-        return built;
+        return new ComposeResult(built, treeBuilder.saveBindings());
+    }
+
+    private static List<InfoPanelElementType<?>> ancestryFor(CircuitElement element) {
+        InfoPanelElementType<?> type = TYPE_BINDINGS.get(element.getRegistryTypeId());
+        if (type == null) {
+            if (element instanceof CircuitNode) {
+                type = InfoPanelTypes.NODE;
+            } else if (element instanceof CircuitEdge) {
+                type = InfoPanelTypes.EDGE;
+            } else if (element instanceof CircuitComponent) {
+                type = InfoPanelTypes.COMPONENT;
+            } else {
+                type = InfoPanelTypes.ELEMENT;
+            }
+        }
+        ArrayList<InfoPanelElementType<?>> reversed = new ArrayList<>();
+        for (InfoPanelElementType<?> p = type; p != null; p = p.parent()) {
+            reversed.add(p);
+        }
+        ArrayList<InfoPanelElementType<?>> ordered = new ArrayList<>();
+        for (int i = reversed.size() - 1; i >= 0; i--) {
+            ordered.add(reversed.get(i));
+        }
+        return ordered;
     }
 
     private static String defaultTitleFor(CircuitElement element) {
@@ -244,7 +303,23 @@ public final class InfoPanelRegistry {
     private static void dispatch(ElementInfoUpdateEvent evt) {
         CircuitElement el = evt.getElement();
         if (el == null) return;
-        PanelSnapshot snapshot = evt.getSnapshot();
+        ComposeResult result = compose(el);
+        if (result == null) return;
+        InfoPanelSchema schema = result.schema();
+        PanelSnapshot snapshot = evt.getSnapshot().filteredTo(schema.fieldKeys());
+        PanelContext context = new PanelContext(el, snapshot, schema, evt);
+
+        for (PanelTreeBuilder.SaveBinding binding : result.saveBindings()) {
+            if (!binding.activeIn(schema)) {
+                continue;
+            }
+            try {
+                binding.save().apply(el, context);
+            } catch (RuntimeException ex) {
+                org.slf4j.LoggerFactory.getLogger(InfoPanelRegistry.class)
+                        .warn("panel tree save handler threw on {}", el.getRegistryTypeId(), ex);
+            }
+        }
 
         // Fragment save handlers first: cross-cutting state (position / rotation / lock) should
         // be visible to any type-specific handler that runs after.
@@ -280,5 +355,24 @@ public final class InfoPanelRegistry {
         // registered with the matching CircuitElementType<T>, so its parameter T is the same type
         // as the elements produced by that type's factory.
         handler.accept(el, snapshot);
+        context.flushNotifications();
+    }
+
+    private record ComposeResult(InfoPanelSchema schema,
+                                 List<PanelTreeBuilder.SaveBinding> saveBindings) {}
+
+    private static final class LegacyBuilderAdapter extends InfoPanelSchema.Builder {
+        private final PanelTreeBuilder<?> delegate;
+
+        private LegacyBuilderAdapter(PanelTreeBuilder<?> delegate) {
+            super("legacy");
+            this.delegate = delegate;
+        }
+
+        @Override
+        public InfoPanelSchema.Builder add(PanelField field) {
+            delegate.add(field);
+            return this;
+        }
     }
 }

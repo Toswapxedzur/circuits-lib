@@ -171,9 +171,9 @@ public class ServerCircuit extends Circuit {
         for (CircuitEdge edge : edges) {
             edge.collectRule(provider);
         }
-        for (CircuitComponent comp : components()) {
-            comp.collectRule(provider);
-        }
+        // Components currently own internal nodes/edges for persistence and rendering. Their
+        // constitutive behavior must be expressed through those internal edges until the linear
+        // system supports extra component equations without becoming overdetermined.
     }
 
     public void collectVariable(Set<DoubleVar> collector) {

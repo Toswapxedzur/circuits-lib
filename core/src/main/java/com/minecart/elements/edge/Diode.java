@@ -8,6 +8,12 @@ import com.minecart.math.LinearSystem.RelationProvider;
 import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.ui.panel.InfoPanelElementType;
+import com.minecart.ui.panel.InfoPanelRegistry;
+import com.minecart.ui.panel.InfoPanelTypes;
+import com.minecart.ui.panel.PanelFieldKey;
+import com.minecart.ui.panel.fields.LabelSpec;
+import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations;
 import com.minecart.variant.Informations.DiodeInfo;
@@ -22,6 +28,15 @@ import java.util.Objects;
 public class Diode extends CircuitEdge implements ElectricalVariate<DiodeInfo> {
 
     protected DiodeInfo info;
+
+    public static final InfoPanelElementType<Diode> PANEL_TYPE =
+            new InfoPanelElementType<>("diode", Diode.class, InfoPanelTypes.EDGE);
+    public static final PanelFieldKey<Double> FIELD_FORWARD_RESISTANCE =
+            PanelFieldKey.doubleKey("diode:forwardResistance");
+    public static final PanelFieldKey<Double> FIELD_REVERSE_RESISTANCE =
+            PanelFieldKey.doubleKey("diode:reverseResistance");
+    public static final PanelFieldKey<String> FIELD_EFFECTIVE_RESISTANCE =
+            PanelFieldKey.stringKey("diode:effectiveResistance");
 
     public Diode(World world) {
         super(world);
@@ -133,5 +148,26 @@ public class Diode extends CircuitEdge implements ElectricalVariate<DiodeInfo> {
     static {
         AllComponents.DIODE.addActionHandler(ActionTypes.SET_RESISTANCE, (diode, action) -> diode.handleForwardResistance(action));
         AllComponents.DIODE.addActionHandler(ActionTypes.SET_REVERSE_RESISTANCE, (diode, action) -> diode.handleReverseResistance(action));
+        InfoPanelRegistry.bind(AllComponents.DIODE, PANEL_TYPE);
+        InfoPanelRegistry.registerPanel(PANEL_TYPE, (diode, builder) -> {
+            builder.add(new NumberFieldSpec(FIELD_FORWARD_RESISTANCE, "Forward Resistance (Ω)",
+                            diode.info.getForwardResistance()),
+                    (d, ctx) -> ctx.doubleValue(FIELD_FORWARD_RESISTANCE)
+                            .filter(v -> Double.isFinite(v) && v > 0.0)
+                            .ifPresent(v -> {
+                                d.info.setForwardResistance(v);
+                                ctx.markChanged(d);
+                            }));
+            builder.add(new NumberFieldSpec(FIELD_REVERSE_RESISTANCE, "Reverse Resistance (Ω)",
+                            diode.info.getReverseResistance()),
+                    (d, ctx) -> ctx.doubleValue(FIELD_REVERSE_RESISTANCE)
+                            .filter(v -> Double.isFinite(v) && v > 0.0)
+                            .ifPresent(v -> {
+                                d.info.setReverseResistance(v);
+                                ctx.markChanged(d);
+                            }));
+            builder.add(new LabelSpec(FIELD_EFFECTIVE_RESISTANCE, "Effective Resistance (Ω)",
+                    Double.toString(diode.info.getEffectiveResistance())));
+        });
     }
 }

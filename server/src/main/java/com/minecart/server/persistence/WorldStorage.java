@@ -20,6 +20,8 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -117,26 +119,48 @@ public final class WorldStorage {
                 }
                 Tag circuitsTag = wt.get(ServerStrings.TAG_CIRCUITS);
                 if (circuitsTag instanceof ListTag circuits) {
+                    List<CircuitLoad> loadedCircuits = new ArrayList<>();
                     for (int j = 0; j < circuits.size(); j++) {
                         CompoundTag ct = TagUtil.requireCompoundTag(
                                 circuits.get(j),
                                 ServerStrings.TAG_CIRCUITS + "[" + j + "]");
-                        loadCircuit(sw, ct);
+                        loadedCircuits.add(createCircuit(sw, ct));
                     }
+                    for (CircuitLoad loaded : loadedCircuits) {
+                        loaded.circuit().loadNodesAndEdges(sw, loaded.tag());
+                    }
+                    for (CircuitLoad loaded : loadedCircuits) {
+                        loaded.circuit().loadComponents(sw, loaded.tag());
+                    }
+                    removeEmptyCircuits(sw);
                 }
             }
         }
         return true;
     }
 
-    private static void loadCircuit(ServerWorld world, CompoundTag ct) {
+    private static CircuitLoad createCircuit(ServerWorld world, CompoundTag ct) {
         UUID circuitId = TagUtil.getUUID(ct, com.minecart.misc.CoreStrings.CIRCUIT_ID);
         if (circuitId == null) {
             throw new IllegalArgumentException("Missing " + com.minecart.misc.CoreStrings.CIRCUIT_ID + " in saved circuit");
         }
         ServerCircuit circuit = new ServerCircuit(circuitId);
         world.addCircuit(circuit);
-        circuit.load(world, ct);
+        return new CircuitLoad(circuit, ct);
+    }
+
+    private record CircuitLoad(ServerCircuit circuit, CompoundTag tag) {}
+
+    private static void removeEmptyCircuits(ServerWorld world) {
+        List<Circuit> empty = new ArrayList<>();
+        for (Circuit circuit : world.getCircuits()) {
+            if (circuit.nodes().isEmpty() && circuit.edges().isEmpty() && circuit.components().isEmpty()) {
+                empty.add(circuit);
+            }
+        }
+        for (Circuit circuit : empty) {
+            world.removeCircuit(circuit);
+        }
     }
 
     /**

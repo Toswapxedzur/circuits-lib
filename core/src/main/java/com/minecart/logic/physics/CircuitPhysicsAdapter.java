@@ -10,6 +10,7 @@ import com.minecart.physics.Vec2;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.info.LockMode;
 import com.minecart.variant.info.LockState;
+import com.minecart.variant.info.PositionInfo;
 import com.minecart.variant.info.RigidityInfo;
 
 import java.util.Collection;
@@ -154,7 +155,9 @@ public final class CircuitPhysicsAdapter {
             }
         }
 
-        if (!session.addNodeSpring(dragged, targetX, targetY, DEFAULT_DRAG_COMPLIANCE)) {
+        Vec2 endpointTarget = edgeEndpointTarget(edge, dragged, targetX, targetY,
+                hasLocalAnchor, localAnchorX, localAnchorY);
+        if (!session.addNodeSpring(dragged, endpointTarget.x(), endpointTarget.y(), DEFAULT_DRAG_COMPLIANCE)) {
             notifyEdgeAuthority(world, edge);
             return new SolverResult(0, 0.0, true);
         }
@@ -294,6 +297,29 @@ public final class CircuitPhysicsAdapter {
             return edge.getEnd();
         }
         return edge.getStart();
+    }
+
+    private static Vec2 edgeEndpointTarget(CircuitEdge edge, CircuitNode dragged,
+                                           double targetX, double targetY,
+                                           boolean hasLocalAnchor,
+                                           double localAnchorX, double localAnchorY) {
+        if (!hasLocalAnchor || edge == null || dragged == null) {
+            return new Vec2(targetX, targetY);
+        }
+        PositionInfo sp = edge.getStart() != null ? edge.getStart().getInfo(AllElementInfos.POSITION) : null;
+        PositionInfo ep = edge.getEnd() != null ? edge.getEnd().getInfo(AllElementInfos.POSITION) : null;
+        PositionInfo dp = dragged.getInfo(AllElementInfos.POSITION);
+        if (sp == null || ep == null || dp == null) {
+            return new Vec2(targetX, targetY);
+        }
+        double cx = (sp.getX() + ep.getX()) * 0.5;
+        double cy = (sp.getY() + ep.getY()) * 0.5;
+        double angle = Math.atan2(ep.getY() - sp.getY(), ep.getX() - sp.getX());
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+        double grabbedX = cx + localAnchorX * cos - localAnchorY * sin;
+        double grabbedY = cy + localAnchorX * sin + localAnchorY * cos;
+        return new Vec2(targetX + (dp.getX() - grabbedX), targetY + (dp.getY() - grabbedY));
     }
 
     private static CircuitElement endpointMovable(CircuitNode endpoint) {

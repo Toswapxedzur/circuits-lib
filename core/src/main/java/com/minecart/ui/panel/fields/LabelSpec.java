@@ -1,6 +1,7 @@
 package com.minecart.ui.panel.fields;
 
 import com.minecart.ui.panel.PanelField;
+import com.minecart.ui.panel.PanelFieldKey;
 
 import java.util.Objects;
 
@@ -16,6 +17,11 @@ public final class LabelSpec extends PanelField {
     private final String value;
 
     public LabelSpec(String key, String label, String value) {
+        super(key, label);
+        this.value = Objects.requireNonNull(value, "value");
+    }
+
+    public LabelSpec(PanelFieldKey<String> key, String label, String value) {
         super(key, label);
         this.value = Objects.requireNonNull(value, "value");
     }
