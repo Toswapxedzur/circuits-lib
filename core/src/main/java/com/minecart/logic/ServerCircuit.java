@@ -10,9 +10,13 @@ import com.minecart.math.LinearSystem;
 import com.minecart.registry.CircuitElementType;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -21,6 +25,9 @@ import java.util.UUID;
  * Structure and serialization are on {@link Circuit}.
  */
 public class ServerCircuit extends Circuit {
+
+    private static final Logger log = LoggerFactory.getLogger(ServerCircuit.class);
+    private static final double CURRENT_SYNC_EPSILON = 1e-12;
 
     protected boolean dirty;
     protected LinearSystem system;
@@ -115,8 +122,15 @@ public class ServerCircuit extends Circuit {
             dirty = false;
         }
 
+        Map<CircuitEdge, Double> previousCurrents = snapshotCurrents();
         system.stampRelation(this::collectRelation);
-        system.solve();
+        boolean solved = system.solve();
+        if (!solved) {
+            log.warn("electrical solve failed for circuit {}; resetting {} nodes and {} edges to zero",
+                    getId(), nodes.size(), edges.size());
+            resetElectricalVariablesToZero();
+        }
+        notifyCurrentChanges(previousCurrents);
 
         for (CircuitNode node : nodes) {
             node.tick();
@@ -162,6 +176,37 @@ public class ServerCircuit extends Circuit {
         }
         system.collectVar(this::collectVariable);
         system.init();
+    }
+
+    private Map<CircuitEdge, Double> snapshotCurrents() {
+        Map<CircuitEdge, Double> previous = new HashMap<>();
+        for (CircuitEdge edge : edges) {
+            previous.put(edge, edge.getCurrent().getValue());
+        }
+        return previous;
+    }
+
+    private void resetElectricalVariablesToZero() {
+        for (CircuitNode node : nodes) {
+            node.getVoltage().setValue(0.0);
+        }
+        for (CircuitEdge edge : edges) {
+            edge.getCurrent().setValue(0.0);
+        }
+    }
+
+    private void notifyCurrentChanges(Map<CircuitEdge, Double> previousCurrents) {
+        ServerWorld world = getWorld();
+        if (world == null) {
+            return;
+        }
+        for (CircuitEdge edge : edges) {
+            double before = previousCurrents.getOrDefault(edge, 0.0);
+            double after = edge.getCurrent().getValue();
+            if (Math.abs(after - before) > CURRENT_SYNC_EPSILON) {
+                world.getLevel().notifyElementChanged(edge);
+            }
+        }
     }
 
     public void collectRelation(LinearSystem.RelationProvider provider) {

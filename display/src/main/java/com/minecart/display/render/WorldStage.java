@@ -11,6 +11,7 @@ import com.minecart.client.logic.ClientLevel;
 import com.minecart.display.render.bounds.BoundingBoxRegistry;
 import com.minecart.display.render.bounds.DefaultBoundingBoxes;
 import com.minecart.display.render.registry.DefaultRenderRegistrations;
+import com.minecart.display.render.registry.ElectricalRenderStats;
 import com.minecart.display.render.registry.RenderContext;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
@@ -68,6 +69,8 @@ public class WorldStage extends Stage {
     private final Set<UUID> seenComponents = new HashSet<>();
 
     private float pixelsPerUnit = 64f;
+    private float renderTimeSeconds;
+    private ElectricalRenderStats electricalRenderStats = ElectricalRenderStats.EMPTY;
 
     /**
      * Cursor highlight states. The drag controller updates these every frame; {@link #applyHighlightTints()}
@@ -155,6 +158,8 @@ public class WorldStage extends Stage {
                 batch,
                 parentAlpha,
                 actor.getColor(),
+                electricalRenderStats,
+                renderTimeSeconds,
                 id != null && id.equals(hoveredElementId),
                 dragged,
                 dragged && draggedOverTrash,
@@ -216,8 +221,22 @@ public class WorldStage extends Stage {
     @Override
     public void act(float delta) {
         reconcile();
+        renderTimeSeconds += delta;
+        updateElectricalRenderStats();
         applyHighlightTints();
         super.act(delta);
+    }
+
+    private void updateElectricalRenderStats() {
+        double maxEdgeCurrent = 0.0;
+        for (EdgeActor actor : edgeActors.values()) {
+            maxEdgeCurrent = Math.max(maxEdgeCurrent, Math.abs(actor.getEdge().getCurrent().getValue()));
+        }
+        double maxNodeTraffic = 0.0;
+        for (NodeActor actor : nodeActors.values()) {
+            maxNodeTraffic = Math.max(maxNodeTraffic, ElectricalRenderStats.nodeTraffic(actor.getNode()));
+        }
+        electricalRenderStats = new ElectricalRenderStats(maxEdgeCurrent, maxNodeTraffic);
     }
 
     /** Sets the element id the cursor is currently hovering, or {@code null} to clear. */

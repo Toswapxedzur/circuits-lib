@@ -5,6 +5,7 @@ import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.registry.AllComponents;
+import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.ui.panel.InfoPanelElementType;
 import com.minecart.ui.panel.InfoPanelRegistry;
 import com.minecart.ui.panel.InfoPanelTypes;
@@ -105,6 +106,20 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
 
     protected void handleVoltage(Actions.SetVoltageAction action) {
         info.setVoltage(action.getValue());
+    }
+
+    @Override
+    public void save(CompoundTag tag) {
+        super.save(tag);
+        info.save(tag);
+    }
+
+    @Override
+    public void load(CompoundTag tag) {
+        super.load(tag);
+        if (tag.keySet().contains("voltage") && tag.keySet().contains("resistance")) {
+            info.load(tag);
+        }
     }
 
     static {

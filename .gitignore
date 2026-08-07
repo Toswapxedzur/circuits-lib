@@ -44,3 +44,11 @@ bin/
 
 ### Display module runtime data (worlds, server list) ###
 data/
+# build & tooling artifacts
+build/
+.gradle/
+.idea/
+*.iml
+run/
+run-data/
+.DS_Store

@@ -350,11 +350,12 @@ public final class InfoPanelRegistry {
         }
 
         BiConsumer handler = SAVE_HANDLERS.get(el.getRegistryTypeId());
-        if (handler == null) return;
-        // Cast is checked by the registration contract: the handler keyed under typeId was
-        // registered with the matching CircuitElementType<T>, so its parameter T is the same type
-        // as the elements produced by that type's factory.
-        handler.accept(el, snapshot);
+        if (handler != null) {
+            // Cast is checked by the registration contract: the handler keyed under typeId was
+            // registered with the matching CircuitElementType<T>, so its parameter T is the same type
+            // as the elements produced by that type's factory.
+            handler.accept(el, snapshot);
+        }
         context.flushNotifications();
     }
 

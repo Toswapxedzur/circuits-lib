@@ -387,4 +387,27 @@ class PanelFragmentTest {
         assertEquals(4, junction.get().getConnection());
         assertEquals(42.0, bjt.get().getBeta(), 1e-9);
     }
+
+    @Test
+    void dispatch_typedPanelSaveFlushesChangeNotificationWithoutLegacyHandler() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+        InfoPanelRegistry.installLevelListener(level);
+        CircuitNode a = w.createNode(AllComponents.CONNECTION);
+        CircuitNode b = w.createNode(AllComponents.CONNECTION);
+        Resistor resistor = w.connect(AllComponents.RESISTOR, a, b);
+
+        java.util.Set<java.util.UUID> changed = new java.util.HashSet<>();
+        level.register(com.minecart.event.events.RegisterElementChangeListenerEvent.class,
+                evt -> evt.register(el -> changed.add(el.getId())));
+        level.init();
+
+        level.post(new ElementInfoUpdateEvent(resistor, PanelSnapshot.builder()
+                .put(Resistor.FIELD_RESISTANCE, 7.5)
+                .build()));
+
+        assertEquals(7.5, resistor.get().getResistance(), 1e-9);
+        assertTrue(changed.contains(resistor.getId()),
+                "Typed panel save should flush PanelContext notifications even without a legacy save handler");
+    }
 }

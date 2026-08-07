@@ -6,6 +6,7 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
 import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
+import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.ui.panel.InfoPanelElementType;
 import com.minecart.ui.panel.InfoPanelRegistry;
 import com.minecart.ui.panel.InfoPanelTypes;
@@ -115,6 +116,22 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
 
     protected void handleResistance(Actions.SetResistanceAction action) {
         info.setInternalResistance(action.getValue());
+    }
+
+    @Override
+    public void save(CompoundTag tag) {
+        super.save(tag);
+        info.save(tag);
+    }
+
+    @Override
+    public void load(CompoundTag tag) {
+        super.load(tag);
+        if (tag.keySet().contains("capacitance")
+                && tag.keySet().contains("charge")
+                && tag.keySet().contains("internal_resistance")) {
+            info.load(tag);
+        }
     }
 
     static {
