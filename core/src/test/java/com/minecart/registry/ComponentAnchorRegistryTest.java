@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class ComponentAnchorRegistryTest {
 
     private static final double EPS = 1e-9;
+    private static final double BJT_PORT_RADIUS = 0.44;
 
     @Test
     void worldPositionOf_zeroAngle_translatesByCentre() {
@@ -60,15 +61,15 @@ class ComponentAnchorRegistryTest {
         assertEquals(3, anchors.size());
         // base @ port 0
         assertEquals(0, anchors.get(0).portIndex());
-        assertEquals(-1.0, anchors.get(0).offsetX(), EPS);
+        assertEquals(-BJT_PORT_RADIUS, anchors.get(0).offsetX(), EPS);
         assertEquals(0.0, anchors.get(0).offsetY(), EPS);
         // collector @ port 1
         assertEquals(1, anchors.get(1).portIndex());
-        assertEquals(1.0, anchors.get(1).offsetX(), EPS);
-        assertEquals(1.0, anchors.get(1).offsetY(), EPS);
+        assertEquals(BJT_PORT_RADIUS * 0.5, anchors.get(1).offsetX(), EPS);
+        assertEquals(BJT_PORT_RADIUS * Math.sqrt(3.0) * 0.5, anchors.get(1).offsetY(), EPS);
         // emitter @ port 2
         assertEquals(2, anchors.get(2).portIndex());
-        assertEquals(1.0, anchors.get(2).offsetX(), EPS);
-        assertEquals(-1.0, anchors.get(2).offsetY(), EPS);
+        assertEquals(BJT_PORT_RADIUS * 0.5, anchors.get(2).offsetX(), EPS);
+        assertEquals(-BJT_PORT_RADIUS * Math.sqrt(3.0) * 0.5, anchors.get(2).offsetY(), EPS);
     }
 }

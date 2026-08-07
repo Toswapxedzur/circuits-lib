@@ -14,6 +14,10 @@ import com.minecart.logic.CircuitNode;
 import java.util.List;
 
 public class AllComponents {
+    private static final double BJT_PORT_RADIUS = 0.44;
+    private static final double BJT_PORT_X = BJT_PORT_RADIUS * 0.5;
+    private static final double BJT_PORT_Y = BJT_PORT_RADIUS * Math.sqrt(3.0) * 0.5;
+
     /**
      * Bare {@link CircuitNode} for use only inside {@link CircuitComponent} ({@link CircuitElementType#isUnusual()}).
      */
@@ -53,12 +57,12 @@ public class AllComponents {
             });
 
     static {
-        // BJTransistor.generate() builds ports 0=base, 1=collector, 2=emitter. Layout matches the symbol:
-        // base on the left, collector top-right, emitter bottom-right.
+        // BJTransistor.generate() builds ports 0=base, 1=collector, 2=emitter. Keep them on the
+        // transistor ring at roughly equal angular spacing: base left, collector top-right, emitter bottom-right.
         ComponentAnchorRegistry.register(BJ_TRANSISTOR, List.of(
-                new ComponentAnchorRegistry.Anchor(0, -1.0, 0.0),
-                new ComponentAnchorRegistry.Anchor(1, 1.0, 1.0),
-                new ComponentAnchorRegistry.Anchor(2, 1.0, -1.0)
+                new ComponentAnchorRegistry.Anchor(0, -BJT_PORT_RADIUS, 0.0),
+                new ComponentAnchorRegistry.Anchor(1, BJT_PORT_X, BJT_PORT_Y),
+                new ComponentAnchorRegistry.Anchor(2, BJT_PORT_X, -BJT_PORT_Y)
         ));
     }
 

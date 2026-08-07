@@ -18,6 +18,8 @@ public final class RenderContext {
     private final Batch batch;
     private final float parentAlpha;
     private final Color tint;
+    private final ElectricalRenderStats electricalStats;
+    private final float timeSeconds;
     private final boolean hovered;
     private final boolean dragged;
     private final boolean trashHovered;
@@ -26,14 +28,17 @@ public final class RenderContext {
     private final boolean combineValid;
 
     public RenderContext(WorldStage stage, Actor actor, Textures textures, Batch batch, float parentAlpha,
-                         Color tint, boolean hovered, boolean dragged, boolean trashHovered,
-                         boolean editing, boolean combineTarget, boolean combineValid) {
+                         Color tint, ElectricalRenderStats electricalStats, float timeSeconds,
+                         boolean hovered, boolean dragged, boolean trashHovered, boolean editing,
+                         boolean combineTarget, boolean combineValid) {
         this.stage = stage;
         this.actor = actor;
         this.textures = textures;
         this.batch = batch;
         this.parentAlpha = parentAlpha;
         this.tint = tint;
+        this.electricalStats = electricalStats != null ? electricalStats : ElectricalRenderStats.EMPTY;
+        this.timeSeconds = timeSeconds;
         this.hovered = hovered;
         this.dragged = dragged;
         this.trashHovered = trashHovered;
@@ -64,6 +69,14 @@ public final class RenderContext {
 
     public Color tint() {
         return tint;
+    }
+
+    public ElectricalRenderStats electricalStats() {
+        return electricalStats;
+    }
+
+    public float timeSeconds() {
+        return timeSeconds;
     }
 
     public boolean hovered() {

@@ -25,6 +25,7 @@ public final class Textures implements Disposable {
 
     private final Map<String, Texture> byTypeId = new HashMap<>();
     private Texture missing;
+    private Texture whitePixel;
 
     /**
      * @return the texture for {@code type}, loading it from the classpath if needed. Always non-null
@@ -83,6 +84,17 @@ public final class Textures implements Disposable {
         return missing;
     }
 
+    public Texture whitePixel() {
+        if (whitePixel == null) {
+            Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+            pm.setColor(1f, 1f, 1f, 1f);
+            pm.fill();
+            whitePixel = new Texture(pm);
+            pm.dispose();
+        }
+        return whitePixel;
+    }
+
     @Override
     public void dispose() {
         for (Texture t : byTypeId.values()) {
@@ -94,6 +106,10 @@ public final class Textures implements Disposable {
         if (missing != null) {
             missing.dispose();
             missing = null;
+        }
+        if (whitePixel != null) {
+            whitePixel.dispose();
+            whitePixel = null;
         }
     }
 

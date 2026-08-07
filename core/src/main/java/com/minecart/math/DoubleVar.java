@@ -9,7 +9,7 @@ import java.util.UUID;
 public class DoubleVar {
     protected final UUID id;
     protected int index;
-    protected double value = -1;
+    protected double value = 0;
 
     protected DoubleVar() {
         this.id = UUID.randomUUID();
