@@ -14,21 +14,23 @@ import com.minecart.snap.SnapDirections;
 import com.minecart.snap.SnapPartType;
 import com.minecart.snap.SnapPlacement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * The client-side editing brain for the 3D snap board.
  *
- * <h2>Direction — internal heading, snapped externally</h2>
- * Scrolling nudges a continuous internal heading ({@link #dirAngle}) by a small step, and the actual
- * placement direction is the nearest <em>viable</em> discrete direction to it (preferring ones that keep
- * the part on the board). Directions come from the part's length via {@link SnapDirections} (not limited
- * to orthogonal). This makes the wheel feel smooth/slow and always land on a usable direction.
+ * <h2>Direction — internal heading, external snapped, smoothly shown</h2>
+ * Scrolling nudges a continuous internal heading ({@link #dirAngle}). The <em>placement</em> uses the
+ * nearest viable discrete direction, but the <em>ghost</em> is drawn at a separately-eased
+ * {@link #displayedAngle} that rotates toward the snapped direction — so it visibly sweeps and settles
+ * rather than teleporting. Directions come from the part's length via {@link SnapDirections} (not limited
+ * to orthogonal).
  *
- * <h2>Terminal targeting</h2>
- * When the crosshair is on a part, {@link #update} figures out which of that part's two terminal bumps the
- * ray is nearest and stacks the new part on that terminal, so you stack on the end you're actually aiming
- * at. {@code ←/→} flip which terminal is anchored (mirrors the part; battery polarity).
+ * <h2>Terminals</h2>
+ * When the crosshair is on a part, the new part stacks on whichever of its two terminal bumps the ray is
+ * nearest. Flipping (←/→) reverses which way the part extends from the crosshair bump — visibly swinging
+ * it to the other side (and swapping battery polarity).
  */
 public final class SnapEditor {
 
@@ -58,8 +60,8 @@ public final class SnapEditor {
 
     private Tool tool = Tool.WIRE;
     private List<int[]> directions = SnapDirections.forLength(Tool.WIRE.type().length());
-    private float dirAngle;
-    private boolean flipped;
+    private float dirAngle;       // internal continuous heading (deg)
+    private float displayedAngle; // eased heading actually drawn (deg)
 
     private int anchorCol, anchorRow, anchorLayer;
 
@@ -72,15 +74,9 @@ public final class SnapEditor {
     }
 
     public Tool tool() { return tool; }
-    public boolean flipped() { return flipped; }
     public SnapScene.Pickable hovered() { return hovered; }
     public SnapPlacement ghost() { return ghost; }
     public boolean ghostValid() { return ghost != null && ghostValid; }
-
-    /** The ghost's full geometry (body + terminal bumps), or empty when there's no valid anchor. */
-    public List<BoxSpec> ghostBoxes() {
-        return ghost == null ? List.of() : SnapSceneGeometry.partBoxes(ghost);
-    }
 
     public void select(Tool tool) {
         this.tool = tool;
@@ -95,22 +91,21 @@ public final class SnapEditor {
         }
     }
 
-    /** Flips the anchor port (mirrors the part to the other side of the crosshair; battery polarity). */
+    /** Flip terminal: reverse which way the part extends from the crosshair bump (180° — visible). */
     public void flipPort() {
-        flipped = !flipped;
+        nudgeDirection(180f);
     }
 
-    /** Nudges the internal heading by {@code deltaDeg}; the placed direction snaps to the nearest viable. */
+    /** Nudges the internal heading; the placed direction snaps to the nearest viable, the ghost eases to it. */
     public void nudgeDirection(float deltaDeg) {
         dirAngle = ((dirAngle + deltaDeg) % 360f + 360f) % 360f;
     }
 
-    /** Recomputes the hovered part and placement ghost from the crosshair ray. */
-    public void update(PerspectiveCamera camera, SnapScene scene) {
+    /** Recomputes the hovered part and placement ghost from the crosshair ray. {@code dt} eases the ghost. */
+    public void update(PerspectiveCamera camera, SnapScene scene, float dt) {
         hovered = pick(camera, scene);
 
         if (hovered != null) {
-            // Stack on the terminal of the hovered part that the ray is nearest.
             SnapPlacement below = hovered.placement();
             Post target = nearerTerminal(below, hoveredHit);
             anchorCol = target.col();
@@ -128,10 +123,40 @@ public final class SnapEditor {
         }
 
         int[] d = chooseDirection(anchorCol, anchorRow, anchorLayer);
-        int dc = flipped ? -d[0] : d[0];
-        int dr = flipped ? -d[1] : d[1];
-        ghost = new SnapPlacement(tool.type(), anchorCol, anchorRow, anchorLayer, dc, dr, flipped, Double.NaN);
+        ghost = new SnapPlacement(tool.type(), anchorCol, anchorRow, anchorLayer, d[0], d[1], false, Double.NaN);
         ghostValid = board.canPlace(ghost);
+
+        // Ease the drawn angle toward the snapped direction's heading (shortest path).
+        float target = (float) Math.toDegrees(Math.atan2(d[1], d[0]));
+        float diff = ((target - displayedAngle + 540f) % 360f) - 180f;
+        displayedAngle = (displayedAngle + diff * Math.min(1f, dt * 12f) + 360f) % 360f;
+    }
+
+    /** The ghost geometry to draw: a body bar at the eased angle plus its two terminal bumps. */
+    public List<OrientedBox> ghostRender() {
+        List<OrientedBox> out = new ArrayList<>(3);
+        if (ghost == null) {
+            return out;
+        }
+        float s = SnapSceneGeometry.BUMP_SPACING;
+        float lenWorld = tool.type().length() * s;
+        float ax = anchorCol * s, az = anchorRow * s;
+        float rad = displayedAngle * MathUtils.degreesToRadians;
+        float fx = ax + lenWorld * MathUtils.cos(rad);
+        float fz = az + lenWorld * MathUtils.sin(rad);
+
+        BoxSpec.Category cat = SnapSceneGeometry.partBox(ghost).category();
+        float bodyY = SnapSceneGeometry.bodyCenterY(anchorLayer);
+        float bodyLen = lenWorld + SnapSceneGeometry.COMPONENT_FOOTPRINT;
+        out.add(new OrientedBox((ax + fx) / 2f, bodyY, (az + fz) / 2f,
+                bodyLen, SnapSceneGeometry.COMPONENT_HEIGHT, SnapSceneGeometry.COMPONENT_FOOTPRINT,
+                displayedAngle, cat));
+
+        float bumpY = SnapSceneGeometry.bumpBottomY(anchorLayer + 1) + SnapSceneGeometry.BUMP_HEIGHT / 2f;
+        float w = SnapSceneGeometry.BUMP_WIDTH, h = SnapSceneGeometry.BUMP_HEIGHT;
+        out.add(new OrientedBox(ax, bumpY, az, w, h, w, 0f, BoxSpec.Category.BUMP));
+        out.add(new OrientedBox(fx, bumpY, fz, w, h, w, 0f, BoxSpec.Category.BUMP));
+        return out;
     }
 
     /** The discrete direction nearest the internal heading, preferring ones that stay on the board. */
@@ -139,10 +164,9 @@ public final class SnapEditor {
         int[] best = directions.get(0);
         double bestScore = Double.MAX_VALUE;
         for (int[] d : directions) {
-            int dc = flipped ? -d[0] : d[0];
-            int dr = flipped ? -d[1] : d[1];
-            double ang = Math.toDegrees(Math.atan2(dr, dc));
-            double score = angularDistance(ang, dirAngle) + (board.inBounds(new Post(col + dc, row + dr, layer)) ? 0 : 1000);
+            double ang = Math.toDegrees(Math.atan2(d[1], d[0]));
+            double score = angularDistance(ang, dirAngle)
+                    + (board.inBounds(new Post(col + d[0], row + d[1], layer)) ? 0 : 1000);
             if (score < bestScore) {
                 bestScore = score;
                 best = d;
@@ -156,14 +180,12 @@ public final class SnapEditor {
         return d > 180.0 ? 360.0 - d : d;
     }
 
-    /** Which of a part's two terminal bumps is nearer the ray-hit point (in the ground plane). */
     private static Post nearerTerminal(SnapPlacement p, Vector3 hit) {
         Post o = p.originPost();
         Post f = p.farPost();
         float s = SnapSceneGeometry.BUMP_SPACING;
-        float dO = dist2(hit.x, hit.z, o.col() * s, o.row() * s);
-        float dF = dist2(hit.x, hit.z, f.col() * s, f.row() * s);
-        return dO <= dF ? o : f;
+        return dist2(hit.x, hit.z, o.col() * s, o.row() * s) <= dist2(hit.x, hit.z, f.col() * s, f.row() * s)
+                ? o : f;
     }
 
     private static float dist2(float x, float z, float ox, float oz) {

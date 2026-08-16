@@ -202,9 +202,6 @@ public final class SnapScreen extends ScreenAdapter {
         }
         StringBuilder sb = new StringBuilder();
         sb.append("Item: ").append(editor.tool().label());
-        if (editor.flipped()) {
-            sb.append(" (flipped)");
-        }
         sb.append("   |   1-3 select   scroll/R direction   L/R-arrow flip terminal   LMB place"
                 + "   RMB remove   WASD+Space/Ctrl fly   Esc cursor");
         if (editor.hovered() != null) {
@@ -292,9 +289,9 @@ public final class SnapScreen extends ScreenAdapter {
             if (board.revision() != lastRevision) {
                 refreshScene();
             }
-            editor.update(camera, scene);
+            editor.update(camera, scene, dt);
             renderer.setHighlight(editor.hovered() != null ? editor.hovered().box() : null);
-            renderer.setGhost(editor.ghostBoxes(), editor.ghostValid());
+            renderer.setGhost(editor.ghostRender(), editor.ghostValid());
 
             Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
             renderer.render(camera);
