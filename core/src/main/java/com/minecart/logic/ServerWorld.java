@@ -26,6 +26,14 @@ public class ServerWorld extends World {
     protected final List<CircuitEdge> overpowered = new ArrayList<>();
     protected final ShortCircuitEvent shortCircuitEvent = new ShortCircuitEvent(this, overpowered);
 
+    /**
+     * The snap-circuit baseboard backing this world in {@link com.minecart.foundation.GameMode#SNAP_3D}
+     * mode, or {@code null} in 2D mode. When set, the world's circuit is <em>derived</em> from the board
+     * (see {@link com.minecart.snap.SnapBoard#rebuild}) rather than edited directly, and persistence saves
+     * the board instead of the derived circuits.
+     */
+    private com.minecart.snap.SnapBoard snapBoard;
+
     public ServerWorld(ServerLevel level) {
         super(level);
     }
@@ -40,6 +48,16 @@ public class ServerWorld extends World {
     @Override
     public ServerLevel getLevel() {
         return (ServerLevel) level;
+    }
+
+    /** The snap baseboard backing this world, or {@code null} in 2D mode. */
+    public com.minecart.snap.SnapBoard getSnapBoard() {
+        return snapBoard;
+    }
+
+    /** Attaches (or clears) the snap baseboard. Callers derive the circuit via {@code board.rebuild(this)}. */
+    public void setSnapBoard(com.minecart.snap.SnapBoard snapBoard) {
+        this.snapBoard = snapBoard;
     }
 
     @Override

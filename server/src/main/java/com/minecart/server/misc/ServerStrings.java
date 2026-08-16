@@ -29,6 +29,12 @@ public final class ServerStrings {
     /** Per-world key: list of {@link com.minecart.foundation.Circuit#save} tags. */
     public static final String TAG_CIRCUITS = "circuits";
 
+    /**
+     * Per-world key: a snap-mode {@link com.minecart.snap.SnapBoard} compound. Present instead of
+     * {@link #TAG_CIRCUITS} for snap worlds, whose circuit is derived from the board rather than persisted.
+     */
+    public static final String TAG_BOARD = "board";
+
     /** Default file name for a world's saved state inside its directory. */
     public static final String LEVEL_DAT = "level.dat";
 }
