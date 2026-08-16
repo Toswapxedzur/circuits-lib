@@ -57,6 +57,7 @@ public final class WorldStorage {
 
         CompoundTag root = new CompoundTag();
         root.putDouble(ServerStrings.TAG_TICK_RATE, level.getTickRate());
+        root.putString(ServerStrings.TAG_GAME_MODE, level.getGameMode().id());
         ListTag worlds = new ListTag();
         for (World w : level.getWorlds()) {
             CompoundTag wt = new CompoundTag();
@@ -104,6 +105,8 @@ public final class WorldStorage {
         if (root.get(ServerStrings.TAG_TICK_RATE) != null) {
             level.setTickRate(root.getDouble(ServerStrings.TAG_TICK_RATE));
         }
+        // Absent in pre-mode saves; fromId() maps null/unknown -> FLAT_2D so legacy worlds load unchanged.
+        level.setGameMode(com.minecart.foundation.GameMode.fromId(root.getString(ServerStrings.TAG_GAME_MODE)));
         Tag worldsTag = root.get(ServerStrings.TAG_WORLDS);
         if (worldsTag instanceof ListTag worlds) {
             for (int i = 0; i < worlds.size(); i++) {
@@ -170,11 +173,22 @@ public final class WorldStorage {
      * usefully in the in-game world dropdown.
      */
     public static void writeEmpty(Path worldDir, UUID worldId) throws IOException {
+        writeEmpty(worldDir, worldId, com.minecart.foundation.GameMode.FLAT_2D);
+    }
+
+    /**
+     * Same as {@link #writeEmpty(Path, UUID)} but stamps the save with {@code mode}, fixing its
+     * {@link com.minecart.foundation.GameMode} at creation. Every subsequent {@link #load} restores it.
+     */
+    public static void writeEmpty(Path worldDir, UUID worldId, com.minecart.foundation.GameMode mode)
+            throws IOException {
         Files.createDirectories(worldDir);
         Path target = worldDir.resolve(ServerStrings.LEVEL_DAT);
         Path tmp = worldDir.resolve(ServerStrings.LEVEL_DAT + ".tmp");
 
         CompoundTag root = new CompoundTag();
+        root.putString(ServerStrings.TAG_GAME_MODE,
+                (mode == null ? com.minecart.foundation.GameMode.FLAT_2D : mode).id());
         ListTag worlds = new ListTag();
         CompoundTag wt = new CompoundTag();
         TagUtil.putUUID(wt, ServerStrings.TAG_WORLD_ID, worldId);
@@ -187,6 +201,29 @@ public final class WorldStorage {
             Tag.writeBinary(out, root);
         }
         atomicMoveOrFallback(tmp, target);
+    }
+
+    /**
+     * Cheap peek at a save's {@link com.minecart.foundation.GameMode} without loading its circuits — reads
+     * only the {@code level.dat} root and returns the {@link ServerStrings#TAG_GAME_MODE} field. Returns
+     * {@link com.minecart.foundation.GameMode#FLAT_2D} when the file is missing, unreadable, or predates the
+     * mode field, so callers (e.g. the world-list UI and singleplayer screen routing) always get a usable
+     * value.
+     */
+    public static com.minecart.foundation.GameMode readGameMode(Path worldDir) {
+        Path source = worldDir.resolve(ServerStrings.LEVEL_DAT);
+        if (!Files.exists(source)) {
+            return com.minecart.foundation.GameMode.FLAT_2D;
+        }
+        try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(source)))) {
+            Tag rootTag = Tag.readBinary(in).root();
+            if (rootTag instanceof CompoundTag root) {
+                return com.minecart.foundation.GameMode.fromId(root.getString(ServerStrings.TAG_GAME_MODE));
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // Corrupt/partial header — fall through to the safe default rather than failing the listing.
+        }
+        return com.minecart.foundation.GameMode.FLAT_2D;
     }
 
     private static void atomicMoveOrFallback(Path tmp, Path target) throws IOException {

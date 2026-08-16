@@ -24,6 +24,13 @@ public class Level {
 
     private final Set<World> worlds = new LinkedHashSet<>();
 
+    /**
+     * The building paradigm this save was created with. Set once at creation (or restored at load) and
+     * never mutated by gameplay — see {@link GameMode}. Defaults to {@link GameMode#FLAT_2D} so a level
+     * constructed without an explicit mode (older saves, transient test levels) behaves exactly as before.
+     */
+    private GameMode gameMode = GameMode.FLAT_2D;
+
     private boolean initialized;
     private Consumer<CircuitElement> elementChangeNotifier = el -> {};
 
@@ -37,6 +44,22 @@ public class Level {
 
     public void setTickRate(double tickRate) {
         this.tickRate = tickRate;
+    }
+
+    /** The immutable-after-creation building paradigm of this save. Never {@code null}. */
+    public GameMode getGameMode() {
+        return gameMode;
+    }
+
+    /**
+     * Sets the save's {@link GameMode}. Intended to be called exactly once, at creation or when restoring
+     * from disk (see {@code WorldStorage.load}); there is deliberately no gameplay path that changes the
+     * mode of a live save. A {@code null} argument is ignored, keeping the current (default) mode.
+     */
+    public void setGameMode(GameMode gameMode) {
+        if (gameMode != null) {
+            this.gameMode = gameMode;
+        }
     }
 
     public EventBus getEventBus() {

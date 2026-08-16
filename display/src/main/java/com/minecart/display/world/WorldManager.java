@@ -2,6 +2,7 @@ package com.minecart.display.world;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import com.minecart.foundation.GameMode;
 import com.minecart.server.persistence.WorldStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +45,8 @@ public final class WorldManager {
         }
         for (FileHandle child : root.list()) {
             if (!child.isDirectory()) continue;
-            out.add(new WorldEntry(child.name(), child, child.lastModified()));
+            GameMode mode = WorldStorage.readGameMode(child.file().toPath());
+            out.add(new WorldEntry(child.name(), child, child.lastModified(), mode));
         }
         out.sort(Comparator.comparingLong(WorldEntry::lastModified).reversed());
         return out;
@@ -64,18 +66,19 @@ public final class WorldManager {
      * with no circuits). Returns {@code null} if the name is invalid or already exists, or if the {@code level.dat}
      * write fails (in which case the partially-created directory is left for inspection).
      */
-    public WorldEntry create(String name) {
+    public WorldEntry create(String name, GameMode mode) {
         if (!isNameValid(name)) return null;
+        GameMode chosen = mode == null ? GameMode.FLAT_2D : mode;
         String trimmed = name.trim();
         FileHandle dir = Gdx.files.local(ROOT + "/" + trimmed);
         dir.mkdirs();
         try {
-            WorldStorage.writeEmpty(dir.file().toPath(), UUID.randomUUID());
+            WorldStorage.writeEmpty(dir.file().toPath(), UUID.randomUUID(), chosen);
         } catch (IOException e) {
             log.error("Failed to write initial level.dat for '{}'", trimmed, e);
             return null;
         }
-        return new WorldEntry(trimmed, dir, dir.lastModified());
+        return new WorldEntry(trimmed, dir, dir.lastModified(), chosen);
     }
 
     /** Recursively deletes the world's directory. Safe no-op if it no longer exists. */

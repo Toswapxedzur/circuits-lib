@@ -2,6 +2,7 @@ package com.minecart.display.screen;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -21,6 +22,7 @@ import com.minecart.display.log.SessionLog;
 import com.minecart.display.session.Sessions;
 import com.minecart.display.world.WorldEntry;
 import com.minecart.display.world.WorldManager;
+import com.minecart.foundation.GameMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +37,7 @@ public class WorldListScreen extends ScreenAdapter {
     private final WorldManager worlds;
     private final Stage stage;
     private final Table listTable;
+    private boolean disposed;
 
     public WorldListScreen(DisplayApp app) {
         this.app = app;
@@ -99,6 +102,9 @@ public class WorldListScreen extends ScreenAdapter {
         Label name = new Label(world.name(), skin);
         name.setAlignment(Align.left);
 
+        Label badge = new Label(world.mode().displayName(), skin, "muted");
+        badge.setAlignment(Align.center);
+
         TextButton join = new TextButton("Join", skin);
         TextButton del  = new TextButton("Delete", skin);
 
@@ -117,6 +123,7 @@ public class WorldListScreen extends ScreenAdapter {
         row.setBackground("d_row");
         row.pad(8f);
         row.add(name).expandX().fillX().padLeft(8f);
+        row.add(badge).width(70f).padLeft(8f);
         row.add(join).width(80f).height(36f).padLeft(8f);
         row.add(del).width(80f).height(36f).padLeft(8f);
         return row;
@@ -139,19 +146,48 @@ public class WorldListScreen extends ScreenAdapter {
             SessionLog.end();
             return;
         }
-        app.setScreen(new GameScreen(app, world.name(), session.level(), session.connection(), session.integrated()));
+        // Route to the editor that matches the save's fixed game mode. The mode is peeked from level.dat
+        // when the world list is built (WorldManager.list); the integrated server has just re-read the same
+        // field into its authoritative Level, so the two always agree in singleplayer.
+        if (world.mode() == GameMode.SNAP_3D) {
+            app.setScreen(new SnapScreen(app, world.name(), session.level(), session.connection(), session.integrated()));
+        } else {
+            app.setScreen(new GameScreen(app, world.name(), session.level(), session.connection(), session.integrated()));
+        }
     }
 
     private void showCreateDialog() {
         TextField nameField = new TextField("", skin);
         nameField.setMessageText("World name");
 
+        // Game mode is fixed at creation, so it's chosen here and cannot be changed later. Two toggle
+        // buttons drive a holder the dialog's result() reads; the selected one is tinted for feedback
+        // (avoids depending on a checked TextButton style being present in the skin).
+        final GameMode[] chosen = { GameMode.FLAT_2D };
+        TextButton mode2d = new TextButton("2D", skin);
+        TextButton mode3d = new TextButton("3D Snap", skin);
+        Label modeHint = new Label("", skin, "muted");
+        Runnable reflect = () -> {
+            mode2d.setColor(chosen[0] == GameMode.FLAT_2D ? Color.LIME : Color.WHITE);
+            mode3d.setColor(chosen[0] == GameMode.SNAP_3D ? Color.LIME : Color.WHITE);
+            modeHint.setText(chosen[0] == GameMode.SNAP_3D
+                    ? "Snap parts onto a 3D baseboard."
+                    : "Free-form 2D wiring (default).");
+        };
+        mode2d.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) { chosen[0] = GameMode.FLAT_2D; reflect.run(); }
+        });
+        mode3d.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) { chosen[0] = GameMode.SNAP_3D; reflect.run(); }
+        });
+        reflect.run();
+
         Dialog dialog = new Dialog("Create World", skin) {
             @Override
             protected void result(Object obj) {
                 if (Boolean.TRUE.equals(obj)) {
                     String entered = nameField.getText();
-                    WorldEntry created = worlds.create(entered);
+                    WorldEntry created = worlds.create(entered, chosen[0]);
                     if (created != null) {
                         joinWorld(created);
                     } else {
@@ -161,8 +197,14 @@ public class WorldListScreen extends ScreenAdapter {
             }
         };
         dialog.getContentTable().pad(12f).defaults().pad(6f);
-        dialog.getContentTable().add(new Label("Name:", skin));
+        dialog.getContentTable().add(new Label("Name:", skin)).left();
         dialog.getContentTable().add(nameField).width(280f).row();
+        dialog.getContentTable().add(new Label("Mode:", skin)).left();
+        Table modeRow = new Table();
+        modeRow.add(mode2d).width(90f).height(36f).padRight(8f);
+        modeRow.add(mode3d).width(110f).height(36f);
+        dialog.getContentTable().add(modeRow).left().row();
+        dialog.getContentTable().add(modeHint).colspan(2).left().row();
         dialog.button("Create", Boolean.TRUE);
         dialog.button("Cancel", Boolean.FALSE);
         dialog.key(13, Boolean.TRUE);   // Enter
@@ -227,6 +269,10 @@ public class WorldListScreen extends ScreenAdapter {
     }
 
     @Override public void dispose() {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
         stage.dispose();
     }
 }
