@@ -65,13 +65,22 @@ public final class WorldStorage {
             if (w.getName() != null && !w.getName().isEmpty()) {
                 wt.putString(ServerStrings.TAG_WORLD_NAME, w.getName());
             }
-            ListTag circuits = new ListTag();
-            for (Circuit c : w.getCircuits()) {
-                CompoundTag ct = new CompoundTag();
-                c.save(ct);
-                circuits.add(ct);
+            com.minecart.snap.SnapBoard board = (w instanceof ServerWorld sw) ? sw.getSnapBoard() : null;
+            if (board != null) {
+                // Snap world: the board is authoritative and the circuit is derived, so persist the board
+                // (not the derived circuits, which rebuild() regenerates on load).
+                CompoundTag boardTag = new CompoundTag();
+                board.save(boardTag);
+                wt.put(ServerStrings.TAG_BOARD, boardTag);
+            } else {
+                ListTag circuits = new ListTag();
+                for (Circuit c : w.getCircuits()) {
+                    CompoundTag ct = new CompoundTag();
+                    c.save(ct);
+                    circuits.add(ct);
+                }
+                wt.put(ServerStrings.TAG_CIRCUITS, circuits);
             }
-            wt.put(ServerStrings.TAG_CIRCUITS, circuits);
             worlds.add(wt);
         }
         root.put(ServerStrings.TAG_WORLDS, worlds);
@@ -119,6 +128,14 @@ public final class WorldStorage {
                 String name = wt.getString(ServerStrings.TAG_WORLD_NAME);
                 if (name != null && !name.isEmpty()) {
                     sw.setName(name);
+                }
+                Tag boardTag = wt.get(ServerStrings.TAG_BOARD);
+                if (boardTag instanceof CompoundTag bt) {
+                    // Snap world: restore the board and derive its circuit so it's ready to tick.
+                    com.minecart.snap.SnapBoard board = com.minecart.snap.SnapBoard.load(bt);
+                    sw.setSnapBoard(board);
+                    board.rebuild(sw);
+                    continue;
                 }
                 Tag circuitsTag = wt.get(ServerStrings.TAG_CIRCUITS);
                 if (circuitsTag instanceof ListTag circuits) {
@@ -186,14 +203,22 @@ public final class WorldStorage {
         Path target = worldDir.resolve(ServerStrings.LEVEL_DAT);
         Path tmp = worldDir.resolve(ServerStrings.LEVEL_DAT + ".tmp");
 
+        com.minecart.foundation.GameMode resolved =
+                (mode == null ? com.minecart.foundation.GameMode.FLAT_2D : mode);
         CompoundTag root = new CompoundTag();
-        root.putString(ServerStrings.TAG_GAME_MODE,
-                (mode == null ? com.minecart.foundation.GameMode.FLAT_2D : mode).id());
+        root.putString(ServerStrings.TAG_GAME_MODE, resolved.id());
         ListTag worlds = new ListTag();
         CompoundTag wt = new CompoundTag();
         TagUtil.putUUID(wt, ServerStrings.TAG_WORLD_ID, worldId);
         wt.putString(ServerStrings.TAG_WORLD_NAME, "World 1");
-        wt.put(ServerStrings.TAG_CIRCUITS, new ListTag());
+        if (resolved == com.minecart.foundation.GameMode.SNAP_3D) {
+            // Snap worlds start with an empty default baseboard rather than an empty circuit list.
+            CompoundTag boardTag = new CompoundTag();
+            com.minecart.snap.SnapBoard.createDefault().save(boardTag);
+            wt.put(ServerStrings.TAG_BOARD, boardTag);
+        } else {
+            wt.put(ServerStrings.TAG_CIRCUITS, new ListTag());
+        }
         worlds.add(wt);
         root.put(ServerStrings.TAG_WORLDS, worlds);
 

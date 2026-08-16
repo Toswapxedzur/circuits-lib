@@ -2,6 +2,9 @@ package com.minecart.snap;
 
 import com.minecart.foundation.Circuit;
 import com.minecart.logic.ServerWorld;
+import com.minecart.serialization.tag.CompoundTag;
+import com.minecart.serialization.tag.ListTag;
+import com.minecart.serialization.tag.Tag;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -37,6 +40,11 @@ public final class SnapBoard {
     // Keyed by occupied edge so a second part can't be placed on the same two posts.
     private final Map<SnapPlacement.EdgeKey, SnapPlacement> placements = new LinkedHashMap<>();
 
+    /** Default starting board dimensions for a freshly created snap world (extensible thereafter). */
+    public static final int DEFAULT_WIDTH = 8;
+    public static final int DEFAULT_HEIGHT = 8;
+    public static final int DEFAULT_LAYERS = 3;
+
     public SnapBoard(int width, int height, int layers) {
         if (width < 1 || height < 1 || layers < 1) {
             throw new IllegalArgumentException("board dimensions must be >= 1");
@@ -44,6 +52,11 @@ public final class SnapBoard {
         this.width = width;
         this.height = height;
         this.layers = layers;
+    }
+
+    /** A fresh empty board at the default starting size. */
+    public static SnapBoard createDefault() {
+        return new SnapBoard(DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_LAYERS);
     }
 
     public int width() { return width; }
@@ -137,5 +150,82 @@ public final class SnapBoard {
     /** Placements as a mutable snapshot list (for persistence/iteration without exposing the map). */
     public List<SnapPlacement> snapshot() {
         return new ArrayList<>(placements.values());
+    }
+
+    // --- Serialization ---------------------------------------------------------------------------
+    // The board (dimensions + placements) is the authoritative persisted state for a snap world; the
+    // electrical circuit is derived from it via rebuild() and is NOT saved. On load the board is restored
+    // and rebuilt, so a reloaded snap world ticks identically to before it was saved.
+
+    private static final String TAG_WIDTH = "width";
+    private static final String TAG_HEIGHT = "height";
+    private static final String TAG_LAYERS = "layers";
+    private static final String TAG_PARTS = "parts";
+    private static final String TAG_PART_ID = "part";
+    private static final String TAG_COL = "col";
+    private static final String TAG_ROW = "row";
+    private static final String TAG_LAYER = "layer";
+    private static final String TAG_FACING = "facing";
+    private static final String TAG_VALUE = "value";
+
+    /** Writes dimensions and every placement into {@code tag}. */
+    public void save(CompoundTag tag) {
+        tag.putInt(TAG_WIDTH, width);
+        tag.putInt(TAG_HEIGHT, height);
+        tag.putInt(TAG_LAYERS, layers);
+        ListTag list = new ListTag();
+        for (SnapPlacement p : placements.values()) {
+            CompoundTag pt = new CompoundTag();
+            pt.putString(TAG_PART_ID, p.type().id());
+            pt.putInt(TAG_COL, p.col());
+            pt.putInt(TAG_ROW, p.row());
+            pt.putInt(TAG_LAYER, p.layer());
+            pt.putString(TAG_FACING, p.facing().name());
+            if (!Double.isNaN(p.value())) {
+                pt.putDouble(TAG_VALUE, p.value());
+            }
+            list.add(pt);
+        }
+        tag.put(TAG_PARTS, list);
+    }
+
+    /**
+     * Reconstructs a board from a {@link #save(CompoundTag)} tag. Placements referencing an unregistered
+     * part id, or that no longer fit the (possibly changed) board, are skipped rather than failing the
+     * whole load.
+     */
+    public static SnapBoard load(CompoundTag tag) {
+        int w = Math.max(1, tag.getInt(TAG_WIDTH));
+        int h = Math.max(1, tag.getInt(TAG_HEIGHT));
+        int l = Math.max(1, tag.getInt(TAG_LAYERS));
+        SnapBoard board = new SnapBoard(w, h, l);
+        Tag partsTag = tag.get(TAG_PARTS);
+        if (partsTag instanceof ListTag list) {
+            for (int i = 0; i < list.size(); i++) {
+                if (!(list.get(i) instanceof CompoundTag pt)) {
+                    continue;
+                }
+                SnapPartType type = SnapPartRegistry.getType(pt.getString(TAG_PART_ID));
+                if (type == null) {
+                    continue;
+                }
+                Facing facing = parseFacing(pt.getString(TAG_FACING));
+                double value = pt.get(TAG_VALUE) != null ? pt.getDouble(TAG_VALUE) : Double.NaN;
+                board.place(new SnapPlacement(type, pt.getInt(TAG_COL), pt.getInt(TAG_ROW),
+                        pt.getInt(TAG_LAYER), facing, value));
+            }
+        }
+        return board;
+    }
+
+    private static Facing parseFacing(String name) {
+        if (name != null) {
+            for (Facing f : Facing.values()) {
+                if (f.name().equals(name)) {
+                    return f;
+                }
+            }
+        }
+        return Facing.NORTH;
     }
 }
