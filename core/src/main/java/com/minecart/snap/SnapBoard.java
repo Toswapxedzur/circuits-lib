@@ -59,6 +59,28 @@ public final class SnapBoard {
         return new SnapBoard(DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_LAYERS);
     }
 
+    /**
+     * A default-sized board pre-populated with a small demo scene: one battery/resistor loop on layer 0
+     * plus a couple of parts on layer 1 (varied orientations and heights). Temporary — new snap worlds
+     * seed this so the 3D view has something to render and pick until the placement UI lands; it will
+     * revert to {@link #createDefault()} (empty) then.
+     */
+    public static SnapBoard createDemo() {
+        AllSnapParts.init();
+        SnapBoard board = createDefault();
+        // Layer-0 loop: battery -> wire -> resistor -> wire -> wire -> resistor -> back.
+        board.place(AllSnapParts.SNAP_BATTERY, 2, 2, 0, Facing.EAST, 5.0);   // (2,2)->(3,2)
+        board.place(AllSnapParts.SNAP_WIRE, 3, 2, 0, Facing.EAST);           // (3,2)->(4,2)
+        board.place(AllSnapParts.SNAP_RESISTOR, 4, 2, 0, Facing.NORTH, 10.0);// (4,2)->(4,3)
+        board.place(AllSnapParts.SNAP_WIRE, 4, 3, 0, Facing.WEST);           // (4,3)->(3,3)
+        board.place(AllSnapParts.SNAP_WIRE, 3, 3, 0, Facing.WEST);           // (3,3)->(2,3)
+        board.place(AllSnapParts.SNAP_RESISTOR, 2, 3, 0, Facing.SOUTH, 10.0);// (2,3)->(2,2)
+        // Layer-1 parts, to show stacking height and orientation.
+        board.place(AllSnapParts.SNAP_WIRE, 5, 5, 1, Facing.EAST);           // (5,5)->(6,5) on layer 1
+        board.place(AllSnapParts.SNAP_RESISTOR, 6, 5, 1, Facing.NORTH, 47.0);// (6,5)->(6,6) on layer 1
+        return board;
+    }
+
     public int width() { return width; }
     public int height() { return height; }
     public int layers() { return layers; }

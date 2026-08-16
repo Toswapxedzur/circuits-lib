@@ -5,7 +5,9 @@ import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
+import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.math.collision.Ray;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
@@ -17,8 +19,9 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.display.DisplayApp;
-import com.minecart.display.input.OrbitCameraController;
+import com.minecart.display.input.FreeCameraController;
 import com.minecart.display.render.snap.SnapRenderer;
+import com.minecart.display.render.snap.SnapScene;
 import com.minecart.display.render.snap.SnapSceneGeometry;
 import com.minecart.foundation.World;
 import com.minecart.logic.ServerWorld;
@@ -33,10 +36,10 @@ import java.io.IOException;
  * The 3D snap-circuit editor ({@link com.minecart.foundation.GameMode#SNAP_3D}). Reached from
  * {@link WorldListScreen} for any save created in snap mode, in place of the 2D {@link GameScreen}.
  *
- * <p><b>Phase 2 status:</b> renders the baseboard, posts, and placed parts as pixelated 3D boxes with an
- * orbit camera (drag to rotate, scroll to zoom). In singleplayer the board is read straight from the
- * integrated server's authoritative world. Interactive placement, the part palette, and multiplayer board
- * replication come in later phases; the {@link SnapRenderer} and camera wired here are what they attach to.
+ * <p><b>Phase 3 status:</b> renders the board as noise-textured, lit 3D boxes; the player flies freely
+ * (W/A/S/D + Space/Ctrl, right-drag to look, scroll to dolly); and a ray from the cursor picks the part
+ * under it against its bounding box, highlighting it and naming it in the HUD. Server-authoritative
+ * placement/removal and the part palette build on this picking + scene refresh next.
  */
 public final class SnapScreen extends ScreenAdapter {
 
@@ -52,9 +55,14 @@ public final class SnapScreen extends ScreenAdapter {
     private final SnapBoard board;
 
     private PerspectiveCamera camera;
-    private OrbitCameraController orbit;
+    private FreeCameraController flyCam;
     private SnapRenderer renderer;
+    private SnapScene scene;
     private InputMultiplexer input;
+    private Label hoverLabel;
+
+    private final Vector3 hitPoint = new Vector3();
+    private SnapScene.Pickable hovered;
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -91,26 +99,24 @@ public final class SnapScreen extends ScreenAdapter {
         float cell = SnapSceneGeometry.CELL;
         float centerX = board.width() * cell / 2f;
         float centerZ = board.height() * cell / 2f;
-        float span = Math.max(board.width(), board.height()) * cell;
-        float distance = span * 1.6f + 60f;
+        float span = Math.max(board.width(), board.height()) * cell + cell;
 
         camera = new PerspectiveCamera(60f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        camera.near = 1f;
-        camera.far = distance * 6f;
-        orbit = new OrbitCameraController(camera, new Vector3(centerX, 0f, centerZ), distance);
-        orbit.setZoomLimits(cell, distance * 4f);
+        camera.near = 0.5f;
+        camera.far = span * 12f;
+        Vector3 start = new Vector3(centerX, span * 0.85f, centerZ + span * 1.15f);
+        flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
         renderer = new SnapRenderer();
-        renderer.setScene(SnapSceneGeometry.build(board));
+        scene = SnapScene.of(board);
+        renderer.setScene(scene);
     }
 
     private void buildUi() {
         Skin skin = app.getSkin();
 
         Label title = new Label("3D Snap: " + worldName, skin);
-        Label hint = new Label(board != null
-                ? "Drag to orbit • scroll to zoom"
-                : "No board to display for this session.", skin, "muted");
+        hoverLabel = new Label("", skin, "muted");
 
         TextButton saveBack = new TextButton("Save & Back", skin);
         TextButton back = new TextButton("Back", skin);
@@ -127,15 +133,48 @@ public final class SnapScreen extends ScreenAdapter {
         topBar.add(title).left().expandX();
         topBar.add(saveBack).width(150f).height(40f).padRight(8f);
         topBar.add(back).width(110f).height(40f).row();
-        topBar.add(hint).left().colspan(3).padTop(6f);
+        topBar.add(hoverLabel).left().colspan(3).padTop(6f);
         uiStage.addActor(topBar);
+        updateHoverLabel();
+    }
+
+    private void updateHoverLabel() {
+        if (board == null) {
+            hoverLabel.setText("No board to display for this session.");
+            return;
+        }
+        String base = "WASD move • Space/Ctrl up/down • right-drag look • scroll dolly";
+        if (hovered != null) {
+            hoverLabel.setText(base + "    |    hovering: " + hovered.placement().type().id());
+        } else {
+            hoverLabel.setText(base);
+        }
+    }
+
+    /** Casts a ray from the cursor and keeps the nearest part whose bounding box it hits. */
+    private void pick() {
+        hovered = null;
+        if (scene == null || camera == null) {
+            return;
+        }
+        Ray ray = camera.getPickRay(Gdx.input.getX(), Gdx.input.getY());
+        float bestDist2 = Float.MAX_VALUE;
+        for (SnapScene.Pickable pk : scene.pickables()) {
+            if (Intersector.intersectRayBounds(ray, pk.bounds(), hitPoint)) {
+                float d2 = hitPoint.dst2(camera.position);
+                if (d2 < bestDist2) {
+                    bestDist2 = d2;
+                    hovered = pk;
+                }
+            }
+        }
     }
 
     @Override public void show() {
         input = new InputMultiplexer();
         input.addProcessor(uiStage);
-        if (orbit != null) {
-            input.addProcessor(orbit);
+        if (flyCam != null) {
+            input.addProcessor(flyCam);
         }
         Gdx.input.setInputProcessor(input);
     }
@@ -144,9 +183,13 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.gl.glClearColor(0.06f, 0.07f, 0.10f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         if (renderer != null && camera != null) {
+            flyCam.update(dt);
+            pick();
+            renderer.setHighlight(hovered != null ? hovered.box() : null);
             Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
             renderer.render(camera);
             Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+            updateHoverLabel();
         }
         uiStage.act(dt);
         uiStage.draw();
