@@ -19,14 +19,16 @@ import java.util.List;
 
 /**
  * The client-side editing brain for the 3D snap board. Placement is discrete, but the ghost is drawn with
- * two independently-eased animations so it feels smooth:
+ * eased animations so it feels smooth, all keyed off the <b>crosshair bump as the pivot</b>:
  * <ul>
- *   <li><b>scroll</b> changes direction — the internal heading nudges, placement snaps to the nearest
- *       viable discrete direction, and the drawn heading ({@link #displayedAngle}) <em>rotates</em> to it;</li>
- *   <li><b>←/→</b> change which terminal sits on the crosshair bump — the part keeps its direction and the
- *       drawn origin ({@link #displayedX}/{@link #displayedZ}) <em>slides</em> in the XZ plane to the new
- *       position, highlighting the anchored terminal. This generalizes to parts with many terminals.</li>
+ *   <li><b>scroll</b> changes direction — placement snaps to the nearest viable discrete direction, and the
+ *       ghost's drawn heading rotates to it <em>around the anchored terminal</em> (the pivot stays put);</li>
+ *   <li><b>←/→</b> change which terminal sits on the crosshair — the part keeps its direction and slides in
+ *       the XZ plane (the anchored local offset eases) so the chosen terminal moves onto the pivot.</li>
  * </ul>
+ * The geometry is expressed via a part's list of local terminal offsets, so it already generalizes to
+ * components with more than two terminals (only the local-offset table and the placement model need to
+ * grow for those).
  */
 public final class SnapEditor {
 
@@ -60,9 +62,9 @@ public final class SnapEditor {
     private List<int[]> directions = SnapDirections.forLength(Tool.WIRE.type().length());
     private float dirAngle;        // internal continuous heading (deg)
     private float displayedAngle;  // eased heading actually drawn (deg)
-    private float displayedX, displayedZ; // eased origin-bump world position (XZ)
-    private boolean posInit;
-    private int anchorTerminal;    // which terminal sits on the crosshair bump (0..n-1)
+    // Eased local position (bump units, along the part's local +X) of the terminal held on the pivot.
+    private float anchorLocalX, anchorLocalZ;
+    private int anchorTerminal;
 
     private int anchorCol, anchorRow, anchorLayer;
 
@@ -79,9 +81,12 @@ public final class SnapEditor {
     public SnapPlacement ghost() { return ghost; }
     public boolean ghostValid() { return ghost != null && ghostValid; }
 
-    /** Number of terminals a part exposes (2 for the current parts; generalizes later). */
-    private int terminalCount() {
-        return 2;
+    /**
+     * Local terminal offsets (bump units, along local +X where +X is the placement direction). Two-terminal
+     * parts have terminals at 0 and {@code length}; multi-terminal parts will define their own table here.
+     */
+    private float[][] localTerminals() {
+        return new float[][]{{0f, 0f}, {tool.type().length(), 0f}};
     }
 
     public void select(Tool tool) {
@@ -98,9 +103,9 @@ public final class SnapEditor {
         }
     }
 
-    /** Cycles which terminal sits on the crosshair bump (←/→). Does not change direction. */
+    /** Cycles which terminal sits on the crosshair pivot (←/→). Direction is unchanged. */
     public void cycleTerminal(int dir) {
-        int n = terminalCount();
+        int n = localTerminals().length;
         anchorTerminal = ((anchorTerminal + dir) % n + n) % n;
     }
 
@@ -127,65 +132,65 @@ public final class SnapEditor {
         } else {
             ghost = null;
             ghostValid = false;
-            posInit = false;
             return;
         }
 
         int[] d = chooseDirection(anchorCol, anchorRow, anchorLayer);
-        // Anchor terminal k sits on the crosshair: origin (terminal 0) = crosshair - localOffset(k).
+        // Discrete placement: the anchored terminal sits on the crosshair, so terminal-0 (the placement
+        // origin) is crosshair - (anchored terminal's offset along the discrete direction d).
         int offCol = anchorTerminal == 0 ? 0 : d[0];
         int offRow = anchorTerminal == 0 ? 0 : d[1];
         ghost = new SnapPlacement(tool.type(), anchorCol - offCol, anchorRow - offRow,
                 anchorLayer, d[0], d[1], false, Double.NaN);
         ghostValid = board.canPlace(ghost);
 
-        ease(d, dt);
-    }
-
-    /** Eases the drawn heading toward the snapped direction and the drawn origin toward its target. */
-    private void ease(int[] d, float dt) {
-        float target = (float) Math.toDegrees(Math.atan2(d[1], d[0]));
-        float diff = ((target - displayedAngle + 540f) % 360f) - 180f;
+        // Ease drawn heading toward the snapped direction, and the anchored local offset toward the chosen
+        // terminal (so a terminal change slides the part while direction stays fixed).
+        float targetAngle = (float) Math.toDegrees(Math.atan2(d[1], d[0]));
+        float diff = ((targetAngle - displayedAngle + 540f) % 360f) - 180f;
         float k = Math.min(1f, dt * EASE_RATE);
         displayedAngle = (displayedAngle + diff * k + 360f) % 360f;
 
-        float s = SnapSceneGeometry.BUMP_SPACING;
-        float tx = ghost.col() * s, tz = ghost.row() * s;
-        if (!posInit || Math.hypot(tx - displayedX, tz - displayedZ) > 2 * s) {
-            // First frame, or a big jump (aiming to a far bump): snap rather than slide across the board.
-            displayedX = tx;
-            displayedZ = tz;
-            posInit = true;
-        } else {
-            displayedX += (tx - displayedX) * k;
-            displayedZ += (tz - displayedZ) * k;
-        }
+        float[] anchoredLocal = localTerminals()[anchorTerminal];
+        anchorLocalX += (anchoredLocal[0] - anchorLocalX) * k;
+        anchorLocalZ += (anchoredLocal[1] - anchorLocalZ) * k;
     }
 
-    /** The ghost geometry to draw: a body bar plus its two terminal bumps, with the active one flagged. */
+    /** The ghost geometry to draw: a body bar plus terminal bumps, all placed relative to the crosshair pivot. */
     public List<OrientedBox> ghostRender() {
-        List<OrientedBox> out = new ArrayList<>(3);
+        List<OrientedBox> out = new ArrayList<>();
         if (ghost == null) {
             return out;
         }
-        float lenWorld = tool.type().length() * SnapSceneGeometry.BUMP_SPACING;
+        float s = SnapSceneGeometry.BUMP_SPACING;
+        float pivotX = anchorCol * s, pivotZ = anchorRow * s;
         float rad = displayedAngle * MathUtils.degreesToRadians;
-        float ax = displayedX, az = displayedZ;
-        float fx = ax + lenWorld * MathUtils.cos(rad);
-        float fz = az + lenWorld * MathUtils.sin(rad);
+        float cos = MathUtils.cos(rad), sin = MathUtils.sin(rad);
+
+        float[][] terminals = localTerminals();
+        float[] tx = new float[terminals.length];
+        float[] tz = new float[terminals.length];
+        for (int i = 0; i < terminals.length; i++) {
+            // Offset of terminal i from the pivoted (anchored) terminal, in local +X, rotated into world.
+            float lx = (terminals[i][0] - anchorLocalX) * s;
+            float lz = (terminals[i][1] - anchorLocalZ) * s;
+            tx[i] = pivotX + lx * cos - lz * sin;
+            tz[i] = pivotZ + lx * sin + lz * cos;
+        }
 
         BoxSpec.Category cat = SnapSceneGeometry.partBox(ghost).category();
         float bodyY = SnapSceneGeometry.bodyCenterY(anchorLayer);
-        float bodyLen = lenWorld + SnapSceneGeometry.COMPONENT_FOOTPRINT;
-        out.add(new OrientedBox((ax + fx) / 2f, bodyY, (az + fz) / 2f,
+        // Body spans terminal 0..1 (a straight bar); multi-terminal shapes will emit more/other boxes here.
+        float bodyLen = tool.type().length() * s + SnapSceneGeometry.COMPONENT_FOOTPRINT;
+        out.add(new OrientedBox((tx[0] + tx[1]) / 2f, bodyY, (tz[0] + tz[1]) / 2f,
                 bodyLen, SnapSceneGeometry.COMPONENT_HEIGHT, SnapSceneGeometry.COMPONENT_FOOTPRINT,
                 displayedAngle, cat, false));
 
         float bumpY = SnapSceneGeometry.bumpBottomY(anchorLayer + 1) + SnapSceneGeometry.BUMP_HEIGHT / 2f;
         float w = SnapSceneGeometry.BUMP_WIDTH, h = SnapSceneGeometry.BUMP_HEIGHT;
-        boolean originActive = anchorTerminal == 0;
-        out.add(new OrientedBox(ax, bumpY, az, w, h, w, 0f, BoxSpec.Category.BUMP, originActive));
-        out.add(new OrientedBox(fx, bumpY, fz, w, h, w, 0f, BoxSpec.Category.BUMP, !originActive));
+        for (int i = 0; i < terminals.length; i++) {
+            out.add(new OrientedBox(tx[i], bumpY, tz[i], w, h, w, 0f, BoxSpec.Category.BUMP, i == anchorTerminal));
+        }
         return out;
     }
 
