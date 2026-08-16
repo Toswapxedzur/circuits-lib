@@ -11,6 +11,12 @@ public final class ServerStrings {
     /** {@code level.dat} root key: tick rate as double seconds. */
     public static final String TAG_TICK_RATE = "tick_rate";
 
+    /**
+     * {@code level.dat} root key: the save's {@link com.minecart.foundation.GameMode#id() game-mode id}.
+     * Absent in pre-mode saves, which load as {@link com.minecart.foundation.GameMode#FLAT_2D}.
+     */
+    public static final String TAG_GAME_MODE = "game_mode";
+
     /** {@code level.dat} root key: list of saved worlds (CompoundTags). */
     public static final String TAG_WORLDS = "worlds";
 

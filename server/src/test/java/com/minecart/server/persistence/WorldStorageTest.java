@@ -2,6 +2,7 @@ package com.minecart.server.persistence;
 
 import com.minecart.elements.edge.Diode;
 import com.minecart.foundation.Circuit;
+import com.minecart.foundation.GameMode;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
@@ -86,6 +87,38 @@ class WorldStorageTest {
         assertTrue(WorldStorage.load(tmp, level));
         assertNotNull(level.findWorld(worldId), "world id from writeEmpty should round-trip");
         assertEquals(0, level.findWorld(worldId).getCircuits().size(), "no circuits expected");
+    }
+
+    @Test
+    void gameMode_defaultsToFlat2dAndRoundTrips(@TempDir Path tmp) throws IOException {
+        // Default save (2-arg writeEmpty) is FLAT_2D, both via the cheap peek and a full load.
+        WorldStorage.writeEmpty(tmp, UUID.randomUUID());
+        assertEquals(GameMode.FLAT_2D, WorldStorage.readGameMode(tmp), "default save should peek as FLAT_2D");
+        ServerLevel flat = new ServerLevel();
+        assertTrue(WorldStorage.load(tmp, flat));
+        assertEquals(GameMode.FLAT_2D, flat.getGameMode(), "default save should load as FLAT_2D");
+    }
+
+    @Test
+    void gameMode_snap3dRoundTripsThroughWriteEmptyAndSave(@TempDir Path tmp) throws IOException {
+        // writeEmpty stamps the chosen mode...
+        WorldStorage.writeEmpty(tmp, UUID.randomUUID(), GameMode.SNAP_3D);
+        assertEquals(GameMode.SNAP_3D, WorldStorage.readGameMode(tmp), "snap save should peek as SNAP_3D");
+
+        ServerLevel loaded = new ServerLevel();
+        assertTrue(WorldStorage.load(tmp, loaded));
+        assertEquals(GameMode.SNAP_3D, loaded.getGameMode(), "snap mode should survive load");
+
+        // ...and a full save() of a snap level preserves it too.
+        Path tmp2 = tmp.resolve("resaved");
+        WorldStorage.save(loaded, tmp2);
+        assertEquals(GameMode.SNAP_3D, WorldStorage.readGameMode(tmp2), "save() should persist the mode");
+    }
+
+    @Test
+    void readGameMode_missingFileIsFlat2d(@TempDir Path tmp) {
+        assertEquals(GameMode.FLAT_2D, WorldStorage.readGameMode(tmp),
+                "no level.dat should peek as the safe default");
     }
 
     @Test
