@@ -205,8 +205,8 @@ public final class SnapScreen extends ScreenAdapter {
         if (editor.flipped()) {
             sb.append(" (flipped)");
         }
-        sb.append("    |    1-3 select • scroll/R direction • ←/→ flip terminal • LMB place • RMB remove"
-                + " • WASD+Space/Ctrl fly • Esc cursor");
+        sb.append("   |   1-3 select   scroll/R direction   L/R-arrow flip terminal   LMB place"
+                + "   RMB remove   WASD+Space/Ctrl fly   Esc cursor");
         if (editor.hovered() != null) {
             sb.append("    |    aiming: ").append(editor.hovered().placement().type().id());
         }
@@ -294,7 +294,7 @@ public final class SnapScreen extends ScreenAdapter {
             }
             editor.update(camera, scene);
             renderer.setHighlight(editor.hovered() != null ? editor.hovered().box() : null);
-            renderer.setGhost(editor.ghostBox(), editor.ghostValid());
+            renderer.setGhost(editor.ghostBoxes(), editor.ghostValid());
 
             Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
             renderer.render(camera);
@@ -340,7 +340,8 @@ public final class SnapScreen extends ScreenAdapter {
             if (editor == null) {
                 return false;
             }
-            editor.cycleDirection(amountY > 0 ? 1 : -1); // scroll changes the placement direction
+            // Small nudge to the internal heading; the placed direction snaps to the nearest viable one.
+            editor.nudgeDirection(amountY > 0 ? 18f : -18f);
             return true;
         }
 
@@ -353,7 +354,7 @@ public final class SnapScreen extends ScreenAdapter {
                 return true;
             }
             if (keycode == Keys.R) {
-                editor.cycleDirection(1);
+                editor.nudgeDirection(45f);
                 return true;
             }
             // Left/right arrows (or F) change which terminal is anchored on the crosshair bump.

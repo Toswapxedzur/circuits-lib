@@ -17,16 +17,18 @@ import com.minecart.snap.SnapPlacement;
 import java.util.List;
 
 /**
- * The client-side editing brain for the 3D snap board: which item is selected, the direction and
- * anchor-port the next part will use, and — recomputed every frame from the crosshair ray — the part
- * under the crosshair (for editing/removal / stacking) and the candidate placement (the "ghost") with its
- * validity.
+ * The client-side editing brain for the 3D snap board.
  *
- * <p>The scroll wheel {@link #cycleDirection cycles the direction}, snapping to directions that keep the
- * part on the board; the direction set comes from the part's length via {@link SnapDirections} (so it is
- * not limited to orthogonal — a longer part gets diagonal directions too). {@code F} {@link #flipPort()
- * flips the anchor port} (which terminal sits on the crosshair bump — a battery's polarity). It never
- * mutates the board; {@link SnapScreen} reads {@link #ghost()} / {@link #hovered()} and submits edits.
+ * <h2>Direction — internal heading, snapped externally</h2>
+ * Scrolling nudges a continuous internal heading ({@link #dirAngle}) by a small step, and the actual
+ * placement direction is the nearest <em>viable</em> discrete direction to it (preferring ones that keep
+ * the part on the board). Directions come from the part's length via {@link SnapDirections} (not limited
+ * to orthogonal). This makes the wheel feel smooth/slow and always land on a usable direction.
+ *
+ * <h2>Terminal targeting</h2>
+ * When the crosshair is on a part, {@link #update} figures out which of that part's two terminal bumps the
+ * ray is nearest and stacks the new part on that terminal, so you stack on the end you're actually aiming
+ * at. {@code ←/→} flip which terminal is anchored (mirrors the part; battery polarity).
  */
 public final class SnapEditor {
 
@@ -52,13 +54,13 @@ public final class SnapEditor {
     private final Plane ground = new Plane(new Vector3(0f, 1f, 0f), 0f);
     private final Vector3 groundHit = new Vector3();
     private final Vector3 boundsHit = new Vector3();
+    private final Vector3 hoveredHit = new Vector3();
 
     private Tool tool = Tool.WIRE;
     private List<int[]> directions = SnapDirections.forLength(Tool.WIRE.type().length());
-    private int dirIndex;
+    private float dirAngle;
     private boolean flipped;
 
-    // Last anchor bump computed in update(), so cycleDirection() can snap to in-bounds directions.
     private int anchorCol, anchorRow, anchorLayer;
 
     private SnapScene.Pickable hovered;
@@ -75,15 +77,14 @@ public final class SnapEditor {
     public SnapPlacement ghost() { return ghost; }
     public boolean ghostValid() { return ghost != null && ghostValid; }
 
-    /** The ghost as a render box, or {@code null} when there's no valid anchor. */
-    public BoxSpec ghostBox() {
-        return ghost == null ? null : SnapSceneGeometry.partBox(ghost);
+    /** The ghost's full geometry (body + terminal bumps), or empty when there's no valid anchor. */
+    public List<BoxSpec> ghostBoxes() {
+        return ghost == null ? List.of() : SnapSceneGeometry.partBoxes(ghost);
     }
 
     public void select(Tool tool) {
         this.tool = tool;
         this.directions = SnapDirections.forLength(tool.type().length());
-        this.dirIndex = Math.min(dirIndex, directions.size() - 1);
     }
 
     /** Selects a hotbar slot by 0-based index; ignored if out of range. */
@@ -94,37 +95,14 @@ public final class SnapEditor {
         }
     }
 
-    /** Cycles the hotbar item by {@code dir} (+1/-1), wrapping. */
-    public void cycleTool(int dir) {
-        Tool[] tools = Tool.values();
-        selectIndex(((tool.ordinal() + dir) % tools.length + tools.length) % tools.length);
-    }
-
-    /** Flips the anchor port (swaps which terminal sits on the crosshair bump; battery polarity). */
+    /** Flips the anchor port (mirrors the part to the other side of the crosshair; battery polarity). */
     public void flipPort() {
         flipped = !flipped;
     }
 
-    /**
-     * Cycles the placement direction by {@code step}, snapping to the next direction whose far bump stays
-     * on the board (so scroll lands on usable directions rather than off-board ones).
-     */
-    public void cycleDirection(int step) {
-        if (directions.isEmpty()) {
-            return;
-        }
-        int n = directions.size();
-        for (int k = 1; k <= n; k++) {
-            int idx = ((dirIndex + step * k) % n + n) % n;
-            int[] d = directions.get(idx);
-            int dc = flipped ? -d[0] : d[0];
-            int dr = flipped ? -d[1] : d[1];
-            if (board.inBounds(new Post(anchorCol + dc, anchorRow + dr, anchorLayer))) {
-                dirIndex = idx;
-                return;
-            }
-        }
-        dirIndex = ((dirIndex + step) % n + n) % n; // nothing in bounds: still advance one
+    /** Nudges the internal heading by {@code deltaDeg}; the placed direction snaps to the nearest viable. */
+    public void nudgeDirection(float deltaDeg) {
+        dirAngle = ((dirAngle + deltaDeg) % 360f + 360f) % 360f;
     }
 
     /** Recomputes the hovered part and placement ghost from the crosshair ray. */
@@ -132,13 +110,13 @@ public final class SnapEditor {
         hovered = pick(camera, scene);
 
         if (hovered != null) {
-            // Stack the new part one level above the part under the crosshair, on its origin bump.
+            // Stack on the terminal of the hovered part that the ray is nearest.
             SnapPlacement below = hovered.placement();
-            anchorCol = below.col();
-            anchorRow = below.row();
+            Post target = nearerTerminal(below, hoveredHit);
+            anchorCol = target.col();
+            anchorRow = target.row();
             anchorLayer = below.layer() + 1;
         } else if (Intersector.intersectRayPlane(centerRay(camera), ground, groundHit)) {
-            // Snap to the nearest bump where the crosshair ray meets the ground plane (y = 0).
             float spacing = SnapSceneGeometry.BUMP_SPACING;
             anchorCol = MathUtils.clamp(Math.round(groundHit.x / spacing), 0, board.width());
             anchorRow = MathUtils.clamp(Math.round(groundHit.z / spacing), 0, board.height());
@@ -149,16 +127,50 @@ public final class SnapEditor {
             return;
         }
 
-        // The crosshair bump is the anchored terminal; flipping mirrors the part to the other side of it
-        // (and swaps battery polarity), so the change is visible.
-        int[] d = directions.get(Math.min(dirIndex, directions.size() - 1));
+        int[] d = chooseDirection(anchorCol, anchorRow, anchorLayer);
         int dc = flipped ? -d[0] : d[0];
         int dr = flipped ? -d[1] : d[1];
         ghost = new SnapPlacement(tool.type(), anchorCol, anchorRow, anchorLayer, dc, dr, flipped, Double.NaN);
         ghostValid = board.canPlace(ghost);
     }
 
-    /** The ray through the screen centre — the crosshair — since the cursor is locked in look mode. */
+    /** The discrete direction nearest the internal heading, preferring ones that stay on the board. */
+    private int[] chooseDirection(int col, int row, int layer) {
+        int[] best = directions.get(0);
+        double bestScore = Double.MAX_VALUE;
+        for (int[] d : directions) {
+            int dc = flipped ? -d[0] : d[0];
+            int dr = flipped ? -d[1] : d[1];
+            double ang = Math.toDegrees(Math.atan2(dr, dc));
+            double score = angularDistance(ang, dirAngle) + (board.inBounds(new Post(col + dc, row + dr, layer)) ? 0 : 1000);
+            if (score < bestScore) {
+                bestScore = score;
+                best = d;
+            }
+        }
+        return best;
+    }
+
+    private static double angularDistance(double a, double b) {
+        double d = Math.abs(a - b) % 360.0;
+        return d > 180.0 ? 360.0 - d : d;
+    }
+
+    /** Which of a part's two terminal bumps is nearer the ray-hit point (in the ground plane). */
+    private static Post nearerTerminal(SnapPlacement p, Vector3 hit) {
+        Post o = p.originPost();
+        Post f = p.farPost();
+        float s = SnapSceneGeometry.BUMP_SPACING;
+        float dO = dist2(hit.x, hit.z, o.col() * s, o.row() * s);
+        float dF = dist2(hit.x, hit.z, f.col() * s, f.row() * s);
+        return dO <= dF ? o : f;
+    }
+
+    private static float dist2(float x, float z, float ox, float oz) {
+        float dx = x - ox, dz = z - oz;
+        return dx * dx + dz * dz;
+    }
+
     private static Ray centerRay(PerspectiveCamera camera) {
         return camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f);
     }
@@ -173,6 +185,7 @@ public final class SnapEditor {
                 if (d2 < bestDist2) {
                     bestDist2 = d2;
                     best = pk;
+                    hoveredHit.set(boundsHit);
                 }
             }
         }

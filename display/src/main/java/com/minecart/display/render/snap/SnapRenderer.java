@@ -23,27 +23,31 @@ import com.badlogic.gdx.utils.Disposable;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Draws a snap board in 3D with a Minecraft-like <b>unified pixel size</b>: a single pre-generated noise
- * texture is tiled so that one texel is exactly one world pixel-unit on every surface, regardless of a
- * box's size. The scene is baked into one {@link Model} (rebuilt only on edit) with a mesh part per
- * {@link BoxSpec.Category} colour; each face gets UVs proportional to its world dimensions
- * ({@code size / PIXELS_PER_TILE}) with the texture wrapped Repeat + Nearest. Back-face culling is off and
- * each face carries an explicit outward normal, so winding never matters for visibility or lighting.
- *
- * <p>Translucent hover-highlight and placement-ghost cubes are drawn on top as simple scaled unit boxes.
+ * texture is tiled so one texel is one world pixel-unit on every surface, via per-face proportional UVs.
+ * The static scene is baked into one {@link Model} (rebuilt only on edit); the placement ghost reuses the
+ * same proportional-UV box meshes (cached by size) with a translucent version of the item material, so it
+ * reads as a genuine see-through copy of the part — including its terminal bumps.
  */
 public final class SnapRenderer implements Disposable {
 
     /** World units covered by one full tile of the noise texture (texture is this many pixels square). */
     private static final float PIXELS_PER_TILE = 16f;
+    private static final long ATTRS = VertexAttributes.Usage.Position
+            | VertexAttributes.Usage.Normal
+            | VertexAttributes.Usage.TextureCoordinates;
 
     private final ModelBatch modelBatch = new ModelBatch();
     private final Environment environment = new Environment();
     private final Texture noiseTexture;
     private final EnumMap<BoxSpec.Category, Material> materials = new EnumMap<>(BoxSpec.Category.class);
+    private final EnumMap<BoxSpec.Category, Material> ghostMaterials = new EnumMap<>(BoxSpec.Category.class);
+    private final Material ghostInvalidMaterial;
 
     private Model sceneModel;
     private ModelInstance sceneInstance;
@@ -52,14 +56,11 @@ public final class SnapRenderer implements Disposable {
     private final ModelInstance highlightInstance;
     private boolean highlightActive;
 
-    private final EnumMap<BoxSpec.Category, Model> ghostModels = new EnumMap<>(BoxSpec.Category.class);
-    private final EnumMap<BoxSpec.Category, ModelInstance> ghostInstances = new EnumMap<>(BoxSpec.Category.class);
-    private final Model ghostInvalidBox;
-    private final ModelInstance ghostInvalidInstance;
-    private BoxSpec ghostBox;
+    // Ghost box meshes cached by size+material so the ghost gets the same proportional UVs as real parts.
+    private final Map<String, Model> ghostCache = new HashMap<>();
+    private final List<BoxSpec> ghostBoxes = new ArrayList<>();
     private boolean ghostValid;
 
-    // Reused corner/normal temporaries for face building.
     private final Vector3 c00 = new Vector3(), c10 = new Vector3(), c11 = new Vector3(), c01 = new Vector3();
     private final Vector3 nrm = new Vector3();
 
@@ -78,39 +79,26 @@ public final class SnapRenderer implements Disposable {
                     ColorAttribute.createDiffuse(colorFor(cat)),
                     TextureAttribute.createDiffuse(noiseTexture),
                     IntAttribute.createCullFace(GL20.GL_NONE)));
+            ghostMaterials.put(cat, new Material(
+                    ColorAttribute.createDiffuse(colorFor(cat)),
+                    TextureAttribute.createDiffuse(noiseTexture),
+                    new BlendingAttribute(0.55f),
+                    IntAttribute.createCullFace(GL20.GL_NONE)));
         }
+        ghostInvalidMaterial = new Material(
+                ColorAttribute.createDiffuse(0.95f, 0.28f, 0.28f, 1f),
+                TextureAttribute.createDiffuse(noiseTexture),
+                new BlendingAttribute(0.55f),
+                IntAttribute.createCullFace(GL20.GL_NONE));
 
         ModelBuilder mb = new ModelBuilder();
         Material hl = new Material(
                 ColorAttribute.createDiffuse(1f, 0.9f, 0.3f, 1f),
                 ColorAttribute.createEmissive(0.8f, 0.7f, 0.2f, 1f),
                 new BlendingAttribute(0.35f));
-        long overlayAttrs = VertexAttributes.Usage.Position | VertexAttributes.Usage.Normal;
-        this.highlightBox = mb.createBox(1f, 1f, 1f, hl, overlayAttrs);
+        this.highlightBox = mb.createBox(1f, 1f, 1f, hl,
+                VertexAttributes.Usage.Position | VertexAttributes.Usage.Normal);
         this.highlightInstance = new ModelInstance(highlightBox);
-
-        // A valid ghost is a transparent version of the ACTUAL item: same noise texture + colour, lit
-        // (not emissive), at half opacity — so it reads as a faded copy rather than a glowing block.
-        long ghostAttrs = VertexAttributes.Usage.Position
-                | VertexAttributes.Usage.Normal
-                | VertexAttributes.Usage.TextureCoordinates;
-        for (BoxSpec.Category cat : BoxSpec.Category.values()) {
-            Material ghost = new Material(
-                    ColorAttribute.createDiffuse(colorFor(cat)),
-                    TextureAttribute.createDiffuse(noiseTexture),
-                    new BlendingAttribute(0.5f),
-                    IntAttribute.createCullFace(GL20.GL_NONE));
-            Model model = mb.createBox(1f, 1f, 1f, ghost, ghostAttrs);
-            ghostModels.put(cat, model);
-            ghostInstances.put(cat, new ModelInstance(model));
-        }
-        Material invalid = new Material(
-                ColorAttribute.createDiffuse(0.95f, 0.25f, 0.25f, 1f),
-                TextureAttribute.createDiffuse(noiseTexture),
-                new BlendingAttribute(0.5f),
-                IntAttribute.createCullFace(GL20.GL_NONE));
-        this.ghostInvalidBox = mb.createBox(1f, 1f, 1f, invalid, ghostAttrs);
-        this.ghostInvalidInstance = new ModelInstance(ghostInvalidBox);
     }
 
     /** Bakes the scene into a single model (one mesh part per category). Call when the board changes. */
@@ -120,10 +108,6 @@ public final class SnapRenderer implements Disposable {
             sceneModel = null;
             sceneInstance = null;
         }
-        long attrs = VertexAttributes.Usage.Position
-                | VertexAttributes.Usage.Normal
-                | VertexAttributes.Usage.TextureCoordinates;
-
         ModelBuilder mb = new ModelBuilder();
         mb.begin();
         for (BoxSpec.Category cat : BoxSpec.Category.values()) {
@@ -136,30 +120,79 @@ public final class SnapRenderer implements Disposable {
             if (ofCat.isEmpty()) {
                 continue;
             }
-            MeshPartBuilder part = mb.part(cat.name(), GL20.GL_TRIANGLES, attrs, materials.get(cat));
+            MeshPartBuilder part = mb.part(cat.name(), GL20.GL_TRIANGLES, ATTRS, materials.get(cat));
             for (BoxSpec b : ofCat) {
-                addBox(part, b);
+                addBox(part, b.cx(), b.cy(), b.cz(), b.sizeX(), b.sizeY(), b.sizeZ());
             }
         }
         sceneModel = mb.end();
         sceneInstance = new ModelInstance(sceneModel);
     }
 
-    private void addBox(MeshPartBuilder part, BoxSpec b) {
-        float hx = b.sizeX() / 2f, hy = b.sizeY() / 2f, hz = b.sizeZ() / 2f;
-        float x0 = b.cx() - hx, x1 = b.cx() + hx;
-        float y0 = b.cy() - hy, y1 = b.cy() + hy;
-        float z0 = b.cz() - hz, z1 = b.cz() + hz;
+    /** Sets the ghost geometry (body + terminal bumps) and whether the placement is valid. */
+    public void setGhost(List<BoxSpec> boxes, boolean valid) {
+        ghostBoxes.clear();
+        if (boxes != null) {
+            ghostBoxes.addAll(boxes);
+        }
+        ghostValid = valid;
+    }
 
-        // +X and -X faces span (Z, Y).
-        face(part, x1, y0, z0, x1, y0, z1, x1, y1, z1, x1, y1, z0, 1, 0, 0, b.sizeZ(), b.sizeY());
-        face(part, x0, y0, z1, x0, y0, z0, x0, y1, z0, x0, y1, z1, -1, 0, 0, b.sizeZ(), b.sizeY());
-        // +Y and -Y faces span (X, Z).
-        face(part, x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0, 0, 1, 0, b.sizeX(), b.sizeZ());
-        face(part, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, 0, -1, 0, b.sizeX(), b.sizeZ());
-        // +Z and -Z faces span (X, Y).
-        face(part, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, 0, 0, 1, b.sizeX(), b.sizeY());
-        face(part, x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0, 0, 0, -1, b.sizeX(), b.sizeY());
+    /** Sets (or clears with {@code null}) the box currently highlighted by the crosshair. */
+    public void setHighlight(BoxSpec box) {
+        highlightActive = box != null;
+        if (highlightActive) {
+            highlightInstance.transform.setToTranslationAndScaling(
+                    box.cx(), box.cy(), box.cz(),
+                    box.sizeX() * 1.08f, box.sizeY() * 1.08f, box.sizeZ() * 1.08f);
+        }
+    }
+
+    /** Draws the scene, hover highlight, and placement ghost from {@code camera}'s viewpoint. */
+    public void render(Camera camera) {
+        modelBatch.begin(camera);
+        if (sceneInstance != null) {
+            modelBatch.render(sceneInstance, environment);
+        }
+        if (highlightActive) {
+            modelBatch.render(highlightInstance, environment);
+        }
+        for (BoxSpec b : ghostBoxes) {
+            Model mesh = ghostMesh(b);
+            ModelInstance inst = new ModelInstance(mesh);
+            inst.transform.setToTranslation(b.cx(), b.cy(), b.cz());
+            modelBatch.render(inst, environment);
+        }
+        modelBatch.end();
+    }
+
+    /** A cached, origin-centred, proportional-UV box mesh matching {@code box}'s size + ghost material. */
+    private Model ghostMesh(BoxSpec box) {
+        int sx = Math.round(box.sizeX()), sy = Math.round(box.sizeY()), sz = Math.round(box.sizeZ());
+        String matKey = ghostValid ? box.category().name() : "INVALID";
+        String key = sx + "_" + sy + "_" + sz + "_" + matKey;
+        Model cached = ghostCache.get(key);
+        if (cached == null) {
+            Material mat = ghostValid ? ghostMaterials.get(box.category()) : ghostInvalidMaterial;
+            ModelBuilder mb = new ModelBuilder();
+            mb.begin();
+            MeshPartBuilder part = mb.part("ghost", GL20.GL_TRIANGLES, ATTRS, mat);
+            addBox(part, 0f, 0f, 0f, box.sizeX(), box.sizeY(), box.sizeZ());
+            cached = mb.end();
+            ghostCache.put(key, cached);
+        }
+        return cached;
+    }
+
+    private void addBox(MeshPartBuilder part, float cx, float cy, float cz, float sizeX, float sizeY, float sizeZ) {
+        float hx = sizeX / 2f, hy = sizeY / 2f, hz = sizeZ / 2f;
+        float x0 = cx - hx, x1 = cx + hx, y0 = cy - hy, y1 = cy + hy, z0 = cz - hz, z1 = cz + hz;
+        face(part, x1, y0, z0, x1, y0, z1, x1, y1, z1, x1, y1, z0, 1, 0, 0, sizeZ, sizeY);
+        face(part, x0, y0, z1, x0, y0, z0, x0, y1, z0, x0, y1, z1, -1, 0, 0, sizeZ, sizeY);
+        face(part, x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0, 0, 1, 0, sizeX, sizeZ);
+        face(part, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, 0, -1, 0, sizeX, sizeZ);
+        face(part, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, 0, 0, 1, sizeX, sizeY);
+        face(part, x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0, 0, 0, -1, sizeX, sizeY);
     }
 
     private void face(MeshPartBuilder part,
@@ -173,43 +206,6 @@ public final class SnapRenderer implements Disposable {
         nrm.set(nx, ny, nz);
         part.setUVRange(0f, 0f, uWorld / PIXELS_PER_TILE, vWorld / PIXELS_PER_TILE);
         part.rect(c00, c10, c11, c01, nrm);
-    }
-
-    /** Sets (or clears with {@code null}) the translucent placement ghost and whether it's a valid spot. */
-    public void setGhost(BoxSpec box, boolean valid) {
-        this.ghostBox = box;
-        this.ghostValid = valid;
-    }
-
-    /** Sets (or clears with {@code null}) the box currently highlighted by the crosshair. */
-    public void setHighlight(BoxSpec box) {
-        highlightActive = box != null;
-        if (highlightActive) {
-            highlightInstance.transform.setToTranslationAndScaling(
-                    box.cx(), box.cy(), box.cz(),
-                    box.sizeX() * 1.10f, box.sizeY() * 1.10f, box.sizeZ() * 1.10f);
-        }
-    }
-
-    /** Draws the scene, hover highlight, and placement ghost from {@code camera}'s viewpoint. */
-    public void render(Camera camera) {
-        modelBatch.begin(camera);
-        if (sceneInstance != null) {
-            modelBatch.render(sceneInstance, environment);
-        }
-        if (highlightActive) {
-            modelBatch.render(highlightInstance, environment);
-        }
-        if (ghostBox != null) {
-            ModelInstance ghost = ghostValid
-                    ? ghostInstances.getOrDefault(ghostBox.category(), ghostInvalidInstance)
-                    : ghostInvalidInstance;
-            ghost.transform.setToTranslationAndScaling(
-                    ghostBox.cx(), ghostBox.cy(), ghostBox.cz(),
-                    ghostBox.sizeX(), ghostBox.sizeY(), ghostBox.sizeZ());
-            modelBatch.render(ghost, environment);
-        }
-        modelBatch.end();
     }
 
     private static Color colorFor(BoxSpec.Category category) {
@@ -230,10 +226,10 @@ public final class SnapRenderer implements Disposable {
             sceneModel.dispose();
         }
         highlightBox.dispose();
-        for (Model m : ghostModels.values()) {
+        for (Model m : ghostCache.values()) {
             m.dispose();
         }
-        ghostInvalidBox.dispose();
+        ghostCache.clear();
         noiseTexture.dispose();
     }
 }

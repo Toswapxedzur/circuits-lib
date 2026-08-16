@@ -64,6 +64,15 @@ public final class SnapSceneGeometry {
         return boxes;
     }
 
+    /** A single placement's boxes (body bar + its two terminal top bumps) — used for the placement ghost. */
+    public static List<BoxSpec> partBoxes(SnapPlacement placement) {
+        List<BoxSpec> boxes = new ArrayList<>(3);
+        boxes.add(partBox(placement));
+        boxes.add(topBump(placement.originPost(), placement.layer()));
+        boxes.add(topBump(placement.farPost(), placement.layer()));
+        return boxes;
+    }
+
     private static void addBase(SnapBoard board, List<BoxSpec> out) {
         float spanX = board.width() * BUMP_SPACING;
         float spanZ = board.height() * BUMP_SPACING;
