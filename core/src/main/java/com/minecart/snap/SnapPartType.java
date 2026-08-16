@@ -24,14 +24,19 @@ public final class SnapPartType {
         void build(SnapPlacement placement, ServerWorld world, PostGrid posts);
     }
 
+    /** Default span in bump-units between a part's two terminals (adjacent bumps). */
+    public static final int DEFAULT_LENGTH = 1;
+
     private final String id;
     private final int height;
+    private final int length;
     private final boolean connector;
     private final Builder builder;
 
-    SnapPartType(String id, int height, boolean connector, Builder builder) {
+    SnapPartType(String id, int height, int length, boolean connector, Builder builder) {
         this.id = id;
         this.height = height;
+        this.length = length;
         this.connector = connector;
         this.builder = builder;
     }
@@ -41,6 +46,14 @@ public final class SnapPartType {
 
     /** Part height in board units. */
     public int height() { return height; }
+
+    /**
+     * Span between the two terminals in bump-units. Acceptable placement directions are the integer
+     * offsets {@code (dCol,dRow)} with {@code dCol²+dRow² = length²} — so a length-1 part has the 4
+     * orthogonal directions, and (e.g.) a length-5 part additionally has the diagonal 3-4-5 directions.
+     * See {@link SnapDirections#forLength(int)}.
+     */
+    public int length() { return length; }
 
     /**
      * Whether this part is an ideal connector (a wire) that merges its posts rather than adding a device

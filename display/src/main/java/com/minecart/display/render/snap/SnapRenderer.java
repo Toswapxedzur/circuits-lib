@@ -52,9 +52,9 @@ public final class SnapRenderer implements Disposable {
     private final ModelInstance highlightInstance;
     private boolean highlightActive;
 
-    private final Model ghostValidBox;
+    private final EnumMap<BoxSpec.Category, Model> ghostModels = new EnumMap<>(BoxSpec.Category.class);
+    private final EnumMap<BoxSpec.Category, ModelInstance> ghostInstances = new EnumMap<>(BoxSpec.Category.class);
     private final Model ghostInvalidBox;
-    private final ModelInstance ghostValidInstance;
     private final ModelInstance ghostInvalidInstance;
     private BoxSpec ghostBox;
     private boolean ghostValid;
@@ -89,17 +89,22 @@ public final class SnapRenderer implements Disposable {
         this.highlightBox = mb.createBox(1f, 1f, 1f, hl, overlayAttrs);
         this.highlightInstance = new ModelInstance(highlightBox);
 
-        Material valid = new Material(
-                ColorAttribute.createDiffuse(0.30f, 1f, 0.45f, 1f),
-                ColorAttribute.createEmissive(0.10f, 0.45f, 0.15f, 1f),
-                new BlendingAttribute(0.45f));
+        // A valid ghost looks like a transparent version of the actual item (its own colour, low alpha).
+        for (BoxSpec.Category cat : BoxSpec.Category.values()) {
+            Color c = colorFor(cat);
+            Material ghost = new Material(
+                    ColorAttribute.createDiffuse(c),
+                    ColorAttribute.createEmissive(c.r * 0.35f, c.g * 0.35f, c.b * 0.35f, 1f),
+                    new BlendingAttribute(0.4f));
+            Model model = mb.createBox(1f, 1f, 1f, ghost, overlayAttrs);
+            ghostModels.put(cat, model);
+            ghostInstances.put(cat, new ModelInstance(model));
+        }
         Material invalid = new Material(
                 ColorAttribute.createDiffuse(1f, 0.30f, 0.30f, 1f),
                 ColorAttribute.createEmissive(0.45f, 0.10f, 0.10f, 1f),
-                new BlendingAttribute(0.45f));
-        this.ghostValidBox = mb.createBox(1f, 1f, 1f, valid, overlayAttrs);
+                new BlendingAttribute(0.4f));
         this.ghostInvalidBox = mb.createBox(1f, 1f, 1f, invalid, overlayAttrs);
-        this.ghostValidInstance = new ModelInstance(ghostValidBox);
         this.ghostInvalidInstance = new ModelInstance(ghostInvalidBox);
     }
 
@@ -191,7 +196,9 @@ public final class SnapRenderer implements Disposable {
             modelBatch.render(highlightInstance, environment);
         }
         if (ghostBox != null) {
-            ModelInstance ghost = ghostValid ? ghostValidInstance : ghostInvalidInstance;
+            ModelInstance ghost = ghostValid
+                    ? ghostInstances.getOrDefault(ghostBox.category(), ghostInvalidInstance)
+                    : ghostInvalidInstance;
             ghost.transform.setToTranslationAndScaling(
                     ghostBox.cx(), ghostBox.cy(), ghostBox.cz(),
                     ghostBox.sizeX(), ghostBox.sizeY(), ghostBox.sizeZ());
@@ -218,7 +225,9 @@ public final class SnapRenderer implements Disposable {
             sceneModel.dispose();
         }
         highlightBox.dispose();
-        ghostValidBox.dispose();
+        for (Model m : ghostModels.values()) {
+            m.dispose();
+        }
         ghostInvalidBox.dispose();
         noiseTexture.dispose();
     }

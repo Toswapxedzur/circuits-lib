@@ -117,8 +117,8 @@ public final class SnapBoard {
      * supported (level 0, or a component directly below providing a top bump).
      */
     public synchronized boolean canPlace(SnapPlacement placement) {
-        Post a = placement.postA();
-        Post b = placement.postB();
+        Post a = placement.originPost();
+        Post b = placement.farPost();
         return inBounds(a) && inBounds(b)
                 && !placements.containsKey(placement.edgeKey())
                 && !bumpSlots.contains(a) && !bumpSlots.contains(b)
@@ -147,17 +147,17 @@ public final class SnapBoard {
     /** Adds a placement and claims its bump-slots without validation (used when loading a trusted save). */
     public synchronized void placeUnchecked(SnapPlacement placement) {
         placements.put(placement.edgeKey(), placement);
-        bumpSlots.add(placement.postA());
-        bumpSlots.add(placement.postB());
+        bumpSlots.add(placement.originPost());
+        bumpSlots.add(placement.farPost());
         revision++;
     }
 
-    /** Removes whatever part occupies the edge between {@code a} and {@code b}, freeing its bump-slots. */
+    /** Removes whatever part occupies the edge between bumps {@code a} and {@code b}, freeing its slots. */
     public synchronized SnapPlacement remove(Post a, Post b) {
         SnapPlacement removed = placements.remove(SnapPlacement.EdgeKey.of(a, b));
         if (removed != null) {
-            bumpSlots.remove(removed.postA());
-            bumpSlots.remove(removed.postB());
+            bumpSlots.remove(removed.originPost());
+            bumpSlots.remove(removed.farPost());
             revision++;
         }
         return removed;
@@ -229,7 +229,10 @@ public final class SnapBoard {
     private static final String TAG_COL = "col";
     private static final String TAG_ROW = "row";
     private static final String TAG_LAYER = "layer";
-    private static final String TAG_FACING = "facing";
+    private static final String TAG_FACING = "facing"; // legacy (cardinal) — still read for old saves
+    private static final String TAG_DCOL = "dcol";
+    private static final String TAG_DROW = "drow";
+    private static final String TAG_FLIPPED = "flipped";
     private static final String TAG_VALUE = "value";
 
     /** Writes dimensions and every placement into {@code tag}. */
@@ -244,7 +247,9 @@ public final class SnapBoard {
             pt.putInt(TAG_COL, p.col());
             pt.putInt(TAG_ROW, p.row());
             pt.putInt(TAG_LAYER, p.layer());
-            pt.putString(TAG_FACING, p.facing().name());
+            pt.putInt(TAG_DCOL, p.dCol());
+            pt.putInt(TAG_DROW, p.dRow());
+            pt.putBoolean(TAG_FLIPPED, p.flipped());
             if (!Double.isNaN(p.value())) {
                 pt.putDouble(TAG_VALUE, p.value());
             }
@@ -273,10 +278,19 @@ public final class SnapBoard {
                 if (type == null) {
                     continue;
                 }
-                Facing facing = parseFacing(pt.getString(TAG_FACING));
+                int dCol, dRow;
+                if (pt.get(TAG_DCOL) != null) {
+                    dCol = pt.getInt(TAG_DCOL);
+                    dRow = pt.getInt(TAG_DROW);
+                } else {
+                    Facing legacy = parseFacing(pt.getString(TAG_FACING)); // pre-offset saves
+                    dCol = legacy.dCol();
+                    dRow = legacy.dRow();
+                }
+                boolean flipped = pt.get(TAG_FLIPPED) != null && pt.getBoolean(TAG_FLIPPED);
                 double value = pt.get(TAG_VALUE) != null ? pt.getDouble(TAG_VALUE) : Double.NaN;
                 board.placeUnchecked(new SnapPlacement(type, pt.getInt(TAG_COL), pt.getInt(TAG_ROW),
-                        pt.getInt(TAG_LAYER), facing, value));
+                        pt.getInt(TAG_LAYER), dCol, dRow, flipped, value));
             }
         }
         return board;
