@@ -80,6 +80,12 @@ public final class CombineCascadePayload implements Payload {
     @Override
     public void save(CompoundTag tag) {
         Payload.super.save(tag);
+        // Fail fast at the sender: the receiver's load() rejects an empty pair list, so an empty
+        // payload would only fail (uselessly) after a network round-trip. Catch it here instead.
+        if (pairs.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "CombineCascadePayload must carry at least one '" + ProtocolStrings.TAG_COMBINE_PAIRS + "'");
+        }
         TagUtil.putUUID(tag, ProtocolStrings.TAG_WORLD_ID, worldId);
         if (gestureId != null) {
             TagUtil.putUUID(tag, ProtocolStrings.TAG_GESTURE_ID, gestureId);
@@ -96,10 +102,7 @@ public final class CombineCascadePayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
-        worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        if (worldId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_WORLD_ID + "'");
-        }
+        worldId = Payload.requireUUID(tag, ProtocolStrings.TAG_WORLD_ID);
         // Gesture id is optional — absent for panel-driven combines.
         gestureId = TagUtil.getUUID(tag, ProtocolStrings.TAG_GESTURE_ID);
         pairs.clear();
@@ -145,14 +148,8 @@ public final class CombineCascadePayload implements Payload {
         }
 
         static CombinePair load(CompoundTag tag) {
-            UUID s = TagUtil.getUUID(tag, ProtocolStrings.TAG_SURVIVOR_NODE_ID);
-            UUID a = TagUtil.getUUID(tag, ProtocolStrings.TAG_ABSORBED_NODE_ID);
-            if (s == null) {
-                throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_SURVIVOR_NODE_ID + "'");
-            }
-            if (a == null) {
-                throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_ABSORBED_NODE_ID + "'");
-            }
+            UUID s = Payload.requireUUID(tag, ProtocolStrings.TAG_SURVIVOR_NODE_ID);
+            UUID a = Payload.requireUUID(tag, ProtocolStrings.TAG_ABSORBED_NODE_ID);
             return new CombinePair(s, a);
         }
     }

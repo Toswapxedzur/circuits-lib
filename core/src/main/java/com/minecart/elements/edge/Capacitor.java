@@ -46,7 +46,11 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
         equations.stampCoefficient(getStart().getVoltage(), 1.0);
         equations.stampCoefficient(getEnd().getVoltage(), -1.0);
 
-        equations.stampCoefficient(getCurrent(), get().getInternalResistance());
+        // Multiply current by negative internal resistance to match the
+        // "V_start - V_end - I*R = const" convention used by Resistor/Battery.
+        // Stamping +R here inverts the RC feedback sign and makes the solve
+        // diverge exponentially instead of converging to Q = C*V.
+        equations.stampCoefficient(getCurrent(), -get().getInternalResistance());
 
         equations.stampConstant(voltage);
 

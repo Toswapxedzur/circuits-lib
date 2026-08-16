@@ -8,7 +8,6 @@ import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.Tag;
-import org.apache.commons.lang3.mutable.MutableBoolean;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -181,50 +180,6 @@ public class Circuit {
                 }
             }
         }
-    }
-
-    /**
-     * Disconnect the edge and split connectivity; nodes/edges on {@code node2}'s side move to {@code newCircuit}.
-     *
-     * @return {@code false} if the two nodes remain connected without the edge (no split).
-     */
-    public boolean seperate(CircuitNode node1, CircuitNode node2, CircuitEdge edge, Circuit newCircuit) {
-        node1.disconnect(edge, false);
-        node2.disconnect(edge, false);
-
-        this.edges.remove(edge);
-
-        MutableBoolean contain2 = new MutableBoolean(false);
-        Consumer<CircuitNode> checkConsumer = node -> {
-            if (node == node2) {
-                contain2.setTrue();
-            }
-        };
-        bfs(node1, checkConsumer, e -> {});
-
-        if (contain2.isTrue()) {
-            return false;
-        }
-
-        Consumer<CircuitNode> reassignNode = circuitNode -> {
-            circuitNode.setCircuit(newCircuit);
-            newCircuit.addNode(circuitNode);
-            this.nodes.remove(circuitNode);
-            if (world != null) {
-                world.post(new ElementCircuitChangedEvent(world, circuitNode, this, newCircuit));
-            }
-        };
-        Consumer<CircuitEdge> reassignEdge = circuitEdge -> {
-            circuitEdge.setCircuit(newCircuit);
-            newCircuit.addEdge(circuitEdge);
-            this.edges.remove(circuitEdge);
-            if (world != null) {
-                world.post(new ElementCircuitChangedEvent(world, circuitEdge, this, newCircuit));
-            }
-        };
-
-        bfs(node2, reassignNode, reassignEdge);
-        return true;
     }
 
     public Set<CircuitNode> adjacentNodes(CircuitNode node) {

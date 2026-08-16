@@ -138,7 +138,7 @@ public sealed class CircuitElement implements Comparable<CircuitElement>, TagSer
      */
     public static CompoundTag serialize(CircuitElement element){
         CompoundTag tag = new CompoundTag();
-        tag.putString(CoreStrings.ELEMENT_TYPE, element.typeIdForSave());
+        // save() already writes ELEMENT_TYPE (via typeIdForSave); no need to write it twice.
         element.save(tag);
         return tag;
     }
@@ -239,7 +239,8 @@ public sealed class CircuitElement implements Comparable<CircuitElement>, TagSer
 
     @Override
     public int compareTo(CircuitElement o) {
-        return o.id.compareTo(this.id);
+        // Ascending by id, matching the declared {@link #comparator} (f.id.compareTo(s.id)).
+        return this.id.compareTo(o.id);
     }
 
     @Override

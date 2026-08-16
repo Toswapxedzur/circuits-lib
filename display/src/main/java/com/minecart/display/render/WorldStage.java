@@ -148,24 +148,14 @@ public class WorldStage extends Stage {
     }
 
     public RenderContext createRenderContext(CircuitElement element, Actor actor, Batch batch, float parentAlpha) {
-        UUID id = element.getId();
-        boolean dragged = id != null && id.equals(draggedElementId);
-        boolean combine = id != null && id.equals(combineTargetId);
         return new RenderContext(
-                this,
                 actor,
                 textures,
                 batch,
                 parentAlpha,
                 actor.getColor(),
                 electricalRenderStats,
-                renderTimeSeconds,
-                id != null && id.equals(hoveredElementId),
-                dragged,
-                dragged && draggedOverTrash,
-                id != null && id.equals(editingElementId),
-                combine,
-                combine && combineTargetValid);
+                renderTimeSeconds);
     }
 
     public OrthographicCamera getCamera() {
@@ -467,10 +457,12 @@ public class WorldStage extends Stage {
      * to land on a sub-pixel line. Edges with missing endpoints / positions are skipped.
      */
     public CircuitElement hitTestWorld(float worldX, float worldY) {
-        for (NodeActor a : nodeActors.values()) {
-            if (BoundingBoxRegistry.contains(a.getNode(), a, worldX, worldY)) {
-                return a.getNode();
-            }
+        // Delegate to findNodeActorAt so overlapping nodes resolve to the closest-centre match rather
+        // than whichever HashMap iteration order happened to visit first (same fix already applied in
+        // findNodeActorAt for combine-target detection).
+        NodeActor nodeHit = findNodeActorAt(worldX, worldY);
+        if (nodeHit != null) {
+            return nodeHit.getNode();
         }
         for (ComponentActor a : componentActors.values()) {
             if (BoundingBoxRegistry.contains(a.getComponent(), a, worldX, worldY)) {

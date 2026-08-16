@@ -103,6 +103,18 @@ public final class TranslateComponentOp implements CascadeOp {
         translated.clear();
     }
 
+    @Override
+    public java.util.List<com.minecart.logic.CircuitElement> movedElements() {
+        if (component == null || (dx == 0.0 && dy == 0.0)) {
+            return java.util.List.of();
+        }
+        java.util.List<com.minecart.logic.CircuitElement> moved =
+                new java.util.ArrayList<>(translated.size() + 1);
+        moved.add(component);
+        moved.addAll(translated);
+        return moved;
+    }
+
     public CircuitComponent getComponent() {
         return component;
     }

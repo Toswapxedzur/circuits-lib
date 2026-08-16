@@ -1,6 +1,5 @@
 package com.minecart.server.handler;
 
-import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
@@ -50,7 +49,8 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
 
     @Override
     public void handle(MoveElementPayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(MoveElementPayload payload) {
@@ -58,7 +58,7 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
         if (!(world instanceof ServerWorld serverWorld)) {
             return;
         }
-        CircuitElement el = findElement(world, payload.getElementId());
+        CircuitElement el = ElementLookup.findElement(world, payload.getElementId());
         if (el == null) {
             return;
         }
@@ -82,16 +82,6 @@ public final class MoveElementHandler implements PayloadHandler<MoveElementPaylo
             CombineCascadeEngine.tryMoveEdgeAnchor(serverWorld, edge, payload.getX(), payload.getY(),
                     payload.hasAnchorLocal(), payload.getAnchorLocalX(), payload.getAnchorLocalY());
         }
-    }
-
-    private static CircuitElement findElement(World world, java.util.UUID id) {
-        for (Circuit c : world.getCircuits()) {
-            CircuitElement el = c.findElement(id);
-            if (el != null) {
-                return el;
-            }
-        }
-        return null;
     }
 
     /**

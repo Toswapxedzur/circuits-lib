@@ -38,8 +38,7 @@ import java.util.Objects;
  * Each body carries a caller-supplied identifier (typically a {@code UUID} from the domain layer,
  * but typed as {@link Object} so this module stays independent). Two bodies are equal iff their
  * identifiers are equal. This identity rule is what lets constraints reference bodies indirectly
- * through {@link AnchorPoint}, and is what the solver uses to deduplicate when the same body is
- * pulled in by multiple constraints in the same iteration.
+ * through {@link AnchorPoint}.
  */
 public final class Body {
 
@@ -115,8 +114,17 @@ public final class Body {
         return invMassR;
     }
 
+    /**
+     * Moves the body to an absolute world position, carrying its {@link #rotationPivot} with it so
+     * the pivot keeps tracking the position for a free body (the class contract). Callers that need
+     * a pivot distinct from the position — e.g. a PIVOTED body around a world-anchored point — call
+     * {@link #setRotationPivot(Vec2)} AFTER this. Without moving the pivot here, a repositioned free
+     * body would keep a stale pivot and the constraints' lever arms (anchor − pivot) would inject a
+     * phantom rotation.
+     */
     public void setPosition(Vec2 position) {
         this.position = Objects.requireNonNull(position, "position");
+        this.rotationPivot = this.position;
     }
 
     public void setAngle(double angle) {

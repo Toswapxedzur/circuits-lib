@@ -2,8 +2,8 @@ package com.minecart.protocol.payload;
 
 import com.minecart.serialization.tag.CompoundTag;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -13,8 +13,11 @@ import java.util.function.Supplier;
  */
 public final class PayloadRegistry {
 
-    protected static final Map<String, PayloadType<?>> REGISTRY = new HashMap<>();
-    protected static boolean isFrozen = false;
+    // ConcurrentHashMap: entries are inserted lazily by each payload class's <clinit> (on whatever
+    // application thread first touches the class), then read by Netty IO threads during decode.
+    // A plain HashMap gives no happens-before between those writes and cross-thread reads, so a
+    // concurrent resize could drop or corrupt keys; ConcurrentHashMap publishes each put safely.
+    protected static final Map<String, PayloadType<?>> REGISTRY = new ConcurrentHashMap<>();
 
     private PayloadRegistry() {
     }
@@ -25,9 +28,6 @@ public final class PayloadRegistry {
      * @return the registered type handle (same pattern as {@link com.minecart.registry.CircuitElementRegistry#register})
      */
     public static <T extends Payload> PayloadType<T> register(String id, Supplier<T> factory) {
-        if (isFrozen) {
-            throw new UnsupportedOperationException("The payload registry is already frozen and no further payload can be registered");
-        }
         if (REGISTRY.containsKey(id)) {
             throw new IllegalArgumentException("Payload ID already registered: " + id);
         }
@@ -47,19 +47,5 @@ public final class PayloadRegistry {
             throw new IllegalArgumentException("Unknown payload ID: " + id);
         }
         return type;
-    }
-
-    /**
-     * Call after registration phase is complete to forbid further {@link #register} calls.
-     */
-    public static void freeze() {
-        if (isFrozen) {
-            return;
-        }
-        isFrozen = true;
-    }
-
-    public static boolean isFrozen() {
-        return isFrozen;
     }
 }

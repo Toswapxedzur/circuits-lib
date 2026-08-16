@@ -39,10 +39,6 @@ public class CircuitLifecycleListener {
     private final List<Entry> pendingRemoves = new ArrayList<>();
     private boolean attached;
 
-    public CircuitLifecycleListener(Level level) {
-        this(level, null);
-    }
-
     /**
      * @param defaultSink if non-null, {@link #syncInserts()} / {@link #syncRemoves()} delegate here.
      */

@@ -31,9 +31,9 @@ import java.util.UUID;
 public final class CircuitElementChange {
 
     public enum Kind {
-        INSERT("insert"),
-        REMOVE("remove"),
-        CHANGE("change");
+        INSERT(ProtocolStrings.KIND_INSERT),
+        REMOVE(ProtocolStrings.KIND_REMOVE),
+        CHANGE(ProtocolStrings.KIND_CHANGE);
 
         private static final Map<String, Kind> TABLE = new HashMap<>();
         String value;
@@ -186,12 +186,12 @@ public final class CircuitElementChange {
         tag.putString(ProtocolStrings.TAG_KIND, kind.value);
         switch (kind) {
             case INSERT -> {
-                tag.putString(ProtocolStrings.ELEMENT_TAG_ELEMENT_REGISTRY_ID, registryTypeId);
+                tag.putString(ProtocolStrings.TAG_ELEMENT_TYPE_ID, registryTypeId);
                 tag.put(ProtocolStrings.ELEMENT_TAG_DATA, data.copy());
             }
             case REMOVE -> TagUtil.putUUID(tag, ProtocolStrings.TAG_ELEMENT_ID, elementId);
             case CHANGE -> {
-                tag.putString(ProtocolStrings.ELEMENT_TAG_ELEMENT_REGISTRY_ID, registryTypeId);
+                tag.putString(ProtocolStrings.TAG_ELEMENT_TYPE_ID, registryTypeId);
                 TagUtil.putUUID(tag, ProtocolStrings.TAG_ELEMENT_ID, elementId);
                 if (data != null) {
                     tag.put(ProtocolStrings.ELEMENT_TAG_DATA, data.copy());
@@ -211,7 +211,7 @@ public final class CircuitElementChange {
         return switch (k) {
             case INSERT -> {
                 CompoundTag data = TagUtil.requireCompoundTag(tag.get(ProtocolStrings.ELEMENT_TAG_DATA), ProtocolStrings.ELEMENT_TAG_DATA);
-                String regId = tag.getString(ProtocolStrings.ELEMENT_TAG_ELEMENT_REGISTRY_ID);
+                String regId = tag.getString(ProtocolStrings.TAG_ELEMENT_TYPE_ID);
                 if (regId == null || regId.isEmpty()) {
                     regId = data.getString(CoreStrings.ELEMENT_TYPE);
                 }
@@ -228,7 +228,7 @@ public final class CircuitElementChange {
                 yield remove(id);
             }
             case CHANGE -> {
-                String regId = tag.getString(ProtocolStrings.ELEMENT_TAG_ELEMENT_REGISTRY_ID);
+                String regId = tag.getString(ProtocolStrings.TAG_ELEMENT_TYPE_ID);
                 UUID id = TagUtil.getUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
                 if (id == null) {
                     throw new IllegalArgumentException("Missing element_id");

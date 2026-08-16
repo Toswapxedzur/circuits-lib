@@ -1,6 +1,5 @@
 package com.minecart.server.handler;
 
-import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerLevel;
@@ -13,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Server-side handler for {@link CombineCascadePayload}. Walks each merge request through
@@ -39,7 +37,8 @@ public final class CombineCascadeHandler implements PayloadHandler<CombineCascad
 
     @Override
     public void handle(CombineCascadePayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(CombineCascadePayload payload) {
@@ -48,8 +47,8 @@ public final class CombineCascadeHandler implements PayloadHandler<CombineCascad
             return;
         }
         for (CombineCascadePayload.CombinePair pair : payload.getPairs()) {
-            CircuitNode survivor = findNode(serverWorld, pair.getSurvivorId());
-            CircuitNode absorbed = findNode(serverWorld, pair.getAbsorbedId());
+            CircuitNode survivor = ElementLookup.findNode(serverWorld, pair.getSurvivorId());
+            CircuitNode absorbed = ElementLookup.findNode(serverWorld, pair.getAbsorbedId());
             if (survivor == null || absorbed == null) {
                 log.debug("combine-cascade: unknown node id, skipping pair {} / {}",
                         pair.getSurvivorId(), pair.getAbsorbedId());
@@ -67,18 +66,5 @@ public final class CombineCascadeHandler implements PayloadHandler<CombineCascad
                         survivor.getId(), absorbed.getId());
             }
         }
-    }
-
-    private static CircuitNode findNode(World world, UUID id) {
-        if (id == null) {
-            return null;
-        }
-        for (Circuit circuit : world.getCircuits()) {
-            CircuitNode n = circuit.findNode(id);
-            if (n != null) {
-                return n;
-            }
-        }
-        return null;
     }
 }

@@ -28,7 +28,8 @@ public final class RenameWorldHandler implements PayloadHandler<RenameWorldPaylo
 
     @Override
     public void handle(RenameWorldPayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(RenameWorldPayload payload) {

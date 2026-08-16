@@ -61,10 +61,6 @@ public class CircuitElementListener implements IncrementPayloadListener<CircuitE
     private final Map<UUID, ElementState> pending = new LinkedHashMap<>();
     private boolean attached;
 
-    public CircuitElementListener(Level level) {
-        this(level, null);
-    }
-
     /**
      * @param defaultSink if non-null, {@link #sync()} delegates here; otherwise use {@link #sync(Consumer)}.
      */
@@ -108,24 +104,6 @@ public class CircuitElementListener implements IncrementPayloadListener<CircuitE
     @Override
     public CircuitElementPayload nextPayload() {
         return null;
-    }
-
-    /**
-     * Ordered list of destination circuit keys that {@link #sync(Consumer)} would emit a payload for.
-     * Computed by collapsing the per-element entries to their current circuit (or {@code lastKnownCircuitId}
-     * for removed elements). Returned in payload-emit order. Mainly useful for tests.
-     */
-    public synchronized List<CircuitKey> getPendingCircuitKeys() {
-        List<CircuitKey> keys = new ArrayList<>();
-        LinkedHashMap<CircuitKey, Boolean> seen = new LinkedHashMap<>();
-        for (ElementState s : pending.values()) {
-            CircuitKey key = destinationKeyFor(s);
-            if (key == null) continue;
-            if (seen.putIfAbsent(key, Boolean.TRUE) == null) {
-                keys.add(key);
-            }
-        }
-        return List.copyOf(keys);
     }
 
     /**

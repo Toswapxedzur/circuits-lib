@@ -1,6 +1,9 @@
 package com.minecart.physics;
 
+import com.minecart.physics.constraint.DistanceConstraint;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -123,6 +126,27 @@ class BodyTest {
         Body body = Body.free("x", Vec2.ZERO);
         assertThrows(IllegalArgumentException.class, () -> body.setInvMassT(-0.001));
         assertThrows(IllegalArgumentException.class, () -> body.setInvMassR(-0.001));
+    }
+
+    @Test
+    void setPosition_carries_rotation_pivot_so_a_repositioned_free_body_has_no_phantom_rotation() {
+        // A free body (anchor at its centre) joined to a locked body by one distance constraint.
+        // Repositioning the free body via setPosition must carry the rotation pivot along; with a
+        // stale pivot the lever arm (anchorWorld - pivot) is non-zero and the distance projection
+        // injects a spurious rotation instead of a pure translation.
+        Body free = Body.free("free", new Vec2(0.0, 0.0));
+        Body anchor = Body.locked("anchor", new Vec2(10.0, 0.0));
+        DistanceConstraint c = new DistanceConstraint(
+                AnchorPoint.atCentre(free), AnchorPoint.atCentre(anchor), 5.0);
+
+        // Move the free body off its original pivot before the solve. The pivot must track it.
+        free.setPosition(new Vec2(0.0, 3.0));
+        assertEquals(free.position(), free.rotationPivot());
+
+        Solver.solve(SolverConfig.defaults(), List.of(c));
+
+        // The body only translated to satisfy the bar length — no phantom rotation.
+        assertEquals(0.0, free.angle(), 1e-9);
     }
 
     @Test

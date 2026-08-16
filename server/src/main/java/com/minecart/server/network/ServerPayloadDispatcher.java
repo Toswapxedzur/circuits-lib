@@ -5,6 +5,8 @@ import com.minecart.protocol.payload.Payload;
 import com.minecart.protocol.payload.PayloadHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,6 +25,8 @@ import java.util.Objects;
  */
 public class ServerPayloadDispatcher extends SimpleChannelInboundHandler<Payload> {
 
+    private static final Logger log = LoggerFactory.getLogger(ServerPayloadDispatcher.class);
+
     private final ServerLevel level;
     private final Map<Class<? extends Payload>, PayloadHandler<?>> handlers = new HashMap<>();
 
@@ -38,10 +42,6 @@ public class ServerPayloadDispatcher extends SimpleChannelInboundHandler<Payload
         Objects.requireNonNull(handler, "handler");
         handlers.put(type, handler);
         return this;
-    }
-
-    public ServerLevel getLevel() {
-        return level;
     }
 
     @Override
@@ -69,6 +69,9 @@ public class ServerPayloadDispatcher extends SimpleChannelInboundHandler<Payload
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        // Log before closing: a silent ctx.close() here previously masked startup failures such as an
+        // uninitialised payload/registry (a decode/dispatch exception would drop the channel with no trace).
+        log.warn("Closing channel {} after inbound pipeline exception", ctx.channel(), cause);
         ctx.close();
     }
 }

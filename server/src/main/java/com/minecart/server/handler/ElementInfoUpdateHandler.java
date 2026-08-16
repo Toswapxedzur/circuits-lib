@@ -1,7 +1,6 @@
 package com.minecart.server.handler;
 
 import com.minecart.event.events.ElementInfoUpdateEvent;
-import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.ServerLevel;
@@ -10,7 +9,6 @@ import com.minecart.protocol.payload.client.ElementInfoUpdatePayload;
 import com.minecart.ui.panel.PanelSnapshot;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Server-side handler for {@link ElementInfoUpdatePayload}. The payload is intentionally inert —
@@ -33,7 +31,8 @@ public final class ElementInfoUpdateHandler implements PayloadHandler<ElementInf
 
     @Override
     public void handle(ElementInfoUpdatePayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(ElementInfoUpdatePayload payload) {
@@ -41,7 +40,7 @@ public final class ElementInfoUpdateHandler implements PayloadHandler<ElementInf
         if (world == null) {
             return;
         }
-        CircuitElement el = findElement(world, payload.getElementId());
+        CircuitElement el = ElementLookup.findElement(world, payload.getElementId());
         if (el == null) {
             return;
         }
@@ -55,18 +54,5 @@ public final class ElementInfoUpdateHandler implements PayloadHandler<ElementInf
         // element types (e.g. a debug logger) can subscribe once. Listeners filter by
         // `evt.getElement() instanceof MyElementType` to scope down.
         level.post(new ElementInfoUpdateEvent(el, snapshot));
-    }
-
-    private static CircuitElement findElement(World world, UUID id) {
-        if (id == null) {
-            return null;
-        }
-        for (Circuit c : world.getCircuits()) {
-            CircuitElement el = c.findElement(id);
-            if (el != null) {
-                return el;
-            }
-        }
-        return null;
     }
 }

@@ -11,6 +11,7 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
@@ -155,8 +156,20 @@ public class GameScreen extends ScreenAdapter {
      */
     private int lastSeenWorldsRevision = -1;
 
+    /**
+     * Independent snapshot of {@link com.minecart.client.logic.ClientLevel#worldsRevision()} for the
+     * render-loop selection-recovery + label-refresh pass. Kept separate from
+     * {@link #lastSeenWorldsRevision} (the dropdown-rebuild gate) so a manual
+     * {@link #rebuildWorldDropdown()} — which latches {@link #lastSeenWorldsRevision} — can never swallow
+     * a revision bump (e.g. a remote world deletion) before {@link #render(float)} gets to run the
+     * deleted-selected-world recovery. Starts at {@code -1} so the first frame always reconciles.
+     */
+    private int lastRecoveredWorldsRevision = -1;
+
     /** Hides "Save & Quit" while the snapshot is flushing so the user can't double-click. */
     private boolean shuttingDown;
+    /** Guards {@link #dispose()} so a screen disposed on navigation isn't double-freed at app exit. */
+    private boolean disposed;
     /** The currently-open settings dialog, or {@code null}. */
     private Dialog settingsDialog;
 
@@ -358,6 +371,10 @@ public class GameScreen extends ScreenAdapter {
         worldDropdown.setBackground(skin.getDrawable("d_panel"));
         worldDropdown.pad(8f);
         worldDropdown.top();
+        // Touchable so the panel's background padding intercepts clicks instead of letting them fall
+        // through to the world canvas (a Table defaults to childrenOnly, leaving the padding
+        // click-through, which placed elements underneath the panel).
+        worldDropdown.setTouchable(Touchable.enabled);
         worldDropdown.setVisible(false);
         uiStage.addActor(worldDropdown);
 
@@ -368,6 +385,9 @@ public class GameScreen extends ScreenAdapter {
         Table paletteRow = new Table();
         paletteRow.setBackground(skin.getDrawable("d_panel"));
         paletteRow.pad(8f);
+        // Touchable so the palette panel's padding catches clicks rather than passing them through to
+        // the canvas (which would place an element under the palette).
+        paletteRow.setTouchable(Touchable.enabled);
 
         Label searchLabel = new Label("Search:", skin, "muted");
         searchField = new TextField("", skin);
@@ -391,6 +411,9 @@ public class GameScreen extends ScreenAdapter {
         // canvas but below any modal dialogs (which are added on demand via Dialog.show).
         trashOverlay.setBackground(skin.getDrawable("d_panel"));
         trashOverlay.pad(14f);
+        // Touchable so the overlay's padding intercepts input while it's shown (mid-drag) rather than
+        // leaving click-through padding over the canvas.
+        trashOverlay.setTouchable(Touchable.enabled);
         Image trashImg = new Image(uiIcons.trash());
         Label trashLabel = new Label("Drop to delete", skin, "muted");
         trashOverlay.add(trashImg).size(64f, 64f).row();
@@ -617,28 +640,12 @@ public class GameScreen extends ScreenAdapter {
         }
         connection.send(new DeleteWorldPayload(id));
         if (id.equals(selectedWorldId)) {
-            selectedWorldId = pickFallbackWorldExcept(id);
+            selectedWorldId = pickFallbackWorld(id);
             applyWorldView(selectedWorldId);
             refreshSelectedWorldLabel();
         }
         flashStatus("Deleting world...");
         if (worldDropdownOpen) rebuildWorldDropdown();
-    }
-
-    private UUID pickFallbackWorldExcept(UUID excludedId) {
-        UUID firstUnnamed = null;
-        for (World w : clientLevel.getWorlds()) {
-            UUID id = w.getId();
-            if (id == null || id.equals(excludedId)) continue;
-            String name = w.getName();
-            if (name != null && !name.isEmpty()) {
-                return id;
-            }
-            if (firstUnnamed == null) {
-                firstUnnamed = id;
-            }
-        }
-        return firstUnnamed;
     }
 
     private void openModifyWorldDialog(World w) {
@@ -697,10 +704,19 @@ public class GameScreen extends ScreenAdapter {
      * in which case the caller should clear the selection and let the canvas blank out.
      */
     private UUID pickFallbackWorld() {
+        return pickFallbackWorld(null);
+    }
+
+    /**
+     * Same as {@link #pickFallbackWorld()} but never returns {@code excludedId} — used when the caller
+     * has just requested a world's deletion and must not fall back onto the world that's about to go
+     * away. Passing {@code null} makes this identical to the no-arg overload.
+     */
+    private UUID pickFallbackWorld(UUID excludedId) {
         UUID firstUnnamed = null;
         for (World w : clientLevel.getWorlds()) {
             UUID id = w.getId();
-            if (id == null) continue;
+            if (id == null || id.equals(excludedId)) continue;
             String name = w.getName();
             if (name != null && !name.isEmpty()) {
                 return id;
@@ -1028,17 +1044,15 @@ public class GameScreen extends ScreenAdapter {
             return;
         }
         float pct = parsed;
-        // Rewrite every saved view (visited worlds), then ensure every currently-known world has an entry
-        // — even worlds the user hasn't visited yet should adopt the new magnification on first switch.
-        for (UUID id : worldViews.keySet().toArray(new UUID[0])) {
-            WorldViewState old = worldViews.get(id);
-            worldViews.put(id, old.withZoom(100f / Math.max(0.0001f, pct)));
-        }
+        float zoom = 100f / Math.max(0.0001f, pct);
+        // Ensure every currently-known world has a saved view — even worlds the user hasn't visited yet
+        // should adopt the new magnification on first switch — then rewrite the zoom on every saved view
+        // (including stale entries for worlds no longer present) exactly once.
         for (World w : clientLevel.getWorlds()) {
-            UUID id = w.getId();
-            worldViews.computeIfAbsent(id, k -> WorldViewState.defaultView());
-            WorldViewState st = worldViews.get(id);
-            worldViews.put(id, st.withZoom(100f / Math.max(0.0001f, pct)));
+            worldViews.computeIfAbsent(w.getId(), k -> WorldViewState.defaultView());
+        }
+        for (UUID id : worldViews.keySet().toArray(new UUID[0])) {
+            worldViews.put(id, worldViews.get(id).withZoom(zoom));
         }
         if (selectedWorldId != null && clientLevel.findWorld(selectedWorldId) != null) {
             worldStage.setMagnificationPercent(pct);
@@ -1186,7 +1200,12 @@ public class GameScreen extends ScreenAdapter {
                     }
                     return cameraController.scrolled(amountX, amountY);
                 }
-                return false;
+                // Over a UI actor (palette / dropdown / panel chrome): hand the wheel to the UI stage
+                // (so scroll panes still scroll) and CONSUME it. Returning true stops the event from
+                // falling through to the drag/camera processors below, which would otherwise rotate a
+                // hidden component or zoom the world underneath the panel.
+                uiStage.scrolled(amountX, amountY);
+                return true;
             }
         });
         // UI first so palette / dropdown / settings clicks win.
@@ -1231,10 +1250,9 @@ public class GameScreen extends ScreenAdapter {
 
         clientLevel.tick();
         cameraController.update(dt);
-        refreshToolLabel();
-        refreshSelectedWorldLabel();
 
-        if (clientLevel.worldsRevision() != lastSeenWorldsRevision) {
+        int worldsRevision = clientLevel.worldsRevision();
+        if (worldsRevision != lastRecoveredWorldsRevision) {
             // The world set actually changed (server INSERT/REMOVE/RENAME applied). Two responsibilities:
             //
             // 1. Auto-recover selection. If the world the editor is pinned to disappeared (e.g. another
@@ -1246,7 +1264,14 @@ public class GameScreen extends ScreenAdapter {
             //    touchUp -- clicks on rows were silently dropped. The revision counter is the dirty flag.
             //
             // We do BOTH whenever the revision moves (not only when the dropdown is open) so a remote
-            // delete is reflected in the canvas + label immediately, regardless of dropdown state.
+            // delete is reflected in the canvas + label immediately, regardless of dropdown state. This
+            // gate uses its OWN revision snapshot (lastRecoveredWorldsRevision) so a manual dropdown
+            // rebuild -- which latches lastSeenWorldsRevision -- can't consume the bump before we run
+            // the recovery below (B5).
+            // The selected-world label is refreshed unconditionally here (not per-frame) so a rename of
+            // the currently-selected world still updates the label even when neither recovery branch
+            // fires (R10: refresh on change, not every frame).
+            refreshSelectedWorldLabel();
             if (selectedWorldId == null) {
                 UUID fallback = preferredSelectedWorldId != null
                         && clientLevel.findWorld(preferredSelectedWorldId) != null
@@ -1282,10 +1307,13 @@ public class GameScreen extends ScreenAdapter {
                     flashStatus("Selected world was deleted -- switched to '" + name + "'.");
                 }
             }
-            lastSeenWorldsRevision = clientLevel.worldsRevision();
-            if (worldDropdownOpen) {
-                rebuildWorldDropdown();
-            }
+            lastRecoveredWorldsRevision = worldsRevision;
+        }
+        // Dropdown rebuild is gated on its OWN revision snapshot (lastSeenWorldsRevision, latched inside
+        // rebuildWorldDropdown) so it stays decoupled from the recovery gate above. Only rebuilds while
+        // open, and only once per revision change -- not every frame.
+        if (worldDropdownOpen && worldsRevision != lastSeenWorldsRevision) {
+            rebuildWorldDropdown();
         }
 
         worldStage.act(dt);
@@ -1335,9 +1363,9 @@ public class GameScreen extends ScreenAdapter {
     }
 
     @Override public void hide() {
-        // Game.setScreen calls hide() on the outgoing screen but does NOT call dispose() until app
-        // exit, so this is the right hook for "session ended" - the moment the user clicks Save & Quit,
-        // Quit Without Saving, or Disconnect. SessionLog.end() is idempotent so calling it again from
+        // hide() runs when the outgoing screen is swapped out (DisplayApp.setScreen disposes it right
+        // after), and is the hook for "session ended" - the moment the user clicks Save & Quit, Quit
+        // Without Saving, or Disconnect. SessionLog.end() is idempotent so calling it again from
         // dispose() (e.g. on app shutdown without a prior screen swap) is harmless.
         if (infoPanelController != null) {
             // Close any open panel so its actor doesn't outlive the stage on a screen swap.
@@ -1347,6 +1375,10 @@ public class GameScreen extends ScreenAdapter {
     }
 
     @Override public void dispose() {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
         if (!shuttingDown) {
             shutdownSessionNoSave();
         }

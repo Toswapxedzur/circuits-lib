@@ -45,4 +45,22 @@ public final class AllPayloads {
     public static final PayloadType<RotateElementPayload> ROTATE_ELEMENT = RotateElementPayload.TYPE;
 
     private AllPayloads() {}
+
+    /**
+     * Force the JVM to run this class's {@code <clinit>}, which is where every {@link Payload} kind is
+     * registered with {@link PayloadRegistry} (each field above reads a payload's {@code X.TYPE}
+     * non-constant field, triggering that payload class's {@code <clinit>} and its
+     * {@link PayloadRegistry#register} side-effect).
+     *
+     * <p>This method LOOKS like a no-op and is tempting to delete — don't. Same rationale as
+     * {@link com.minecart.registry.AllComponents#init()} / {@link com.minecart.registry.AllElementInfos#init()}:
+     * per JLS §12.4.1, <em>invoking</em> a static method declared on a class triggers that class's
+     * static field initializers, whereas a {@code AllPayloads.class} class-literal does
+     * <strong>not</strong>. Without this call at startup, no payload kind gets registered and
+     * {@link PayloadRegistry#getType(String)} throws "Unknown payload ID: ..." for the first frame
+     * decoded on a cold connection.
+     */
+    public static void init() {
+        // Intentionally empty. See javadoc.
+    }
 }

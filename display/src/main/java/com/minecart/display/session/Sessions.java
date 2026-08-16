@@ -11,6 +11,7 @@ import com.minecart.client.network.ClientPayloadDispatcher;
 import com.minecart.event.info.InfoInjectors;
 import com.minecart.display.world.WorldEntry;
 import com.minecart.registry.AllElementInfos;
+import com.minecart.protocol.payload.AllPayloads;
 import com.minecart.protocol.payload.server.CircuitElementPayload;
 import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
 import com.minecart.protocol.payload.server.CircuitSnapshotPayload;
@@ -90,6 +91,10 @@ public final class Sessions {
         // JLS §12.4.1, so the static field initializers that call ElementInfoRegistry.register
         // would silently never run. See AllElementInfos#init().
         AllElementInfos.init();
+        // Same rationale for the payload registry: force every PayloadType to register (via each
+        // payload class's static TYPE field) before the client decoder sees a server->client payload.
+        // Empty method whose only job is to trigger AllPayloads' <clinit>. See AllPayloads#init().
+        AllPayloads.init();
         // Inject default PositionInfo / RotationInfo on the client mirror; loaded payloads override these.
         InfoInjectors.attach(level);
         return level;

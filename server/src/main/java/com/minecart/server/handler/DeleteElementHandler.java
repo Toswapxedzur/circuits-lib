@@ -13,7 +13,6 @@ import com.minecart.protocol.payload.PayloadHandler;
 import com.minecart.protocol.payload.client.DeleteElementPayload;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Server-side handler for {@link DeleteElementPayload}: removes a free node, a whole component, or
@@ -29,7 +28,8 @@ public final class DeleteElementHandler implements PayloadHandler<DeleteElementP
 
     @Override
     public void handle(DeleteElementPayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(DeleteElementPayload payload) {
@@ -37,7 +37,7 @@ public final class DeleteElementHandler implements PayloadHandler<DeleteElementP
         if (!(world instanceof ServerWorld serverWorld)) {
             return;
         }
-        CircuitElement el = findElement(world, payload.getElementId());
+        CircuitElement el = ElementLookup.findElement(world, payload.getElementId());
         if (el == null) {
             return;
         }
@@ -60,15 +60,5 @@ public final class DeleteElementHandler implements PayloadHandler<DeleteElementP
             }
             serverWorld.disconnect(edge);
         }
-    }
-
-    private static CircuitElement findElement(World world, UUID id) {
-        for (Circuit c : world.getCircuits()) {
-            CircuitElement el = c.findElement(id);
-            if (el != null) {
-                return el;
-            }
-        }
-        return null;
     }
 }

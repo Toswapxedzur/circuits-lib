@@ -32,6 +32,7 @@ public class MultiplayerScreen extends ScreenAdapter {
     private final ServerManager servers;
     private final Stage stage;
     private final Table listTable;
+    private boolean disposed;
 
     public MultiplayerScreen(DisplayApp app) {
         this.app = app;
@@ -254,6 +255,10 @@ public class MultiplayerScreen extends ScreenAdapter {
     }
 
     @Override public void dispose() {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
         stage.dispose();
     }
 }

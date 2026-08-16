@@ -75,15 +75,12 @@ public final class ActionPayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
+        // worldId is intentionally optional here (unlike the other client → server payloads): an
+        // ActionPayload is dispatched by circuit + element id and does not require a world id, so it
+        // is read leniently via getUUID rather than Payload.requireUUID.
         worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        circuitId = TagUtil.getUUID(tag, ProtocolStrings.TAG_CIRCUIT_ID);
-        elementId = TagUtil.getUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
-        if (circuitId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_CIRCUIT_ID + "'");
-        }
-        if (elementId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_ELEMENT_ID + "'");
-        }
+        circuitId = Payload.requireUUID(tag, ProtocolStrings.TAG_CIRCUIT_ID);
+        elementId = Payload.requireUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
         CompoundTag actionTag = TagUtil.requireCompoundTag(tag.get(ProtocolStrings.TAG_ACTION), ProtocolStrings.TAG_ACTION);
         action = Action.loadAction(actionTag);
     }

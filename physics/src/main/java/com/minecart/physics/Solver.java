@@ -65,7 +65,7 @@ public final class Solver {
                 summed += c.project();
             }
             lastResidual = summed;
-            if (summed < config.residualTolerance()) {
+            if (summed <= config.residualTolerance()) {
                 // Converged: bump iteration count to reflect we did *this* pass too.
                 iterations++;
                 if (log.isTraceEnabled()) {

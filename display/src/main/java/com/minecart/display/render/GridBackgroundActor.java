@@ -29,6 +29,12 @@ public class GridBackgroundActor extends Actor implements Disposable {
     /** Target number of major grid lines visible across the shorter screen dimension. Drives step picking. */
     private static final int TARGET_MAJORS = 10;
     private static final int MINOR_SUBDIVISIONS = 5;
+    /**
+     * Hard cap on grid lines drawn per axis per frame. {@link #pickMajorStep} keeps the real count near
+     * {@link #TARGET_MAJORS}, so this only ever engages as a safety valve against a degenerate step that
+     * would otherwise ask the GL thread to emit an unbounded number of lines.
+     */
+    private static final int MAX_LINES_PER_AXIS = 10_000;
 
     private final WorldStage worldStage;
     private final ShapeRenderer shapes = new ShapeRenderer();
@@ -84,33 +90,60 @@ public class GridBackgroundActor extends Actor implements Disposable {
     private void drawVerticals(float left, float right, float bottom, float top,
                                float minorStep, float majorStep) {
         // Snap the iteration start to the nearest minor step boundary so the grid is stable as the camera
-        // pans (instead of crawling with the camera).
-        float startMinor = (float) (Math.ceil(left / minorStep) * minorStep);
+        // pans (instead of crawling with the camera). Loop with an integer index over a double start so
+        // the step is never lost to float ULP at extreme zoom (a `for (float x = ...; x += step)` loop
+        // never terminates once ulp(x) > step, hard-freezing the GL thread).
+        double startMinor = Math.ceil(left / minorStep) * minorStep;
+        int minorCount = stepCount(startMinor, right, minorStep);
         shapes.setColor(MINOR);
-        for (float x = startMinor; x <= right; x += minorStep) {
+        for (int i = 0; i < minorCount; i++) {
+            float x = (float) (startMinor + i * (double) minorStep);
             if (isMultipleOf(x, majorStep)) continue;
             shapes.line(x, bottom, x, top);
         }
-        float startMajor = (float) (Math.ceil(left / majorStep) * majorStep);
+        double startMajor = Math.ceil(left / majorStep) * majorStep;
+        int majorCount = stepCount(startMajor, right, majorStep);
         shapes.setColor(MAJOR);
-        for (float x = startMajor; x <= right; x += majorStep) {
+        for (int i = 0; i < majorCount; i++) {
+            float x = (float) (startMajor + i * (double) majorStep);
             shapes.line(x, bottom, x, top);
         }
     }
 
     private void drawHorizontals(float left, float right, float bottom, float top,
                                  float minorStep, float majorStep) {
-        float startMinor = (float) (Math.ceil(bottom / minorStep) * minorStep);
+        double startMinor = Math.ceil(bottom / minorStep) * minorStep;
+        int minorCount = stepCount(startMinor, top, minorStep);
         shapes.setColor(MINOR);
-        for (float y = startMinor; y <= top; y += minorStep) {
+        for (int i = 0; i < minorCount; i++) {
+            float y = (float) (startMinor + i * (double) minorStep);
             if (isMultipleOf(y, majorStep)) continue;
             shapes.line(left, y, right, y);
         }
-        float startMajor = (float) (Math.ceil(bottom / majorStep) * majorStep);
+        double startMajor = Math.ceil(bottom / majorStep) * majorStep;
+        int majorCount = stepCount(startMajor, top, majorStep);
         shapes.setColor(MAJOR);
-        for (float y = startMajor; y <= top; y += majorStep) {
+        for (int i = 0; i < majorCount; i++) {
+            float y = (float) (startMajor + i * (double) majorStep);
             shapes.line(left, y, right, y);
         }
+    }
+
+    /**
+     * Number of grid lines from {@code start} up to and including {@code end} at {@code step} spacing.
+     * Computed as an integer count (not a float-accumulating loop bound) so extreme zoom / pan can never
+     * produce a non-terminating loop. Clamped to a sane upper bound so a degenerate step never asks the
+     * GL thread to draw millions of lines. Returns 0 for a non-finite or non-positive step.
+     */
+    static int stepCount(double start, double end, float step) {
+        if (!Double.isFinite(start) || !Double.isFinite(end) || !(step > 0f) || end < start) {
+            return 0;
+        }
+        long count = (long) Math.floor((end - start) / step) + 1L;
+        if (count < 0L) {
+            return 0;
+        }
+        return (int) Math.min(count, MAX_LINES_PER_AXIS);
     }
 
     /**

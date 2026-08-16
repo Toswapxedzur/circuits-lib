@@ -17,10 +17,8 @@ import com.minecart.protocol.payload.client.RotateElementPayload;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.info.PositionInfo;
 
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -90,18 +88,6 @@ public class DragController extends InputAdapter {
     /** Element's original position at drag start (component centre or free node position). */
     private double originX;
     private double originY;
-    /**
-     * For an edge drag: ids of the "movables" (free nodes or component centres) that need to be
-     * translated by the same delta so the wire's two endpoints keep their relative offset. Captured at
-     * drag start to avoid recomputing per touchDragged. Origins of those movables live in
-     * {@link #edgeMovableOrigins}; whether each id is a component vs. a free node lives in
-     * {@link #edgeMovableIsComponent}. Edge endpoints that are an intrinsic non-port internal node are
-     * skipped — the edge's drag would orphan such a port from its parent component, which is exactly
-     * what {@code PositionInfo.isFixed()} is meant to prevent.
-     */
-    private final java.util.LinkedHashSet<UUID> edgeMovableIds = new java.util.LinkedHashSet<>();
-    private final java.util.Map<UUID, double[]> edgeMovableOrigins = new java.util.HashMap<>();
-    private final java.util.Map<UUID, Boolean> edgeMovableIsComponent = new java.util.HashMap<>();
     /** Set after a drag actually moves so a stationary click doesn't generate a no-op MoveElement. */
     private boolean movedSinceDown;
     /**
@@ -308,7 +294,13 @@ public class DragController extends InputAdapter {
                 beginDrag(node.getComponent(), w[0], w[1]);
                 clickedId = node.getId();
             } else {
-                beginDragFreeNode(node);
+                // Belt-and-braces: a port whose component pointer somehow didn't get linked client-side
+                // (stale mirror, replication race) would surface here as a "free" node. Honour
+                // PositionInfo.isFixed() so it still resists being dragged off — we skip starting the
+                // drag but keep clickedId so a stationary click can still open its info panel.
+                if (!isPositionFixed(node)) {
+                    beginDragFreeNode(node);
+                }
                 clickedId = node.getId();
             }
             dragStartWorldX = w[0];
@@ -353,9 +345,6 @@ public class DragController extends InputAdapter {
         PositionInfo pos = comp.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
-        edgeMovableIds.clear();
-        edgeMovableOrigins.clear();
-        edgeMovableIsComponent.clear();
         combineTargetId = null;
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
@@ -375,9 +364,6 @@ public class DragController extends InputAdapter {
         PositionInfo pos = node.getInfo(AllElementInfos.POSITION);
         originX = pos != null ? pos.getX() : 0.0;
         originY = pos != null ? pos.getY() : 0.0;
-        edgeMovableIds.clear();
-        edgeMovableOrigins.clear();
-        edgeMovableIsComponent.clear();
         combineTargetId = null;
         stage.setDraggedElementId(draggingId);
         stage.setDraggedOverTrash(false);
@@ -400,9 +386,6 @@ public class DragController extends InputAdapter {
         currentDy = 0.0;
         componentGrabLocalX = 0.0;
         componentGrabLocalY = 0.0;
-        edgeMovableIds.clear();
-        edgeMovableOrigins.clear();
-        edgeMovableIsComponent.clear();
         combineTargetId = null;
 
         CircuitNode start = edge.getStart();
@@ -543,12 +526,6 @@ public class DragController extends InputAdapter {
         boolean overTrash = draggingId != null && isOverTrash(screenX, screenY);
         boolean moved = movedSinceDown;
         UUID combineTarget = combineTargetId;
-        // Snapshot drag-time tables before clearing so the touchUp dispatch path can still walk the
-        // captured movables / origins without races against a fresh drag start.
-        java.util.LinkedHashSet<UUID> movables = new java.util.LinkedHashSet<>(edgeMovableIds);
-        java.util.Map<UUID, double[]> movableOrigins = new java.util.HashMap<>(edgeMovableOrigins);
-        java.util.Map<UUID, Boolean> movableIsComp = new java.util.HashMap<>(edgeMovableIsComponent);
-
         UUID gestureId = dragGestureId;
         // Clear local drag state before sending so the trashcan + tint disappear immediately.
         draggingId = null;
@@ -628,10 +605,11 @@ public class DragController extends InputAdapter {
     }
 
     /**
-     * Sends the cursor's target pose for the dragged component. The pose is {@code (originX + dx,
-     * originY + dy)} where {@code origin} was captured at drag start and {@code (dx, dy)} is the
-     * latest cursor delta from {@link #touchDragged}. We deliberately do NOT read the live
-     * {@link PositionInfo} — under the server-authoritative model that field reflects the last
+     * Sends the cursor's target pose for the dragged component. The pose is the current cursor world
+     * position {@code (dragStartWorldX + currentDx, dragStartWorldY + currentDy)} together with the
+     * body-local grab point {@code (componentGrabLocalX, componentGrabLocalY)} captured at drag start,
+     * so the server re-anchors the body under the same grabbed point. We deliberately do NOT read the
+     * live {@link PositionInfo} — under the server-authoritative model that field reflects the last
      * pose the server broadcast, not where the user is trying to drag the element to.
      */
     private void sendComponentMove(UUID worldId, UUID id) {
@@ -658,46 +636,6 @@ public class DragController extends InputAdapter {
         connection.send(new MoveElementPayload(worldId, id, dragGestureId,
                 dragStartWorldX + currentDx, dragStartWorldY + currentDy,
                 componentGrabLocalX, componentGrabLocalY));
-    }
-
-    /**
-     * Issues one {@link MoveElementPayload} per captured edge-drag movable so the server accepts
-     * each as an authoritative pose update. The target pose for each movable is its captured origin
-     * plus the current cursor delta — the wire's two endpoints stay at a fixed offset from each
-     * other (translation only, no rotation, no length change) because every movable shares the
-     * same delta.
-     *
-     * <p>Component movables hand off to {@link com.minecart.server.handler.MoveElementHandler#moveComponent}
-     * which restamps every port via {@link com.minecart.registry.ComponentAnchorRegistry}; free
-     * movables go through the free-node path. The order is the order the movables were captured
-     * in {@link #beginDragEdge}, which is endpoint(0) before endpoint(1) — irrelevant for
-     * correctness but keeps the test captures stable.
-     */
-    private void sendEdgeMovableMoves(UUID worldId,
-                                      Set<UUID> movables,
-                                      java.util.Map<UUID, double[]> origins,
-                                      java.util.Map<UUID, Boolean> isComp,
-                                      double dx, double dy) {
-        for (UUID movId : movables) {
-            double[] orig = origins.get(movId);
-            if (orig == null) {
-                continue;
-            }
-            Boolean component = isComp.get(movId);
-            if (Boolean.TRUE.equals(component)) {
-                if (findComponent(movId) == null) {
-                    continue;
-                }
-                connection.send(new MoveElementPayload(worldId, movId, dragGestureId,
-                        orig[0] + dx, orig[1] + dy));
-            } else {
-                if (findFreeNode(movId) == null) {
-                    continue;
-                }
-                connection.send(new MoveElementPayload(worldId, movId, dragGestureId,
-                        orig[0] + dx, orig[1] + dy));
-            }
-        }
     }
 
     /**
@@ -853,13 +791,16 @@ public class DragController extends InputAdapter {
                 || (el instanceof CircuitEdge edge && edge.getComponent() == null))) {
             return false;
         }
-        rightPressClickedElementId = el.getId();
-        CircuitComponent target = resolveRotationTarget(el);
-        // Lock-while-editing applies to the 1s right-press rotation too: claim the event so the
-        // camera doesn't start panning either, but don't start the rotation timer.
-        if (target != null && isEditingTarget(target)) {
+        // Lock-while-editing applies to the 1s right-press rotation too. Check BEFORE latching a click
+        // target: claim the event so the camera doesn't pan, but do NOT record rightPressClickedElementId
+        // — otherwise releasing a right-click on the element you're editing (its body, one of its ports,
+        // or an edited free node) fires onElementClicked, which reopens the info panel and discards the
+        // user's typed-but-unsaved edits. Mirrors the left-click / scroll-rotate lock-while-editing paths.
+        if (isEditingTarget(el)) {
             return true;
         }
+        rightPressClickedElementId = el.getId();
+        CircuitComponent target = resolveRotationTarget(el);
         rightGestureElementId = target != null ? target.getId() : null;
         rightPressStartMs = System.currentTimeMillis();
         rightPressActive = false;

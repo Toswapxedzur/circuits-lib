@@ -13,8 +13,6 @@ import java.util.Objects;
  */
 public final class EdgePivotConstraint implements Constraint {
 
-    private static final double EPSILON = 1e-12;
-
     private final AnchorPoint anchorA;
     private final AnchorPoint anchorB;
     private final Vec2 pivot;
@@ -30,13 +28,13 @@ public final class EdgePivotConstraint implements Constraint {
         Vec2 wA = anchorA.worldPosition();
         Vec2 wB = anchorB.worldPosition();
         Vec2 edge = wB.sub(wA);
-        if (edge.lengthSquared() < EPSILON) {
+        if (edge.lengthSquared() < ConstraintSupport.EPSILON) {
             return 0.0;
         }
         Vec2 normal = edge.normalised().perpendicular();
         Vec2 midpoint = wA.add(wB).scale(0.5);
         double C = midpoint.sub(pivot).dot(normal);
-        if (Math.abs(C) < EPSILON) {
+        if (Math.abs(C) < ConstraintSupport.EPSILON) {
             return 0.0;
         }
 
@@ -67,7 +65,7 @@ public final class EdgePivotConstraint implements Constraint {
         Vec2 wA = anchorA.worldPosition();
         Vec2 wB = anchorB.worldPosition();
         Vec2 edge = wB.sub(wA);
-        if (edge.lengthSquared() < EPSILON) {
+        if (edge.lengthSquared() < ConstraintSupport.EPSILON) {
             return 0.0;
         }
         Vec2 normal = edge.normalised().perpendicular();

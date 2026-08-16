@@ -25,9 +25,17 @@ public class AllComponents {
             CircuitElementRegistry.register("circuit_node", CircuitNode::new, true);
     /**
      * Bare {@link CircuitEdge} for use only inside {@link CircuitComponent} ({@link CircuitElementType#isUnusual()}).
+     *
+     * <p>Unlike {@link #WIRE}, this is a true bare {@link CircuitEdge}: its {@code collectRule} stamps
+     * <em>no</em> voltage law, so its branch current is a free variable determined solely by KCL plus
+     * whatever constitutive relation a component imposes. This is exactly what the BJT collector branch
+     * needs — an ideal current source whose current is set by {@code I_C = beta*I_B} while its voltage
+     * floats. Registering it as {@code Wire::new} (a perfect wire that stamps {@code V_start-V_end=0})
+     * added an extra equation, making any circuit containing a BJT over-determined / singular once the
+     * component constitutive relation is collected.
      */
     public static final CircuitElementType<CircuitEdge> CIRCUIT_EDGE =
-            CircuitElementRegistry.register("circuit_edge", Wire::new, true);
+            CircuitElementRegistry.register("circuit_edge", CircuitEdge::new, true);
     /** Ideal wire (unusual).*/
     public static final CircuitElementType<Wire> WIRE =
             CircuitElementRegistry.register("wire", Wire::new, true);

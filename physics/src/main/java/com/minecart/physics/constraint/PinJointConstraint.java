@@ -1,7 +1,6 @@
 package com.minecart.physics.constraint;
 
 import com.minecart.physics.AnchorPoint;
-import com.minecart.physics.Body;
 import com.minecart.physics.Vec2;
 
 import java.util.Objects;
@@ -40,8 +39,6 @@ import java.util.Objects;
  */
 public final class PinJointConstraint implements Constraint {
 
-    private static final double EPSILON = 1e-12;
-
     private final AnchorPoint anchorA;
     private final AnchorPoint anchorB;
 
@@ -64,42 +61,15 @@ public final class PinJointConstraint implements Constraint {
         Vec2 wB = anchorB.worldPosition();
         Vec2 d = wB.sub(wA);
         double dist = d.length();
-        if (dist < EPSILON) {
+        if (dist < ConstraintSupport.EPSILON) {
             return 0.0;
         }
 
         Vec2 n = d.scale(1.0 / dist);
         // For a pin joint, C = |d| (we want |d| → 0). This is exactly a distance constraint with
-        // rest length 0; reuse the same projection arithmetic so the two constraint types share
-        // their numerical behaviour and we don't reinvent the rotation-aware Jacobian here.
-        Body bodyA = anchorA.body();
-        Body bodyB = anchorB.body();
-
-        Vec2 rA = wA.sub(bodyA.rotationPivot());
-        Vec2 rB = wB.sub(bodyB.rotationPivot());
-
-        double wTA = bodyA.invMassT();
-        double wRA = bodyA.invMassR();
-        double wTB = bodyB.invMassT();
-        double wRB = bodyB.invMassR();
-
-        double crossA = rA.cross(n);
-        double crossB = rB.cross(n);
-
-        double wTotal = wTA + wRA * crossA * crossA
-                      + wTB + wRB * crossB * crossB;
-        if (wTotal == 0.0) {
-            return dist;
-        }
-
-        // λ = -C / w_total. C = dist (positive). λ is negative, so corrections push A toward B
-        // and B toward A along n (which is the unit vector pointing from A to B).
-        double lambda = -dist / wTotal;
-
-        bodyA.translate(n.scale(-lambda));
-        bodyB.translate(n.scale(lambda));
-        bodyA.rotate(-lambda * crossA);
-        bodyB.rotate(lambda * crossB);
+        // rest length 0, so we delegate to the same shared projection arithmetic the distance
+        // constraint uses — a future fix to the rotation-aware Jacobian then happens in one place.
+        ConstraintSupport.project(anchorA, anchorB, n, dist);
 
         return dist;
     }

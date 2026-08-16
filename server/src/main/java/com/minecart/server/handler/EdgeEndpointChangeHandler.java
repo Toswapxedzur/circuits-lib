@@ -1,9 +1,7 @@
 package com.minecart.server.handler;
 
-import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
@@ -13,7 +11,6 @@ import com.minecart.variant.info.LockMode;
 import com.minecart.variant.info.LockState;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Server-side handler for {@link EdgeEndpointChangePayload}: locates the edge and the two new endpoint
@@ -38,7 +35,8 @@ public final class EdgeEndpointChangeHandler implements PayloadHandler<EdgeEndpo
 
     @Override
     public void handle(EdgeEndpointChangePayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(EdgeEndpointChangePayload payload) {
@@ -46,12 +44,12 @@ public final class EdgeEndpointChangeHandler implements PayloadHandler<EdgeEndpo
         if (!(world instanceof ServerWorld serverWorld)) {
             return;
         }
-        CircuitEdge edge = findEdge(world, payload.getEdgeId());
+        CircuitEdge edge = ElementLookup.findEdge(world, payload.getEdgeId());
         if (edge == null) {
             return;
         }
-        CircuitNode newStart = findNode(world, payload.getNewStartNodeId());
-        CircuitNode newEnd = findNode(world, payload.getNewEndNodeId());
+        CircuitNode newStart = ElementLookup.findNode(world, payload.getNewStartNodeId());
+        CircuitNode newEnd = ElementLookup.findNode(world, payload.getNewEndNodeId());
         if (newStart == null || newEnd == null || newStart == newEnd) {
             return;
         }
@@ -77,31 +75,5 @@ public final class EdgeEndpointChangeHandler implements PayloadHandler<EdgeEndpo
         } catch (IllegalArgumentException | IllegalStateException ignored) {
             // Forgiving protocol: ignore stale or malformed requests rather than killing the channel.
         }
-    }
-
-    private static CircuitEdge findEdge(World world, UUID id) {
-        if (id == null) {
-            return null;
-        }
-        for (Circuit circuit : world.getCircuits()) {
-            CircuitElement el = circuit.findEdge(id);
-            if (el instanceof CircuitEdge e) {
-                return e;
-            }
-        }
-        return null;
-    }
-
-    private static CircuitNode findNode(World world, UUID id) {
-        if (id == null) {
-            return null;
-        }
-        for (Circuit circuit : world.getCircuits()) {
-            CircuitNode n = circuit.findNode(id);
-            if (n != null) {
-                return n;
-            }
-        }
-        return null;
     }
 }

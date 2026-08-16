@@ -68,10 +68,7 @@ public final class PlaceComponentPayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
-        worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        if (worldId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_WORLD_ID + "'");
-        }
+        worldId = Payload.requireUUID(tag, ProtocolStrings.TAG_WORLD_ID);
         elementTypeId = tag.getString(ProtocolStrings.TAG_ELEMENT_TYPE_ID);
         if (elementTypeId == null || elementTypeId.isEmpty()) {
             throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_ELEMENT_TYPE_ID + "'");

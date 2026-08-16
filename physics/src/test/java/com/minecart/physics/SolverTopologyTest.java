@@ -55,6 +55,24 @@ class SolverTopologyTest {
     }
 
     @Test
+    void at_rest_constraint_with_zero_tolerance_converges_immediately() {
+        // Two locked bodies exactly at their rest distance: the summed residual is exactly 0.0.
+        // With residualTolerance == 0.0 (which SolverConfig explicitly permits) the convergence
+        // check must accept an exact-zero residual rather than burning every iteration and
+        // reporting converged=false.
+        Body a = Body.locked("a", new Vec2(0.0, 0.0));
+        Body b = Body.locked("b", new Vec2(3.0, 0.0));
+        DistanceConstraint c = new DistanceConstraint(
+                AnchorPoint.atCentre(a), AnchorPoint.atCentre(b), 3.0);
+
+        SolverResult r = Solver.solve(new SolverConfig(20, 0.0), List.of(c));
+        assertTrue(r.converged(), () -> "expected convergence at zero residual; got " + r);
+        assertEquals(0.0, r.residual(), 0.0);
+        // Converged on the first pass, not at the iteration cap.
+        assertEquals(1, r.iterations());
+    }
+
+    @Test
     void four_bar_loop_closes_when_one_corner_is_perturbed_slightly() {
         // Four-body loop A - B - C - D - A linked by rigid bars. Initial geometry: unit square.
         //   A (0,0)  -  B (1,0)

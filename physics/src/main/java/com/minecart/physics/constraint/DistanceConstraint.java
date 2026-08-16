@@ -1,7 +1,6 @@
 package com.minecart.physics.constraint;
 
 import com.minecart.physics.AnchorPoint;
-import com.minecart.physics.Body;
 import com.minecart.physics.Vec2;
 
 import java.util.Objects;
@@ -41,8 +40,6 @@ import java.util.Objects;
  * </ul>
  */
 public final class DistanceConstraint implements Constraint {
-
-    private static final double EPSILON = 1e-12;
 
     private final AnchorPoint anchorA;
     private final AnchorPoint anchorB;
@@ -86,7 +83,7 @@ public final class DistanceConstraint implements Constraint {
         Vec2 d = wB.sub(wA);
         double dist = d.length();
 
-        if (dist < EPSILON) {
+        if (dist < ConstraintSupport.EPSILON) {
             // Anchors coincident — no constraint axis. The residual is whatever the rest length
             // asks for, but we can't push along an undefined direction in this iteration. A later
             // iteration will see the anchors separated (because some other constraint moved them)
@@ -96,48 +93,15 @@ public final class DistanceConstraint implements Constraint {
 
         Vec2 n = d.scale(1.0 / dist);
         double C = dist - restLength;
-        if (Math.abs(C) < EPSILON) {
+        if (Math.abs(C) < ConstraintSupport.EPSILON) {
             return 0.0;
         }
 
-        Body bodyA = anchorA.body();
-        Body bodyB = anchorB.body();
-
-        Vec2 rA = wA.sub(bodyA.rotationPivot());
-        Vec2 rB = wB.sub(bodyB.rotationPivot());
-
-        double wTA = bodyA.invMassT();
-        double wRA = bodyA.invMassR();
-        double wTB = bodyB.invMassT();
-        double wRB = bodyB.invMassR();
-
-        // 2D scalar cross product (r × n).z — the lever arm for body rotation along the axis n.
-        double crossA = rA.cross(n);
-        double crossB = rB.cross(n);
-
-        double wTotal = wTA + wRA * crossA * crossA
-                      + wTB + wRB * crossB * crossB;
-        if (wTotal == 0.0) {
-            // Both endpoints fully locked. Residual stays at |C| — solver will see no progress
-            // and decide based on iteration cap.
-            return Math.abs(C);
-        }
-
-        // λ = -C / w_total in the standard PBD derivation. Body.translate / Body.rotate apply the
-        // inverse-inertia scaling internally, so we pass deltas WITHOUT pre-multiplying by w_T or
-        // w_R — the Body method handles that.
-        double lambda = -C / wTotal;
-
-        // ΔpA = w_T_A * (-λ * n) when applied through Body.translate (which scales by w_T_A).
-        // Sign convention: when C > 0 (anchors too far apart), λ < 0, so -λ > 0 and A moves
-        // along +n (toward B). B moves along -n (toward A). Symmetrical.
-        bodyA.translate(n.scale(-lambda));
-        bodyB.translate(n.scale(lambda));
-
-        // ΔθA = w_R_A * (-λ * crossA) via Body.rotate (which scales by w_R_A). The sign of crossA
-        // captures which rotation direction moves A's anchor along +n.
-        bodyA.rotate(-lambda * crossA);
-        bodyB.rotate(lambda * crossB);
+        // Standard rigid-body distance projection along the unit axis n. The shared helper builds
+        // w_total from each body's lever arm and applies the paired translate / rotate correction;
+        // when both endpoints are fully locked (w_total == 0) it leaves the bodies untouched and we
+        // report |C| so the solver decides on global progress.
+        ConstraintSupport.project(anchorA, anchorB, n, C);
 
         return Math.abs(C);
     }

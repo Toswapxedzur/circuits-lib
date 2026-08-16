@@ -66,8 +66,6 @@ import java.util.Objects;
  */
 public final class SpringConstraint implements Constraint {
 
-    private static final double EPSILON = 1e-12;
-
     private final AnchorPoint anchor;
     private Vec2 target;
     private final double compliance;
@@ -119,7 +117,7 @@ public final class SpringConstraint implements Constraint {
         Vec2 d = worldAnchor.sub(target);
         double dist = d.length();
 
-        if (dist < EPSILON) {
+        if (dist < ConstraintSupport.EPSILON) {
             // Anchor coincides with target. No axis to push along, but residual is already zero —
             // the spring is at rest, nothing to do.
             return 0.0;
