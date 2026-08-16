@@ -1,48 +1,42 @@
 package com.minecart.display.input;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Input.Buttons;
 import com.badlogic.gdx.Input.Keys;
-import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector3;
 
 /**
- * A free-fly camera for the 3D snap editor: the player moves anywhere rather than orbiting a fixed point.
+ * A Minecraft-creative-style fly camera. The mouse cursor is locked and hidden; moving the mouse turns the
+ * view directly (no dragging), and the crosshair stays at screen centre. Movement is WASD + up/down, with a
+ * sprint modifier. There is deliberately no scroll-to-zoom or pan — the field of view is fixed, matching
+ * Minecraft, and the scroll wheel is free for the hotbar.
  *
  * <ul>
- *   <li><b>W/A/S/D</b> — move forward/left/back/right along the view.</li>
- *   <li><b>Space / Left-Ctrl</b> (or <b>E / Q</b>) — move up / down.</li>
- *   <li><b>Left-Shift</b> — move faster.</li>
- *   <li><b>Right-mouse drag</b> — look around (yaw/pitch). The cursor stays free for the left button
- *       to pick, so looking is on the right button.</li>
- *   <li><b>Scroll</b> — dolly along the view direction.</li>
+ *   <li><b>Mouse move</b> — look (yaw/pitch), only while {@link #setLookEnabled(boolean) look is enabled}
+ *       (i.e. the cursor is captured).</li>
+ *   <li><b>W/A/S/D</b> — move forward/left/back/right; <b>Space / Left-Ctrl</b> — up/down;
+ *       <b>Left-Shift</b> — sprint.</li>
  * </ul>
  *
- * Call {@link #update(float)} every frame to apply held-key movement; look and dolly are event-driven.
+ * Call {@link #update(float)} every frame; it consumes the per-frame mouse delta and applies held-key
+ * movement.
  */
-public final class FreeCameraController extends InputAdapter {
+public final class FreeCameraController {
 
     private final PerspectiveCamera camera;
     private float yawDeg;
     private float pitchDeg;
     private float moveSpeed;
-
-    private boolean looking;
-    private int lastX;
-    private int lastY;
+    private float lookSensitivity = 0.15f;
+    private boolean lookEnabled = true;
 
     private final Vector3 forward = new Vector3();
     private final Vector3 right = new Vector3();
 
-    private float lookSensitivity = 0.25f;
-    private float dollyStep;
-
     public FreeCameraController(PerspectiveCamera camera, Vector3 startPos, Vector3 lookAt, float moveSpeed) {
         this.camera = camera;
         this.moveSpeed = moveSpeed;
-        this.dollyStep = moveSpeed;
         camera.position.set(startPos);
 
         Vector3 dir = new Vector3(lookAt).sub(startPos).nor();
@@ -51,8 +45,19 @@ public final class FreeCameraController extends InputAdapter {
         applyOrientation();
     }
 
-    /** Applies held-movement keys for this frame's {@code dt} seconds. */
+    /** When {@code false}, mouse movement is ignored (e.g. while the cursor is released for menus). */
+    public void setLookEnabled(boolean lookEnabled) {
+        this.lookEnabled = lookEnabled;
+    }
+
+    /** Applies this frame's mouse-look delta and held-movement keys ({@code dt} seconds). */
     public void update(float dt) {
+        if (lookEnabled) {
+            yawDeg += Gdx.input.getDeltaX() * lookSensitivity;
+            pitchDeg = MathUtils.clamp(pitchDeg - Gdx.input.getDeltaY() * lookSensitivity, -89f, 89f);
+            applyOrientation();
+        }
+
         float speed = moveSpeed * dt;
         if (Gdx.input.isKeyPressed(Keys.SHIFT_LEFT)) {
             speed *= 3f;
@@ -76,47 +81,5 @@ public final class FreeCameraController extends InputAdapter {
         camera.direction.set(cosPitch * MathUtils.cos(yaw), MathUtils.sin(pitch), cosPitch * MathUtils.sin(yaw)).nor();
         camera.up.set(Vector3.Y);
         camera.update();
-    }
-
-    @Override
-    public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-        if (button == Buttons.RIGHT) {
-            looking = true;
-            lastX = screenX;
-            lastY = screenY;
-            return true;
-        }
-        return false;
-    }
-
-    @Override
-    public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-        if (button == Buttons.RIGHT) {
-            looking = false;
-            return true;
-        }
-        return false;
-    }
-
-    @Override
-    public boolean touchDragged(int screenX, int screenY, int pointer) {
-        if (!looking) {
-            return false;
-        }
-        int dx = screenX - lastX;
-        int dy = screenY - lastY;
-        lastX = screenX;
-        lastY = screenY;
-        yawDeg += dx * lookSensitivity;
-        pitchDeg = MathUtils.clamp(pitchDeg - dy * lookSensitivity, -89f, 89f);
-        applyOrientation();
-        return true;
-    }
-
-    @Override
-    public boolean scrolled(float amountX, float amountY) {
-        camera.position.mulAdd(camera.direction, -amountY * dollyStep);
-        camera.update();
-        return true;
     }
 }

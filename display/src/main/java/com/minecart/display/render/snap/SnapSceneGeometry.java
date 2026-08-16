@@ -10,79 +10,106 @@ import java.util.List;
 
 /**
  * Pure mapping from a {@link SnapBoard} to a list of {@link BoxSpec}s in 3D world units — no libGDX, so it
- * is unit-testable without a GL context. The renderer draws whatever this produces.
+ * is unit-testable without a GL context.
  *
- * <h2>Units (pixelated spec)</h2>
- * One slot spans {@link #CELL} world units on each axis (the "16×16 px" footprint), and a part stands
- * {@link #PART_HEIGHT} units tall (the "height = 4"), preserving the 16:4 proportion. Posts are the lattice
- * points {@code (col,row)}; world position of a post on layer {@code l} is
- * {@code (col*CELL, l*PART_HEIGHT, row*CELL)} with Y up. The baseboard top sits at {@code y = 0}; layer
- * {@code l} parts occupy {@code y ∈ [l*PART_HEIGHT, (l+1)*PART_HEIGHT]}.
+ * <h2>Units — real Snap-Circuit dimensions (all in "pixels")</h2>
+ * The base is a grid of <b>bumps</b> (posts) spaced {@link #BUMP_SPACING}=16 apart, each a
+ * {@link #BUMP_WIDTH}=3 × {@link #BUMP_HEIGHT}=1 nub. A component snaps onto bumps with a
+ * {@link #COMPONENT_FOOTPRINT}=9 wide, {@link #COMPONENT_HEIGHT}=4 tall body (longer when it spans several
+ * bumps) and <b>generates its own bumps on top</b> so the next component stacks on it. One stack level is
+ * {@link #LEVEL_HEIGHT} = component + bump tall. A bump at level {@code L} occupies {@code y ∈ [L·LEVEL,
+ * L·LEVEL+1]}; a component at level {@code L} sits on those bumps ({@code y ∈ [L·LEVEL+1, L·LEVEL+5]}) and
+ * its top bumps are the level {@code L+1} bumps.
  */
 public final class SnapSceneGeometry {
 
-    /** World units per slot (the 16×16 footprint). */
-    public static final float CELL = 16f;
-    /** Part height in world units (the "height = 4"). */
-    public static final float PART_HEIGHT = 4f;
+    /** Grid spacing between bumps. */
+    public static final float BUMP_SPACING = 16f;
+    /** Bump nub width/depth. */
+    public static final float BUMP_WIDTH = 3f;
+    /** Bump nub height. */
+    public static final float BUMP_HEIGHT = 1f;
+    /** Component body footprint (width/depth over a single bump). */
+    public static final float COMPONENT_FOOTPRINT = 9f;
+    /** Component body height. */
+    public static final float COMPONENT_HEIGHT = 4f;
+    /** One stack level: a component plus the bump on top of it. */
+    public static final float LEVEL_HEIGHT = COMPONENT_HEIGHT + BUMP_HEIGHT;
     /** Baseboard slab thickness (below y=0). */
     public static final float BASE_THICKNESS = 2f;
-    /** Cross-section (width/depth) of a device part's bar. */
-    public static final float PART_CROSS = 6f;
-    /** Cube size of a rendered post marker. */
-    public static final float POST_SIZE = 2f;
-    /** Extra margin around the board slab beyond the outermost posts. */
-    public static final float BASE_MARGIN = CELL;
+    /** Extra margin around the base slab beyond the outermost bumps. */
+    public static final float BASE_MARGIN = BUMP_SPACING;
 
     private SnapSceneGeometry() {}
 
-    /** Builds the full scene (baseboard slab, post markers, and one bar per placed part). */
+    /** World X of a bump column. */
+    public static float worldX(int col) { return col * BUMP_SPACING; }
+    /** World Z of a bump row. */
+    public static float worldZ(int row) { return row * BUMP_SPACING; }
+    /** Y of the bottom of a bump at stack level {@code level}. */
+    public static float bumpBottomY(int level) { return level * LEVEL_HEIGHT; }
+    /** Y centre of a component body at stack level {@code level}. */
+    public static float bodyCenterY(int level) { return level * LEVEL_HEIGHT + BUMP_HEIGHT + COMPONENT_HEIGHT / 2f; }
+
+    /** Builds the full scene: base slab, every base bump, and each component (body + its two top bumps). */
     public static List<BoxSpec> build(SnapBoard board) {
         List<BoxSpec> boxes = new ArrayList<>();
         addBase(board, boxes);
-        addPosts(board, boxes);
+        addBaseBumps(board, boxes);
         for (SnapPlacement placement : board.snapshot()) {
             boxes.add(partBox(placement));
+            boxes.add(topBump(placement.postA(), placement.layer()));
+            boxes.add(topBump(placement.postB(), placement.layer()));
         }
         return boxes;
     }
 
     private static void addBase(SnapBoard board, List<BoxSpec> out) {
-        float spanX = board.width() * CELL;
-        float spanZ = board.height() * CELL;
+        float spanX = board.width() * BUMP_SPACING;
+        float spanZ = board.height() * BUMP_SPACING;
         out.add(new BoxSpec(
                 spanX / 2f, -BASE_THICKNESS / 2f, spanZ / 2f,
                 spanX + BASE_MARGIN, BASE_THICKNESS, spanZ + BASE_MARGIN,
                 BoxSpec.Category.BASE));
     }
 
-    private static void addPosts(SnapBoard board, List<BoxSpec> out) {
+    private static void addBaseBumps(SnapBoard board, List<BoxSpec> out) {
         for (int col = 0; col <= board.width(); col++) {
             for (int row = 0; row <= board.height(); row++) {
-                out.add(new BoxSpec(
-                        col * CELL, 0f, row * CELL,
-                        POST_SIZE, POST_SIZE, POST_SIZE,
-                        BoxSpec.Category.POST));
+                out.add(bump(col, row, 0));
             }
         }
     }
 
-    /** The bar for one device/connector part, spanning its two posts on its layer. */
-    static BoxSpec partBox(SnapPlacement placement) {
+    /** A bump nub at the given column/row and stack level. */
+    static BoxSpec bump(int col, int row, int level) {
+        return new BoxSpec(
+                worldX(col), bumpBottomY(level) + BUMP_HEIGHT / 2f, worldZ(row),
+                BUMP_WIDTH, BUMP_HEIGHT, BUMP_WIDTH, BoxSpec.Category.BUMP);
+    }
+
+    /** The top bump a component provides above one of its terminals (the level {@code level+1} bump). */
+    static BoxSpec topBump(Post terminal, int level) {
+        return bump(terminal.col(), terminal.row(), level + 1);
+    }
+
+    /** The component body bar spanning its two terminal bumps at its stack level. */
+    public static BoxSpec partBox(SnapPlacement placement) {
         Post a = placement.postA();
         Post b = placement.postB();
-        float ax = a.col() * CELL, az = a.row() * CELL;
-        float bx = b.col() * CELL, bz = b.row() * CELL;
+        float ax = worldX(a.col()), az = worldZ(a.row());
+        float bx = worldX(b.col()), bz = worldZ(b.row());
         float cx = (ax + bx) / 2f;
         float cz = (az + bz) / 2f;
-        float cy = placement.layer() * PART_HEIGHT + PART_HEIGHT / 2f;
+        float cy = bodyCenterY(placement.layer());
 
-        // A unit part runs one cell along its facing axis; the other in-plane axis is the thin cross.
-        boolean alongX = placement.facing() == Facing.EAST || placement.facing() == Facing.WEST;
-        float sizeX = alongX ? CELL : PART_CROSS;
-        float sizeZ = alongX ? PART_CROSS : CELL;
+        boolean alongX = a.row() == b.row();
+        float span = alongX ? Math.abs(bx - ax) : Math.abs(bz - az);
+        float lengthAlong = span + COMPONENT_FOOTPRINT;
+        float sizeX = alongX ? lengthAlong : COMPONENT_FOOTPRINT;
+        float sizeZ = alongX ? COMPONENT_FOOTPRINT : lengthAlong;
 
-        return new BoxSpec(cx, cy, cz, sizeX, PART_HEIGHT, sizeZ, categoryOf(placement));
+        return new BoxSpec(cx, cy, cz, sizeX, COMPONENT_HEIGHT, sizeZ, categoryOf(placement));
     }
 
     private static BoxSpec.Category categoryOf(SnapPlacement placement) {

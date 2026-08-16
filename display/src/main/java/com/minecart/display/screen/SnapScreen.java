@@ -71,6 +71,7 @@ public final class SnapScreen extends ScreenAdapter {
     private Label statusLabel;
     private TextButton[] hotbarButtons;
     private int lastRevision = Integer.MIN_VALUE;
+    private boolean cursorCaught;
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -105,7 +106,7 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     private void buildScene() {
-        float cell = SnapSceneGeometry.CELL;
+        float cell = SnapSceneGeometry.BUMP_SPACING;
         float centerX = board.width() * cell / 2f;
         float centerZ = board.height() * cell / 2f;
         float span = Math.max(board.width(), board.height()) * cell + cell;
@@ -149,6 +150,13 @@ public final class SnapScreen extends ScreenAdapter {
 
         if (board != null) {
             buildHotbar(skin);
+            Label crosshair = new Label("+", skin);
+            crosshair.setFontScale(1.6f);
+            Table center = new Table();
+            center.setFillParent(true);
+            center.center();
+            center.add(crosshair);
+            uiStage.addActor(center);
         } else {
             statusLabel.setText("No board to display for this session.");
         }
@@ -193,13 +201,8 @@ public final class SnapScreen extends ScreenAdapter {
             return;
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Item: ").append(editor.tool().label());
-        if (!editor.tool().isDelete()) {
-            sb.append("  Facing: ").append(editor.facing());
-        }
-        sb.append("    |    1-4 select • R rotate • LMB ");
-        sb.append(editor.tool().isDelete() ? "erase" : "place");
-        sb.append(" • WASD move • right-drag look");
+        sb.append("Item: ").append(editor.tool().label()).append("  Facing: ").append(editor.facing());
+        sb.append("    |    scroll/1-3 select • R rotate • LMB place • RMB remove • WASD+Space/Ctrl fly • Esc cursor");
         if (editor.hovered() != null) {
             sb.append("    |    aiming: ").append(editor.hovered().placement().type().id());
         }
@@ -208,18 +211,21 @@ public final class SnapScreen extends ScreenAdapter {
 
     // --- edit actions (server-authoritative) ----------------------------------------------------
 
-    /** Left-click: place the ghost, or with the eraser remove the part under the cursor. */
-    private void primaryAction() {
+    /** Left-click: place the ghost if the target is valid. */
+    private void placeAction() {
+        if (editor != null && board != null && integrated != null && editor.ghostValid()) {
+            submitPlace(editor.ghost());
+        }
+    }
+
+    /** Right-click: remove the part under the crosshair. */
+    private void removeAction() {
         if (editor == null || board == null || integrated == null) {
             return;
         }
-        if (editor.tool().isDelete()) {
-            SnapScene.Pickable target = editor.hovered();
-            if (target != null) {
-                submitRemove(target.placement());
-            }
-        } else if (editor.ghostValid()) {
-            submitPlace(editor.ghost());
+        SnapScene.Pickable target = editor.hovered();
+        if (target != null) {
+            submitRemove(target.placement());
         }
     }
 
@@ -258,11 +264,20 @@ public final class SnapScreen extends ScreenAdapter {
         input = new InputMultiplexer();
         input.addProcessor(uiStage);
         input.addProcessor(new EditInput());
-        if (flyCam != null) {
-            input.addProcessor(flyCam);
-        }
         Gdx.input.setInputProcessor(input);
         refreshHotbar();
+        if (board != null) {
+            setCursorCaught(true);
+        }
+    }
+
+    /** Minecraft-style: capture + hide the cursor for mouse-look, or release it so menu buttons are clickable. */
+    private void setCursorCaught(boolean caught) {
+        cursorCaught = caught;
+        Gdx.input.setCursorCatched(caught);
+        if (flyCam != null) {
+            flyCam.setLookEnabled(caught);
+        }
     }
 
     @Override public void render(float dt) {
@@ -295,19 +310,44 @@ public final class SnapScreen extends ScreenAdapter {
         }
     }
 
-    /** Handles world clicks (place/erase) and edit hotkeys; camera keys are polled by the fly cam. */
+    /** Handles world clicks (place/remove), hotbar scroll/keys, and the Esc cursor toggle. */
     private final class EditInput extends InputAdapter {
         @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-            if (button == Buttons.LEFT && editor != null) {
-                primaryAction();
+            if (editor == null) {
+                return false;
+            }
+            if (!cursorCaught) {
+                // Cursor is released for menus; a world click re-captures it (Minecraft "click to resume").
+                setCursorCaught(true);
+                return true;
+            }
+            if (button == Buttons.LEFT) {
+                placeAction();
+                return true;
+            }
+            if (button == Buttons.RIGHT) {
+                removeAction();
                 return true;
             }
             return false;
         }
 
+        @Override public boolean scrolled(float amountX, float amountY) {
+            if (editor == null) {
+                return false;
+            }
+            editor.cycle(amountY > 0 ? 1 : -1);
+            refreshHotbar();
+            return true;
+        }
+
         @Override public boolean keyDown(int keycode) {
             if (editor == null) {
                 return false;
+            }
+            if (keycode == Keys.ESCAPE) {
+                setCursorCaught(!cursorCaught);
+                return true;
             }
             if (keycode == Keys.R) {
                 editor.rotate();
@@ -356,6 +396,7 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     private void navigateBack() {
+        Gdx.input.setCursorCatched(false);
         app.setScreen(isSingleplayer() ? new WorldListScreen(app) : new MultiplayerScreen(app));
     }
 
@@ -381,6 +422,7 @@ public final class SnapScreen extends ScreenAdapter {
             return;
         }
         disposed = true;
+        Gdx.input.setCursorCatched(false);
         if (renderer != null) {
             renderer.dispose();
         }

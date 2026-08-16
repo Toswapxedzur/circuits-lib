@@ -14,44 +14,36 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies ray-pick geometry (no GL): each placed part yields one pickable bounding box, and a ray cast
- * down onto a part hits it while a ray aimed away misses. Uses libGDX math only (BoundingBox / Intersector
- * / Ray), so it runs headless.
+ * Verifies ray-pick geometry (no GL): each placed component yields one pickable bounding box (base + bumps
+ * aren't pickable), and a ray onto the bar hits while a ray aimed away misses.
  */
 class SnapSceneTest {
 
     @Test
-    void oneBoundingBoxPerPartAndItSpansTheBar() {
+    void onePickableBoundingBoxPerComponent() {
         AllSnapParts.init();
-        SnapBoard board = new SnapBoard(1, 1, 1);
-        board.place(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST, 2.0); // bar centred at (8, 2, 0)
+        SnapBoard board = new SnapBoard(4, 4, 3);
+        board.place(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST, 2.0);
+        board.place(AllSnapParts.SNAP_RESISTOR, 0, 0, 1, Facing.EAST, 1.0); // stacked
 
         SnapScene scene = SnapScene.of(board);
-        assertEquals(1, scene.pickables().size(), "one pickable per placed part");
-
-        BoundingBox bounds = scene.pickables().get(0).bounds();
-        float cell = SnapSceneGeometry.CELL;
-        // Bar spans a full cell along X, centred at x=cell/2, so it reaches x=0..cell.
-        assertEquals(0f, bounds.min.x, 1e-4f);
-        assertEquals(cell, bounds.max.x, 1e-4f);
-        assertEquals(0f, bounds.min.y, 1e-4f);
-        assertEquals(SnapSceneGeometry.PART_HEIGHT, bounds.max.y, 1e-4f);
+        assertEquals(2, scene.pickables().size(), "one pickable per component, not per bump");
     }
 
     @Test
-    void rayFromAboveHitsThePartAndRayAsideMisses() {
+    void rayOntoBarHitsAndRayAsideMisses() {
         AllSnapParts.init();
-        SnapBoard board = new SnapBoard(1, 1, 1);
+        SnapBoard board = new SnapBoard(4, 4, 3);
         board.place(AllSnapParts.SNAP_RESISTOR, 0, 0, 0, Facing.EAST, 1.0);
 
         BoundingBox bounds = SnapScene.of(board).pickables().get(0).bounds();
         Vector3 out = new Vector3();
 
-        // Straight down onto the bar's centre.
-        Ray down = new Ray(new Vector3(SnapSceneGeometry.CELL / 2f, 100f, 0f), new Vector3(0f, -1f, 0f));
+        // Straight down onto the bar's centre (between bumps (0,0) and (1,0)).
+        float midX = SnapSceneGeometry.BUMP_SPACING / 2f;
+        Ray down = new Ray(new Vector3(midX, 100f, 0f), new Vector3(0f, -1f, 0f));
         assertTrue(Intersector.intersectRayBounds(down, bounds, out), "a ray onto the bar should hit");
 
-        // Pointing away from the board entirely.
         Ray away = new Ray(new Vector3(1000f, 100f, 1000f), new Vector3(0f, 1f, 0f));
         assertFalse(Intersector.intersectRayBounds(away, bounds, out), "a ray aimed away should miss");
     }

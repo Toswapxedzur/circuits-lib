@@ -13,10 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Phase 1 proof that snap mode "shares the same basic logic": a board built entirely from snap parts,
- * derived into a {@link ServerWorld} via {@link SnapBoard#rebuild}, is solved by the exact same engine as
- * a 2D world. A unit square of posts carries a 2V battery, two ideal wires, and a 1Ω resistor in one
- * loop, so the steady current through the resistor must be V/R = 2A.
+ * Snap mode reuses the same solver, and parts connect by STACKING (real Snap-Circuit rule): a battery on
+ * the base with a resistor stacked directly on top shares the two bump columns, forming a V/R loop.
  */
 class SnapBoardSolveTest {
 
@@ -32,65 +30,56 @@ class SnapBoardSolveTest {
     }
 
     @Test
-    void snapLoopSolvesToVOverR() {
+    void stackedBatteryResistorSolvesToVOverR() {
         AllSnapParts.init();
-
-        //   D(0,1) --wire-- C(1,1)
-        //     |               |
-        //   wire           resistor(1Ω)
-        //     |               |
-        //   A(0,0) --batt--- B(1,0)      (battery 2V: A->B)
-        SnapBoard board = new SnapBoard(1, 1, 1);
-        assertTrue(board.place(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST, 2.0));   // A -> B
-        assertTrue(board.place(AllSnapParts.SNAP_WIRE, 1, 0, 0, Facing.NORTH));          // B -> C
-        assertTrue(board.place(AllSnapParts.SNAP_RESISTOR, 1, 1, 0, Facing.WEST, 1.0));  // C -> D
-        assertTrue(board.place(AllSnapParts.SNAP_WIRE, 0, 1, 0, Facing.SOUTH));          // D -> A
+        SnapBoard board = new SnapBoard(4, 4, 3);
+        assertTrue(board.place(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST, 2.0));   // base: A(0,0)-B(1,0)
+        assertTrue(board.place(AllSnapParts.SNAP_RESISTOR, 0, 0, 1, Facing.EAST, 1.0));  // stacked on top
 
         ServerLevel level = new ServerLevel();
         ServerWorld world = level.createWorld();
         board.rebuild(world);
 
-        // Two wires merge the four posts into two electrical nodes; only the battery and resistor remain
-        // as edges. (A -A/D- rep X, B -B/C- rep Y  =>  X --battery--> Y --resistor--> X.)
+        // Two bump columns (0,0) and (1,0) become two nodes; battery + resistor are the two edges.
         int nodes = 0, edges = 0;
         for (Circuit c : world.getCircuits()) {
             nodes += c.nodes().size();
             edges += c.edges().size();
         }
-        assertEquals(2, nodes, "the two wires should collapse four posts into two shared nodes");
-        assertEquals(2, edges, "only the battery and resistor are device edges");
+        assertEquals(2, nodes, "two bump columns -> two nodes (stacking connects them)");
+        assertEquals(2, edges, "battery + resistor");
 
         level.tick();
-
         Resistor resistor = findResistor(world);
-        assertNotNull(resistor, "resistor should exist in the derived circuit");
-        assertEquals(2.0, Math.abs(resistor.getCurrent().getValue()), 1e-6,
-                "loop current through the 1Ohm resistor from a 2V source should be 2A");
+        assertNotNull(resistor);
+        assertEquals(2.0, Math.abs(resistor.getCurrent().getValue()), 1e-6, "2V across 1Ohm -> 2A");
     }
 
     @Test
-    void placementValidationRejectsOffBoardAndDuplicateEdges() {
+    void twoComponentsCannotShareABumpAtTheSameLevel() {
         AllSnapParts.init();
-        SnapBoard board = new SnapBoard(1, 1, 1);
-
-        // Off-board: origin (1,0) facing EAST -> far post (2,0) exceeds width=1.
-        assertFalse(board.canPlace(new SnapPlacement(AllSnapParts.SNAP_WIRE, 1, 0, 0, Facing.EAST)));
-        assertFalse(board.place(AllSnapParts.SNAP_WIRE, 1, 0, 0, Facing.EAST));
-
-        // First placement on an edge succeeds; a second part on the same two posts is rejected...
-        assertTrue(board.place(AllSnapParts.SNAP_WIRE, 0, 0, 0, Facing.EAST));            // A-B
-        assertFalse(board.place(AllSnapParts.SNAP_RESISTOR, 0, 0, 0, Facing.EAST));       // same edge A-B
-        // ...even when described from the far end (B->A is the same undirected edge).
-        assertFalse(board.place(AllSnapParts.SNAP_RESISTOR, 1, 0, 0, Facing.WEST));       // B-A == A-B
+        SnapBoard board = new SnapBoard(4, 4, 3);
+        assertTrue(board.place(AllSnapParts.SNAP_WIRE, 0, 0, 0, Facing.EAST));           // claims (0,0,0),(1,0,0)
+        // A resistor whose terminal also lands on bump (1,0) at level 0 must be rejected.
+        assertFalse(board.canPlace(new SnapPlacement(AllSnapParts.SNAP_RESISTOR, 1, 0, 0, Facing.EAST)));
     }
 
     @Test
-    void resizeGrowsButNeverShrinks() {
-        SnapBoard board = new SnapBoard(2, 2, 1);
-        board.resize(4, 3);
-        assertEquals(4, board.width());
-        assertEquals(3, board.height());
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> board.resize(1, 3));
+    void stackingRequiresSupportBelow() {
+        AllSnapParts.init();
+        SnapBoard board = new SnapBoard(4, 4, 3);
+        // Nothing below -> a level-1 part is unsupported.
+        assertFalse(board.canPlace(new SnapPlacement(AllSnapParts.SNAP_WIRE, 0, 0, 1, Facing.EAST)));
+        // Put a battery on the base; now both bumps are supported for a stacked part.
+        assertTrue(board.place(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST, 2.0));
+        assertTrue(board.canPlace(new SnapPlacement(AllSnapParts.SNAP_WIRE, 0, 0, 1, Facing.EAST)));
+    }
+
+    @Test
+    void offBoardRejected() {
+        AllSnapParts.init();
+        SnapBoard board = new SnapBoard(1, 1, 2);
+        // Origin (1,0) facing EAST -> far post (2,0) exceeds width 1.
+        assertFalse(board.canPlace(new SnapPlacement(AllSnapParts.SNAP_WIRE, 1, 0, 0, Facing.EAST)));
     }
 }

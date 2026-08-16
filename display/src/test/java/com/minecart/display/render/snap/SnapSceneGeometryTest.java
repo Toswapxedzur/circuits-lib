@@ -3,6 +3,7 @@ package com.minecart.display.render.snap;
 import com.minecart.snap.AllSnapParts;
 import com.minecart.snap.Facing;
 import com.minecart.snap.SnapBoard;
+import com.minecart.snap.SnapPlacement;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -11,64 +12,57 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies the board→3D box mapping (no GL): a part's bar is centred between its two posts at the right
- * height, oriented along its facing, and the base slab + post markers are emitted.
+ * Verifies the board→3D box mapping (no GL) against the real Snap-Circuit dimensions: a component bar is
+ * centred between its two bumps at the right stack height and footprint, the base slab + base bumps are
+ * emitted, and a stacked part sits one level higher.
  */
 class SnapSceneGeometryTest {
 
     private static final float EPS = 1e-4f;
+    private static final float S = SnapSceneGeometry.BUMP_SPACING; // 16
 
     @Test
-    void horizontalBatteryBarIsCentredBetweenPostsAtHalfHeight() {
+    void horizontalBatteryBarSpansItsTwoBumps() {
         AllSnapParts.init();
-        SnapBoard board = new SnapBoard(1, 1, 1);
-        board.place(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST, 2.0); // A(0,0) -> B(1,0)
+        SnapPlacement p = new SnapPlacement(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST); // (0,0)->(1,0)
+        BoxSpec bar = SnapSceneGeometry.partBox(p);
 
-        BoxSpec bar = SnapSceneGeometry.partBox(board.snapshot().get(0));
         assertEquals(BoxSpec.Category.BATTERY, bar.category());
-        // Centre between (0,0) and (1,0) in cells => x = 0.5*CELL, z = 0; y = half a part height.
-        assertEquals(0.5f * SnapSceneGeometry.CELL, bar.cx(), EPS);
+        assertEquals(S / 2f, bar.cx(), EPS);   // centred between col 0 and col 1
         assertEquals(0f, bar.cz(), EPS);
-        assertEquals(SnapSceneGeometry.PART_HEIGHT / 2f, bar.cy(), EPS);
-        // Runs one full cell along X (the facing axis); thin along Z; PART_HEIGHT tall.
-        assertEquals(SnapSceneGeometry.CELL, bar.sizeX(), EPS);
-        assertEquals(SnapSceneGeometry.PART_CROSS, bar.sizeZ(), EPS);
-        assertEquals(SnapSceneGeometry.PART_HEIGHT, bar.sizeY(), EPS);
+        assertEquals(SnapSceneGeometry.bodyCenterY(0), bar.cy(), EPS);
+        // Runs one span + a footprint of caps along X; a footprint wide along Z; COMPONENT_HEIGHT tall.
+        assertEquals(S + SnapSceneGeometry.COMPONENT_FOOTPRINT, bar.sizeX(), EPS);
+        assertEquals(SnapSceneGeometry.COMPONENT_FOOTPRINT, bar.sizeZ(), EPS);
+        assertEquals(SnapSceneGeometry.COMPONENT_HEIGHT, bar.sizeY(), EPS);
     }
 
     @Test
     void verticalPartRunsAlongZ() {
         AllSnapParts.init();
-        SnapBoard board = new SnapBoard(1, 1, 1);
-        board.place(AllSnapParts.SNAP_WIRE, 0, 0, 0, Facing.NORTH); // A(0,0) -> B(0,1)
-
-        BoxSpec bar = SnapSceneGeometry.partBox(board.snapshot().get(0));
-        assertEquals(SnapSceneGeometry.PART_CROSS, bar.sizeX(), EPS);
-        assertEquals(SnapSceneGeometry.CELL, bar.sizeZ(), EPS);
-        assertEquals(0f, bar.cx(), EPS);
-        assertEquals(0.5f * SnapSceneGeometry.CELL, bar.cz(), EPS);
+        SnapPlacement p = new SnapPlacement(AllSnapParts.SNAP_WIRE, 0, 0, 0, Facing.NORTH); // (0,0)->(0,1)
+        BoxSpec bar = SnapSceneGeometry.partBox(p);
+        assertEquals(SnapSceneGeometry.COMPONENT_FOOTPRINT, bar.sizeX(), EPS);
+        assertEquals(S + SnapSceneGeometry.COMPONENT_FOOTPRINT, bar.sizeZ(), EPS);
+        assertEquals(S / 2f, bar.cz(), EPS);
     }
 
     @Test
-    void secondLayerRaisesTheBar() {
+    void stackedPartSitsOneLevelHigher() {
         AllSnapParts.init();
-        SnapBoard board = new SnapBoard(1, 1, 2);
-        board.place(AllSnapParts.SNAP_WIRE, 0, 0, 1, Facing.EAST); // layer 1
-
-        BoxSpec bar = SnapSceneGeometry.partBox(board.snapshot().get(0));
-        assertEquals(1 * SnapSceneGeometry.PART_HEIGHT + SnapSceneGeometry.PART_HEIGHT / 2f, bar.cy(), EPS);
+        BoxSpec low = SnapSceneGeometry.partBox(new SnapPlacement(AllSnapParts.SNAP_WIRE, 0, 0, 0, Facing.EAST));
+        BoxSpec high = SnapSceneGeometry.partBox(new SnapPlacement(AllSnapParts.SNAP_WIRE, 0, 0, 1, Facing.EAST));
+        assertEquals(SnapSceneGeometry.LEVEL_HEIGHT, high.cy() - low.cy(), EPS);
     }
 
     @Test
-    void sceneIncludesBaseAndPostMarkers() {
-        SnapBoard board = new SnapBoard(2, 2, 1);
+    void sceneIncludesBaseSlabAndBumps() {
+        SnapBoard board = new SnapBoard(2, 2, 3);
         List<BoxSpec> boxes = SnapSceneGeometry.build(board);
-
         long base = boxes.stream().filter(b -> b.category() == BoxSpec.Category.BASE).count();
-        long posts = boxes.stream().filter(b -> b.category() == BoxSpec.Category.POST).count();
+        long bumps = boxes.stream().filter(b -> b.category() == BoxSpec.Category.BUMP).count();
         assertEquals(1, base, "one base slab");
-        // (width+1) x (height+1) lattice posts.
-        assertEquals(9, posts, "3x3 lattice posts for a 2x2 board");
+        assertEquals(9, bumps, "(2+1)x(2+1) base bumps on an empty board");
         assertTrue(boxes.size() >= 10);
     }
 }

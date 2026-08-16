@@ -24,12 +24,11 @@ import com.minecart.snap.SnapPlacement;
  */
 public final class SnapEditor {
 
-    /** Hotbar entries: the placeable parts plus an eraser. */
+    /** Hotbar entries: the placeable parts. (Removal is right-click, Minecraft-style — not a tool.) */
     public enum Tool {
         WIRE("Wire", AllSnapParts.SNAP_WIRE),
         RESISTOR("Resistor", AllSnapParts.SNAP_RESISTOR),
-        BATTERY("Battery", AllSnapParts.SNAP_BATTERY),
-        DELETE("Delete", null);
+        BATTERY("Battery", AllSnapParts.SNAP_BATTERY);
 
         private final String label;
         private final SnapPartType type;
@@ -41,7 +40,6 @@ public final class SnapEditor {
 
         public String label() { return label; }
         public SnapPartType type() { return type; }
-        public boolean isDelete() { return type == null; }
     }
 
     private final SnapBoard board;
@@ -83,39 +81,39 @@ public final class SnapEditor {
         }
     }
 
+    /** Cycles the hotbar selection by {@code dir} (+1 / -1), wrapping — driven by the scroll wheel. */
+    public void cycle(int dir) {
+        Tool[] tools = Tool.values();
+        int i = ((tool.ordinal() + dir) % tools.length + tools.length) % tools.length;
+        this.tool = tools[i];
+    }
+
     /** Rotates the placement facing clockwise (N→E→S→W). */
     public void rotate() {
         facing = facing.rotateClockwise();
     }
 
-    /** Recomputes the hovered part and placement ghost from the current cursor ray. */
+    /** Recomputes the hovered part and placement ghost from the crosshair ray. */
     public void update(PerspectiveCamera camera, SnapScene scene) {
         hovered = pick(camera, scene);
 
-        if (tool.isDelete()) {
-            ghost = null;
-            ghostValid = false;
-            return;
-        }
-
         int col, row, layer;
         if (hovered != null) {
-            // Stack the new part one layer above the part under the cursor, at its origin post.
+            // Stack the new part one level above the part under the crosshair, on its origin bump.
             SnapPlacement below = hovered.placement();
             col = below.col();
             row = below.row();
             layer = below.layer() + 1;
         } else {
-            // Snap to the nearest lattice post where the ray meets the ground plane (y = 0).
-            Ray ray = camera.getPickRay(Gdx.input.getX(), Gdx.input.getY());
-            if (!Intersector.intersectRayPlane(ray, ground, groundHit)) {
+            // Snap to the nearest bump where the crosshair ray meets the ground plane (y = 0).
+            if (!Intersector.intersectRayPlane(centerRay(camera), ground, groundHit)) {
                 ghost = null;
                 ghostValid = false;
                 return;
             }
-            float cell = SnapSceneGeometry.CELL;
-            col = MathUtils.clamp(Math.round(groundHit.x / cell), 0, board.width());
-            row = MathUtils.clamp(Math.round(groundHit.z / cell), 0, board.height());
+            float spacing = SnapSceneGeometry.BUMP_SPACING;
+            col = MathUtils.clamp(Math.round(groundHit.x / spacing), 0, board.width());
+            row = MathUtils.clamp(Math.round(groundHit.z / spacing), 0, board.height());
             layer = 0;
         }
 
@@ -123,8 +121,13 @@ public final class SnapEditor {
         ghostValid = board.canPlace(ghost);
     }
 
+    /** The ray through the screen centre — the crosshair — since the cursor is locked in look mode. */
+    private static Ray centerRay(PerspectiveCamera camera) {
+        return camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f);
+    }
+
     private SnapScene.Pickable pick(PerspectiveCamera camera, SnapScene scene) {
-        Ray ray = camera.getPickRay(Gdx.input.getX(), Gdx.input.getY());
+        Ray ray = centerRay(camera);
         SnapScene.Pickable best = null;
         float bestDist2 = Float.MAX_VALUE;
         for (SnapScene.Pickable pk : scene.pickables()) {

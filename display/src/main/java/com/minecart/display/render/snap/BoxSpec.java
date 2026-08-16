@@ -11,7 +11,7 @@ public record BoxSpec(float cx, float cy, float cz, float sizeX, float sizeY, fl
     /** What the box represents, mapped to a colour/material by the renderer. */
     public enum Category {
         BASE,
-        POST,
+        BUMP,
         WIRE,
         RESISTOR,
         BATTERY,
