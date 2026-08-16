@@ -48,6 +48,7 @@ public final class SnapRenderer implements Disposable {
     private final EnumMap<BoxSpec.Category, Material> materials = new EnumMap<>(BoxSpec.Category.class);
     private final EnumMap<BoxSpec.Category, Material> ghostMaterials = new EnumMap<>(BoxSpec.Category.class);
     private final Material ghostInvalidMaterial;
+    private final Material ghostActiveMaterial;
 
     private Model sceneModel;
     private ModelInstance sceneInstance;
@@ -89,6 +90,12 @@ public final class SnapRenderer implements Disposable {
                 ColorAttribute.createDiffuse(0.95f, 0.28f, 0.28f, 1f),
                 TextureAttribute.createDiffuse(noiseTexture),
                 new BlendingAttribute(0.55f),
+                IntAttribute.createCullFace(GL20.GL_NONE));
+        // The terminal currently anchored on the crosshair glows so "change terminal" is visible.
+        ghostActiveMaterial = new Material(
+                ColorAttribute.createDiffuse(0.2f, 0.9f, 1f, 1f),
+                ColorAttribute.createEmissive(0.15f, 0.7f, 0.85f, 1f),
+                new BlendingAttribute(0.8f),
                 IntAttribute.createCullFace(GL20.GL_NONE));
 
         ModelBuilder mb = new ModelBuilder();
@@ -158,7 +165,7 @@ public final class SnapRenderer implements Disposable {
             modelBatch.render(highlightInstance, environment);
         }
         for (OrientedBox g : ghostParts) {
-            Model mesh = ghostMesh(g.sizeX(), g.sizeY(), g.sizeZ(), g.category());
+            Model mesh = ghostMesh(g.sizeX(), g.sizeY(), g.sizeZ(), g.category(), g.active());
             ModelInstance inst = new ModelInstance(mesh);
             inst.transform.setToTranslation(g.cx(), g.cy(), g.cz());
             if (g.yawDeg() != 0f) {
@@ -170,13 +177,13 @@ public final class SnapRenderer implements Disposable {
     }
 
     /** A cached, origin-centred, proportional-UV box mesh of the given size + ghost material. */
-    private Model ghostMesh(float sizeX, float sizeY, float sizeZ, BoxSpec.Category category) {
+    private Model ghostMesh(float sizeX, float sizeY, float sizeZ, BoxSpec.Category category, boolean active) {
         int sx = Math.round(sizeX), sy = Math.round(sizeY), sz = Math.round(sizeZ);
-        String matKey = ghostValid ? category.name() : "INVALID";
+        String matKey = active ? "ACTIVE" : (ghostValid ? category.name() : "INVALID");
         String key = sx + "_" + sy + "_" + sz + "_" + matKey;
         Model cached = ghostCache.get(key);
         if (cached == null) {
-            Material mat = ghostValid ? ghostMaterials.get(category) : ghostInvalidMaterial;
+            Material mat = active ? ghostActiveMaterial : (ghostValid ? ghostMaterials.get(category) : ghostInvalidMaterial);
             ModelBuilder mb = new ModelBuilder();
             mb.begin();
             MeshPartBuilder part = mb.part("ghost", GL20.GL_TRIANGLES, ATTRS, mat);

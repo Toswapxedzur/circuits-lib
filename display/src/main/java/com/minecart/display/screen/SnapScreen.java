@@ -202,7 +202,7 @@ public final class SnapScreen extends ScreenAdapter {
         }
         StringBuilder sb = new StringBuilder();
         sb.append("Item: ").append(editor.tool().label());
-        sb.append("   |   1-3 select   scroll/R direction   L/R-arrow flip terminal   LMB place"
+        sb.append("   |   1-3 select   scroll/R direction   L/R-arrow terminal   LMB place"
                 + "   RMB remove   WASD+Space/Ctrl fly   Esc cursor");
         if (editor.hovered() != null) {
             sb.append("    |    aiming: ").append(editor.hovered().placement().type().id());
@@ -354,9 +354,13 @@ public final class SnapScreen extends ScreenAdapter {
                 editor.nudgeDirection(45f);
                 return true;
             }
-            // Left/right arrows (or F) change which terminal is anchored on the crosshair bump.
-            if (keycode == Keys.LEFT || keycode == Keys.RIGHT || keycode == Keys.F) {
-                editor.flipPort();
+            // Left/right arrows change which terminal is anchored on the crosshair bump (no rotation).
+            if (keycode == Keys.LEFT) {
+                editor.cycleTerminal(-1);
+                return true;
+            }
+            if (keycode == Keys.RIGHT) {
+                editor.cycleTerminal(1);
                 return true;
             }
             if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {
