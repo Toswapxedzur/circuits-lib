@@ -89,22 +89,27 @@ public final class SnapRenderer implements Disposable {
         this.highlightBox = mb.createBox(1f, 1f, 1f, hl, overlayAttrs);
         this.highlightInstance = new ModelInstance(highlightBox);
 
-        // A valid ghost looks like a transparent version of the actual item (its own colour, low alpha).
+        // A valid ghost is a transparent version of the ACTUAL item: same noise texture + colour, lit
+        // (not emissive), at half opacity — so it reads as a faded copy rather than a glowing block.
+        long ghostAttrs = VertexAttributes.Usage.Position
+                | VertexAttributes.Usage.Normal
+                | VertexAttributes.Usage.TextureCoordinates;
         for (BoxSpec.Category cat : BoxSpec.Category.values()) {
-            Color c = colorFor(cat);
             Material ghost = new Material(
-                    ColorAttribute.createDiffuse(c),
-                    ColorAttribute.createEmissive(c.r * 0.35f, c.g * 0.35f, c.b * 0.35f, 1f),
-                    new BlendingAttribute(0.4f));
-            Model model = mb.createBox(1f, 1f, 1f, ghost, overlayAttrs);
+                    ColorAttribute.createDiffuse(colorFor(cat)),
+                    TextureAttribute.createDiffuse(noiseTexture),
+                    new BlendingAttribute(0.5f),
+                    IntAttribute.createCullFace(GL20.GL_NONE));
+            Model model = mb.createBox(1f, 1f, 1f, ghost, ghostAttrs);
             ghostModels.put(cat, model);
             ghostInstances.put(cat, new ModelInstance(model));
         }
         Material invalid = new Material(
-                ColorAttribute.createDiffuse(1f, 0.30f, 0.30f, 1f),
-                ColorAttribute.createEmissive(0.45f, 0.10f, 0.10f, 1f),
-                new BlendingAttribute(0.4f));
-        this.ghostInvalidBox = mb.createBox(1f, 1f, 1f, invalid, overlayAttrs);
+                ColorAttribute.createDiffuse(0.95f, 0.25f, 0.25f, 1f),
+                TextureAttribute.createDiffuse(noiseTexture),
+                new BlendingAttribute(0.5f),
+                IntAttribute.createCullFace(GL20.GL_NONE));
+        this.ghostInvalidBox = mb.createBox(1f, 1f, 1f, invalid, ghostAttrs);
         this.ghostInvalidInstance = new ModelInstance(ghostInvalidBox);
     }
 

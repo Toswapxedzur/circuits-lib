@@ -205,7 +205,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (editor.flipped()) {
             sb.append(" (flipped)");
         }
-        sb.append("    |    1-3 select • scroll/R direction • F flip port • LMB place • RMB remove"
+        sb.append("    |    1-3 select • scroll/R direction • ←/→ flip terminal • LMB place • RMB remove"
                 + " • WASD+Space/Ctrl fly • Esc cursor");
         if (editor.hovered() != null) {
             sb.append("    |    aiming: ").append(editor.hovered().placement().type().id());
@@ -356,7 +356,8 @@ public final class SnapScreen extends ScreenAdapter {
                 editor.cycleDirection(1);
                 return true;
             }
-            if (keycode == Keys.F) {
+            // Left/right arrows (or F) change which terminal is anchored on the crosshair bump.
+            if (keycode == Keys.LEFT || keycode == Keys.RIGHT || keycode == Keys.F) {
                 editor.flipPort();
                 return true;
             }

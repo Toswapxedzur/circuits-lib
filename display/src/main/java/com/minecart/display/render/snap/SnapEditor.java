@@ -117,7 +117,9 @@ public final class SnapEditor {
         for (int k = 1; k <= n; k++) {
             int idx = ((dirIndex + step * k) % n + n) % n;
             int[] d = directions.get(idx);
-            if (board.inBounds(new Post(anchorCol + d[0], anchorRow + d[1], anchorLayer))) {
+            int dc = flipped ? -d[0] : d[0];
+            int dr = flipped ? -d[1] : d[1];
+            if (board.inBounds(new Post(anchorCol + dc, anchorRow + dr, anchorLayer))) {
                 dirIndex = idx;
                 return;
             }
@@ -147,8 +149,12 @@ public final class SnapEditor {
             return;
         }
 
+        // The crosshair bump is the anchored terminal; flipping mirrors the part to the other side of it
+        // (and swaps battery polarity), so the change is visible.
         int[] d = directions.get(Math.min(dirIndex, directions.size() - 1));
-        ghost = new SnapPlacement(tool.type(), anchorCol, anchorRow, anchorLayer, d[0], d[1], flipped, Double.NaN);
+        int dc = flipped ? -d[0] : d[0];
+        int dr = flipped ? -d[1] : d[1];
+        ghost = new SnapPlacement(tool.type(), anchorCol, anchorRow, anchorLayer, dc, dr, flipped, Double.NaN);
         ghostValid = board.canPlace(ghost);
     }
 
