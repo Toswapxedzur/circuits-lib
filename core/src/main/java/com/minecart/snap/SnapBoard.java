@@ -40,6 +40,12 @@ public final class SnapBoard {
     // Keyed by occupied edge so a second part can't be placed on the same two posts.
     private final Map<SnapPlacement.EdgeKey, SnapPlacement> placements = new LinkedHashMap<>();
 
+    // The bump-slots (col,row,level) currently claimed by a component terminal. Real Snap-Circuit rule:
+    // at most one component snaps onto a given bump at a given level ("two components don't share a bump");
+    // to connect, you stack — a component provides top bumps at level+1, and a part at level L needs each
+    // terminal supported by a component below it (a claimed slot at level-1), or level 0 (the base).
+    private final java.util.Set<Post> bumpSlots = new java.util.HashSet<>();
+
     // Bumped on every structural change. In snap mode the render thread reads the board (via snapshot())
     // to build the scene while the tick thread mutates it (edits are submitted to the server's action
     // queue), so all placement access is synchronized on {@code this} and the render thread rebuilds its
@@ -74,16 +80,13 @@ public final class SnapBoard {
     public static SnapBoard createDemo() {
         AllSnapParts.init();
         SnapBoard board = createDefault();
-        // Layer-0 loop: battery -> wire -> resistor -> wire -> wire -> resistor -> back.
-        board.place(AllSnapParts.SNAP_BATTERY, 2, 2, 0, Facing.EAST, 5.0);   // (2,2)->(3,2)
-        board.place(AllSnapParts.SNAP_WIRE, 3, 2, 0, Facing.EAST);           // (3,2)->(4,2)
-        board.place(AllSnapParts.SNAP_RESISTOR, 4, 2, 0, Facing.NORTH, 10.0);// (4,2)->(4,3)
-        board.place(AllSnapParts.SNAP_WIRE, 4, 3, 0, Facing.WEST);           // (4,3)->(3,3)
-        board.place(AllSnapParts.SNAP_WIRE, 3, 3, 0, Facing.WEST);           // (3,3)->(2,3)
-        board.place(AllSnapParts.SNAP_RESISTOR, 2, 3, 0, Facing.SOUTH, 10.0);// (2,3)->(2,2)
-        // Layer-1 parts, to show stacking height and orientation.
-        board.place(AllSnapParts.SNAP_WIRE, 5, 5, 1, Facing.EAST);           // (5,5)->(6,5) on layer 1
-        board.place(AllSnapParts.SNAP_RESISTOR, 6, 5, 1, Facing.NORTH, 47.0);// (6,5)->(6,6) on layer 1
+        // A battery on the base with a resistor STACKED directly on top: the two terminals share the same
+        // bump columns via stacking, forming a V/R loop — the real way parts connect in Snap Circuits.
+        board.place(AllSnapParts.SNAP_BATTERY, 2, 2, 0, Facing.EAST, 5.0);    // (2,2)->(3,2) level 0
+        board.place(AllSnapParts.SNAP_RESISTOR, 2, 2, 1, Facing.EAST, 10.0);  // stacked on top -> loop
+        // A second stack elsewhere for visual variety (resistor on the base, battery stacked on it -> loop).
+        board.place(AllSnapParts.SNAP_RESISTOR, 5, 5, 0, Facing.NORTH, 22.0); // (5,5)->(5,6) level 0
+        board.place(AllSnapParts.SNAP_BATTERY, 5, 5, 1, Facing.NORTH, 3.0);   // stacked -> loop
         return board;
     }
 
@@ -108,31 +111,53 @@ public final class SnapBoard {
                 && post.layer() >= 0 && post.layer() < layers;
     }
 
-    /** Whether {@code placement} fits on the board and its edge isn't already occupied. */
+    /**
+     * Whether {@code placement} can go here: both terminal bumps on the board, no existing part on the
+     * same edge, neither terminal bump already claimed at this level ("no shared bump"), and both terminals
+     * supported (level 0, or a component directly below providing a top bump).
+     */
     public synchronized boolean canPlace(SnapPlacement placement) {
-        return inBounds(placement.postA())
-                && inBounds(placement.postB())
-                && !placements.containsKey(placement.edgeKey());
+        Post a = placement.postA();
+        Post b = placement.postB();
+        return inBounds(a) && inBounds(b)
+                && !placements.containsKey(placement.edgeKey())
+                && !bumpSlots.contains(a) && !bumpSlots.contains(b)
+                && supported(a) && supported(b);
+    }
+
+    /** A terminal is supported at level 0 (the base) or if a component below claims the same bump one level down. */
+    private boolean supported(Post terminal) {
+        return terminal.layer() == 0
+                || bumpSlots.contains(new Post(terminal.col(), terminal.row(), terminal.layer() - 1));
     }
 
     /**
-     * Places {@code placement} if {@link #canPlace} allows it.
+     * Places {@code placement} if {@link #canPlace} allows it, claiming its two terminal bump-slots.
      *
-     * @return {@code true} if placed, {@code false} if out of bounds or the edge is occupied.
+     * @return {@code true} if placed, {@code false} if invalid.
      */
     public synchronized boolean place(SnapPlacement placement) {
         if (!canPlace(placement)) {
             return false;
         }
-        placements.put(placement.edgeKey(), placement);
-        revision++;
+        placeUnchecked(placement);
         return true;
     }
 
-    /** Removes whatever part occupies the edge between {@code a} and {@code b}. */
+    /** Adds a placement and claims its bump-slots without validation (used when loading a trusted save). */
+    public synchronized void placeUnchecked(SnapPlacement placement) {
+        placements.put(placement.edgeKey(), placement);
+        bumpSlots.add(placement.postA());
+        bumpSlots.add(placement.postB());
+        revision++;
+    }
+
+    /** Removes whatever part occupies the edge between {@code a} and {@code b}, freeing its bump-slots. */
     public synchronized SnapPlacement remove(Post a, Post b) {
         SnapPlacement removed = placements.remove(SnapPlacement.EdgeKey.of(a, b));
         if (removed != null) {
+            bumpSlots.remove(removed.postA());
+            bumpSlots.remove(removed.postB());
             revision++;
         }
         return removed;
@@ -250,7 +275,7 @@ public final class SnapBoard {
                 }
                 Facing facing = parseFacing(pt.getString(TAG_FACING));
                 double value = pt.get(TAG_VALUE) != null ? pt.getDouble(TAG_VALUE) : Double.NaN;
-                board.place(new SnapPlacement(type, pt.getInt(TAG_COL), pt.getInt(TAG_ROW),
+                board.placeUnchecked(new SnapPlacement(type, pt.getInt(TAG_COL), pt.getInt(TAG_ROW),
                         pt.getInt(TAG_LAYER), facing, value));
             }
         }

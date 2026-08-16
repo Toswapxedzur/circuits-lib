@@ -28,9 +28,13 @@ public final class AllSnapParts {
     /** Resistor between two posts; ohms come from the placement value or {@link #DEFAULT_RESISTANCE}. */
     public static final SnapPartType SNAP_RESISTOR = SnapPartRegistry.register(
             "snap_resistor", SnapPartType.DEFAULT_HEIGHT, false,
-            (placement, world, posts) -> world.connect(
-                    AllComponents.RESISTOR, posts.at(placement.postA()), posts.at(placement.postB()),
-                    new Informations.ResistorInfo(placement.valueOr(DEFAULT_RESISTANCE))));
+            (placement, world, posts) -> {
+                var a = posts.at(placement.postA());
+                var b = posts.at(placement.postB());
+                if (a == b) return; // both terminals on the same net (e.g. shorted by a wire): no self-loop edge
+                world.connect(AllComponents.RESISTOR, a, b,
+                        new Informations.ResistorInfo(placement.valueOr(DEFAULT_RESISTANCE)));
+            });
 
     /**
      * Battery from post A (−) to post B (+); volts come from the placement value or {@link #DEFAULT_VOLTAGE}.
@@ -38,9 +42,13 @@ public final class AllSnapParts {
      */
     public static final SnapPartType SNAP_BATTERY = SnapPartRegistry.register(
             "snap_battery", SnapPartType.DEFAULT_HEIGHT, false,
-            (placement, world, posts) -> world.connect(
-                    AllComponents.BATTERY, posts.at(placement.postA()), posts.at(placement.postB()),
-                    new Informations.BatteryInfo(placement.valueOr(DEFAULT_VOLTAGE), BATTERY_INTERNAL_RESISTANCE)));
+            (placement, world, posts) -> {
+                var a = posts.at(placement.postA());
+                var b = posts.at(placement.postB());
+                if (a == b) return; // shorted terminals: skip rather than create an unsolvable self-loop
+                world.connect(AllComponents.BATTERY, a, b,
+                        new Informations.BatteryInfo(placement.valueOr(DEFAULT_VOLTAGE), BATTERY_INTERNAL_RESISTANCE));
+            });
 
     private AllSnapParts() {}
 

@@ -38,11 +38,10 @@ class SnapWorldStorageTest {
     }
 
     private static SnapBoard loopBoard() {
-        SnapBoard board = new SnapBoard(1, 1, 1);
+        // Battery on the base + resistor stacked on top = a V/R loop under the real stacking rule.
+        SnapBoard board = new SnapBoard(4, 4, 3);
         board.place(AllSnapParts.SNAP_BATTERY, 0, 0, 0, Facing.EAST, 2.0);
-        board.place(AllSnapParts.SNAP_WIRE, 1, 0, 0, Facing.NORTH);
-        board.place(AllSnapParts.SNAP_RESISTOR, 1, 1, 0, Facing.WEST, 1.0);
-        board.place(AllSnapParts.SNAP_WIRE, 0, 1, 0, Facing.SOUTH);
+        board.place(AllSnapParts.SNAP_RESISTOR, 0, 0, 1, Facing.EAST, 1.0);
         return board;
     }
 
@@ -64,7 +63,7 @@ class SnapWorldStorageTest {
         ServerWorld dw = (ServerWorld) dst.findWorld(w.getId());
         assertNotNull(dw, "world id should round-trip");
         assertNotNull(dw.getSnapBoard(), "board should be restored");
-        assertEquals(4, dw.getSnapBoard().placements().size(), "all four parts should round-trip");
+        assertEquals(2, dw.getSnapBoard().placements().size(), "both parts should round-trip");
 
         // load() already rebuilt the derived circuit; tick and confirm the physics survived the round-trip.
         dst.tick();
@@ -85,8 +84,8 @@ class SnapWorldStorageTest {
         ServerWorld world = (ServerWorld) level.getWorlds().iterator().next();
         assertNotNull(world.getSnapBoard(), "a fresh snap world should have a board");
         assertEquals(SnapBoard.DEFAULT_WIDTH, world.getSnapBoard().width());
-        // TEMPORARY: fresh snap saves currently seed the demo scene (8 parts) so the 3D view is populated.
-        assertEquals(8, world.getSnapBoard().placements().size(), "demo scene should round-trip");
+        // TEMPORARY: fresh snap saves currently seed the demo scene (4 parts) so the 3D view is populated.
+        assertEquals(4, world.getSnapBoard().placements().size(), "demo scene should round-trip");
     }
 
     @Test

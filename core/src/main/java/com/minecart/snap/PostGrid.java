@@ -33,18 +33,26 @@ public final class PostGrid {
         this.world = world;
     }
 
-    /** Merges the two posts' equivalence classes so they share one node. */
+    /**
+     * A bump column {@code (col,row)} is one electrical conductor regardless of stack level, so posts are
+     * keyed by column (layer dropped). That is what makes a stacked component connect to the part below it.
+     */
+    private static Post column(Post post) {
+        return new Post(post.col(), post.row(), 0);
+    }
+
+    /** Merges the two columns' equivalence classes so they share one node. */
     public void union(Post a, Post b) {
-        Post ra = find(a);
-        Post rb = find(b);
+        Post ra = find(column(a));
+        Post rb = find(column(b));
         if (!ra.equals(rb)) {
             parent.put(ra, rb);
         }
     }
 
-    /** The shared node for {@code post}'s class, creating it on first use. */
+    /** The shared node for {@code post}'s column, creating it on first use. */
     public CircuitNode at(Post post) {
-        Post root = find(post);
+        Post root = find(column(post));
         return nodes.computeIfAbsent(root, p -> world.createNode(AllComponents.CONNECTION));
     }
 
