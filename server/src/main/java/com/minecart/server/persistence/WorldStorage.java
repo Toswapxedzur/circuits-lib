@@ -212,9 +212,10 @@ public final class WorldStorage {
         TagUtil.putUUID(wt, ServerStrings.TAG_WORLD_ID, worldId);
         wt.putString(ServerStrings.TAG_WORLD_NAME, "World 1");
         if (resolved == com.minecart.foundation.GameMode.SNAP_3D) {
-            // Snap worlds start with an empty default baseboard rather than an empty circuit list.
+            // Snap worlds start with a baseboard. TEMPORARY: seed a small demo scene so the 3D view has
+            // something to render/pick until the placement UI exists; revert to createDefault() (empty) then.
             CompoundTag boardTag = new CompoundTag();
-            com.minecart.snap.SnapBoard.createDefault().save(boardTag);
+            com.minecart.snap.SnapBoard.createDemo().save(boardTag);
             wt.put(ServerStrings.TAG_BOARD, boardTag);
         } else {
             wt.put(ServerStrings.TAG_CIRCUITS, new ListTag());

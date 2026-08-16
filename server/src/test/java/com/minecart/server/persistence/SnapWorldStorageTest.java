@@ -75,7 +75,7 @@ class SnapWorldStorageTest {
     }
 
     @Test
-    void freshSnapSaveLoadsWithDefaultBoard(@TempDir Path tmp) throws IOException {
+    void freshSnapSaveLoadsWithSeededBoard(@TempDir Path tmp) throws IOException {
         WorldStorage.writeEmpty(tmp, java.util.UUID.randomUUID(), GameMode.SNAP_3D);
 
         ServerLevel level = new ServerLevel();
@@ -83,8 +83,14 @@ class SnapWorldStorageTest {
         assertEquals(GameMode.SNAP_3D, level.getGameMode());
 
         ServerWorld world = (ServerWorld) level.getWorlds().iterator().next();
-        assertNotNull(world.getSnapBoard(), "a fresh snap world should have a default board");
+        assertNotNull(world.getSnapBoard(), "a fresh snap world should have a board");
         assertEquals(SnapBoard.DEFAULT_WIDTH, world.getSnapBoard().width());
-        assertEquals(0, world.getSnapBoard().placements().size(), "default board starts empty");
+        // TEMPORARY: fresh snap saves currently seed the demo scene (8 parts) so the 3D view is populated.
+        assertEquals(8, world.getSnapBoard().placements().size(), "demo scene should round-trip");
+    }
+
+    @Test
+    void createDefaultBoardIsEmpty() {
+        assertEquals(0, SnapBoard.createDefault().placements().size(), "createDefault() must stay empty");
     }
 }
