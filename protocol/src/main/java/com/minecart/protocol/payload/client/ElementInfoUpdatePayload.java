@@ -9,6 +9,7 @@ import com.minecart.serialization.tag.BoolTag;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.DoubleTag;
 import com.minecart.serialization.tag.IntTag;
+import com.minecart.serialization.tag.ListTag;
 import com.minecart.serialization.tag.StringTag;
 import com.minecart.serialization.tag.Tag;
 import com.minecart.ui.panel.PanelSnapshot;
@@ -77,14 +78,8 @@ public final class ElementInfoUpdatePayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
-        worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        if (worldId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_WORLD_ID + "'");
-        }
-        elementId = TagUtil.getUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
-        if (elementId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_ELEMENT_ID + "'");
-        }
+        worldId = Payload.requireUUID(tag, ProtocolStrings.TAG_WORLD_ID);
+        elementId = Payload.requireUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
         Tag snapshotTag = tag.get(ProtocolStrings.TAG_PANEL_SNAPSHOT);
         snapshot = snapshotTag instanceof CompoundTag ct ? decode(ct) : PanelSnapshot.builder().build();
     }
@@ -105,9 +100,14 @@ public final class ElementInfoUpdatePayload implements Payload {
             Object v = e.getValue();
             if (v instanceof Boolean b) {
                 out.putBoolean(key, b);
-            } else if (v instanceof Integer || v instanceof Long || v instanceof Short || v instanceof Byte) {
-                // Wire as int when the value fits; the reader promotes to double on the receiving
-                // side via PanelSnapshot.getDouble which accepts any Number.
+            } else if (v instanceof Long l) {
+                // A 32-bit IntTag would silently truncate a long (PanelSnapshot.Builder.put(String,long)
+                // stores Longs, and the class documents long support). Encode the full 64 bits as a
+                // two-element ListTag [hi32, lo32] — self-describing on the wire, so the decoder can
+                // recover the exact Long without per-field type metadata. Round-trips losslessly.
+                out.put(key, encodeLong(l));
+            } else if (v instanceof Integer || v instanceof Short || v instanceof Byte) {
+                // Values that genuinely fit in 32 bits stay compact IntTags.
                 out.putInt(key, ((Number) v).intValue());
             } else if (v instanceof Number n) {
                 out.putDouble(key, n.doubleValue());
@@ -130,6 +130,8 @@ public final class ElementInfoUpdatePayload implements Payload {
             Tag child = tag.get(key);
             if (child instanceof BoolTag bt) {
                 staged.put(key, bt.getAsBoolean());
+            } else if (child instanceof ListTag lt && isEncodedLong(lt)) {
+                staged.put(key, decodeLong(lt));
             } else if (child instanceof IntTag it) {
                 staged.put(key, (long) it.getAsInt());
             } else if (child instanceof DoubleTag dt) {
@@ -145,5 +147,27 @@ public final class ElementInfoUpdatePayload implements Payload {
             b.putRaw(e.getKey(), e.getValue());
         }
         return b.build();
+    }
+
+    /** Encodes a 64-bit long as a two-element {@link ListTag} {@code [hi32, lo32]}. */
+    private static ListTag encodeLong(long value) {
+        ListTag list = new ListTag();
+        list.add(new IntTag((int) (value >> 32)));
+        list.add(new IntTag((int) value));
+        return list;
+    }
+
+    /** A {@link ListTag} produced by {@link #encodeLong(long)}: exactly two {@link IntTag} children. */
+    private static boolean isEncodedLong(ListTag list) {
+        return list.size() == 2
+                && list.get(0) instanceof IntTag
+                && list.get(1) instanceof IntTag;
+    }
+
+    /** Inverse of {@link #encodeLong(long)}: reconstructs the original 64-bit value. */
+    private static long decodeLong(ListTag list) {
+        int hi = ((IntTag) list.get(0)).getAsInt();
+        int lo = ((IntTag) list.get(1)).getAsInt();
+        return ((long) hi << 32) | (lo & 0xFFFFFFFFL);
     }
 }

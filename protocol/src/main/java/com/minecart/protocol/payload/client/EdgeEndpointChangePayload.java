@@ -74,21 +74,9 @@ public final class EdgeEndpointChangePayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
-        worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        if (worldId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_WORLD_ID + "'");
-        }
-        edgeId = TagUtil.getUUID(tag, ProtocolStrings.TAG_EDGE_ID);
-        if (edgeId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_EDGE_ID + "'");
-        }
-        newStartNodeId = TagUtil.getUUID(tag, ProtocolStrings.TAG_NEW_START_NODE_ID);
-        if (newStartNodeId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_NEW_START_NODE_ID + "'");
-        }
-        newEndNodeId = TagUtil.getUUID(tag, ProtocolStrings.TAG_NEW_END_NODE_ID);
-        if (newEndNodeId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_NEW_END_NODE_ID + "'");
-        }
+        worldId = Payload.requireUUID(tag, ProtocolStrings.TAG_WORLD_ID);
+        edgeId = Payload.requireUUID(tag, ProtocolStrings.TAG_EDGE_ID);
+        newStartNodeId = Payload.requireUUID(tag, ProtocolStrings.TAG_NEW_START_NODE_ID);
+        newEndNodeId = Payload.requireUUID(tag, ProtocolStrings.TAG_NEW_END_NODE_ID);
     }
 }

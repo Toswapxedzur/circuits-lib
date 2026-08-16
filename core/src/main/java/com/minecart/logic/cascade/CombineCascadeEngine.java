@@ -103,9 +103,14 @@ public final class CombineCascadeEngine {
     /**
      * Applies the ops list in order. On any op returning {@code false}, walks the already-applied
      * ops in reverse and calls {@code undo} on each. Returns {@code true} only if every op
-     * succeeded. The world's broadcast pipeline is left to fire as a side-effect of the underlying
-     * mutations (ServerWorld.* methods post their own events); the engine doesn't add a synthetic
-     * "cascade committed" event because clients reconstruct state from the ordered op stream.
+     * succeeded.
+     *
+     * <p>After the whole plan succeeds the engine emits a single batched
+     * {@link com.minecart.foundation.Level#notifyElementChanged} for every element reported by
+     * {@link CascadeOp#movedElements()} (deduplicated). Ops that mutate through already-notifying
+     * ServerWorld paths (edge rewire, destroy) post their own events during apply and report no moved
+     * elements; the position-mutating ops ({@link TranslateComponentOp}/{@link RotateComponentOp})
+     * write PositionInfo in place and would otherwise never reach a client mirror.
      */
     public static boolean apply(ServerWorld world, List<CascadeOp> ops) {
         if (world == null || ops == null || ops.isEmpty()) {
@@ -128,7 +133,31 @@ public final class CombineCascadeEngine {
             }
             applied.add(op);
         }
+        broadcastMovedElements(world, ops);
         return true;
+    }
+
+    /**
+     * Fires one {@link com.minecart.foundation.Level#notifyElementChanged} per distinct element moved
+     * by the plan's ops (see {@link CascadeOp#movedElements()}). Order-preserving + deduplicated so a
+     * component and its shared internals aren't broadcast twice.
+     */
+    private static void broadcastMovedElements(ServerWorld world, List<CascadeOp> ops) {
+        com.minecart.foundation.Level level = world.getLevel();
+        if (level == null) {
+            return;
+        }
+        Set<com.minecart.logic.CircuitElement> moved = new LinkedHashSet<>();
+        for (CascadeOp op : ops) {
+            for (com.minecart.logic.CircuitElement el : op.movedElements()) {
+                if (el != null) {
+                    moved.add(el);
+                }
+            }
+        }
+        for (com.minecart.logic.CircuitElement el : moved) {
+            level.notifyElementChanged(el);
+        }
     }
 
     /** Convenience: plan then apply. */

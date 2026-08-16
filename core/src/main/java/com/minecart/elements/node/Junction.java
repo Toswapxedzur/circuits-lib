@@ -46,7 +46,10 @@ public class Junction extends CircuitNode implements ElectricalVariate<Informati
 
     @Override
     public Informations.JunctionInfo getDefault() {
-        return new Informations.JunctionInfo(0);
+        // A fresh junction must accept wiring; a default of 0 rejected the very first edge (making
+        // connect() return null and NPE downstream). Default to effectively unlimited — the user
+        // can dial in a finite cap via the panel when they actually want a limited junction.
+        return new Informations.JunctionInfo(Integer.MAX_VALUE);
     }
 
     @Override

@@ -1,6 +1,9 @@
 package com.minecart.logic.cascade;
 
+import com.minecart.logic.CircuitElement;
 import com.minecart.logic.ServerWorld;
+
+import java.util.List;
 
 /**
  * A single reversible operation in a combine-cascade plan. The cascade engine builds a list of ops
@@ -33,4 +36,17 @@ public interface CascadeOp {
     boolean apply(ServerWorld world);
 
     void undo(ServerWorld world);
+
+    /**
+     * Elements this op moved by directly mutating state that the standard notifying ServerWorld paths
+     * don't cover (e.g. {@link TranslateComponentOp} / {@link RotateComponentOp} write
+     * {@link com.minecart.variant.info.PositionInfo} in place, so nothing broadcasts them). The engine
+     * collects these across the whole plan and fires one batched
+     * {@link com.minecart.logic.Level#notifyElementChanged} per element after a successful apply, per
+     * the atomicity contract above. Ops that mutate through already-notifying paths
+     * (edge rewire / destroy post their own events) return the empty default.
+     */
+    default List<CircuitElement> movedElements() {
+        return List.of();
+    }
 }

@@ -60,7 +60,7 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
 
     @Override
     public ResistorInfo getDefault() {
-        // Default to a standard 10.0 Ohm resistor
+        // Default to a 1.0 Ohm resistor
         return new ResistorInfo(1.0);
     }
 

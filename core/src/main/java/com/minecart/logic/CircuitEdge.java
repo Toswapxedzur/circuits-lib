@@ -26,6 +26,13 @@ import java.util.UUID;
 public non-sealed class CircuitEdge extends CircuitElement {
     public static final double MAX_CURRENT = 1e15;
 
+    /**
+     * Threshold below which a solver-produced current is treated as "no flow". The current is a
+     * {@code double} produced by the linear solve, so an exact {@code == 0} test essentially never
+     * fires; use a small epsilon so numerically-negligible currents report {@link CurrentFlow#NO}.
+     */
+    private static final double NO_FLOW_EPSILON = 1e-12;
+
     //positive: from first to second
     protected DoubleVar current;
 
@@ -178,7 +185,7 @@ public non-sealed class CircuitEdge extends CircuitElement {
     }
 
     public CurrentFlow flowDirection(CircuitNode node){
-        if(current.getValue() == 0f)
+        if(Math.abs(current.getValue()) <= NO_FLOW_EPSILON)
             return CurrentFlow.NO;
         if(getConnection(sourceInx()) == node)
             return CurrentFlow.OUT;
@@ -293,6 +300,19 @@ public non-sealed class CircuitEdge extends CircuitElement {
         if (newStart == null || newEnd == null) {
             throw new IllegalArgumentException("newStart and newEnd must be non-null");
         }
+        // Preflight capacity BEFORE detaching the old endpoints. A capacity-limited node
+        // (e.g. Junction.connectEdge returns false when full) would otherwise leave
+        // edge.start == newStart while newStart.getConnection() lacks this edge — an asymmetric
+        // graph that yields wrong solves. Simulate both connects first and refuse the whole swap
+        // if either would be rejected, so the old adjacency is left untouched on failure.
+        if (!newStart.connectEdge(this, true)) {
+            throw new IllegalStateException(
+                    "newStart node rejected edge (at capacity): " + newStart.getId());
+        }
+        if (newEnd != newStart && !newEnd.connectEdge(this, true)) {
+            throw new IllegalStateException(
+                    "newEnd node rejected edge (at capacity): " + newEnd.getId());
+        }
         CircuitNode oldStart = this.start;
         CircuitNode oldEnd = this.end;
         if (oldStart != null && oldStart != newStart && oldStart != newEnd) {
@@ -303,9 +323,15 @@ public non-sealed class CircuitEdge extends CircuitElement {
         }
         this.start = newStart;
         this.end = newEnd;
-        newStart.connectEdge(this, false);
-        if (newEnd != newStart) {
-            newEnd.connectEdge(this, false);
+        // The simulate checks above already confirmed both connects succeed; assert on the real
+        // call so a capacity race can never silently corrupt adjacency.
+        if (!newStart.connectEdge(this, false)) {
+            throw new IllegalStateException(
+                    "newStart node rejected edge (at capacity): " + newStart.getId());
+        }
+        if (newEnd != newStart && !newEnd.connectEdge(this, false)) {
+            throw new IllegalStateException(
+                    "newEnd node rejected edge (at capacity): " + newEnd.getId());
         }
     }
 

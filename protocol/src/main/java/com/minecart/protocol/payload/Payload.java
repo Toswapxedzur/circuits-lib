@@ -3,26 +3,27 @@ package com.minecart.protocol.payload;
 import com.minecart.protocol.codec.TagBinaryEncoder;
 import com.minecart.protocol.misc.ProtocolStrings;
 import com.minecart.serialization.TagSerializable;
+import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.Tag;
 import io.netty.buffer.ByteBuf;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Data-only payload: identity and tag fields via {@link TagSerializable}. No receive-side behavior here;
  * after decode, a {@link PayloadHandler} performs routing and side effects ({@code PayloadHandler<?>} or a concrete
  * {@code PayloadHandler<MyPayload>}).
  * <p>
- * {@link #encode(ByteBuf)} / {@link #decode(ByteBuf)} default to the same length-prefixed binary tag format as
+ * {@link #encode(ByteBuf)} defaults to the same length-prefixed binary tag format as
  * {@link com.minecart.protocol.codec.TagBinaryEncoder} / {@link com.minecart.protocol.codec.TagBinaryDecoder}; override
- * for a more compact custom wire layout when needed.
+ * for a more compact custom wire layout when needed. The receive side reconstructs payloads via
+ * {@link #deserialize(CompoundTag)} (see {@link com.minecart.protocol.codec.PayloadDecoder}).
  */
 public interface Payload extends TagSerializable {
 
@@ -97,6 +98,19 @@ public interface Payload extends TagSerializable {
         return type.cast(p);
     }
 
+    /**
+     * Reads a required UUID field from {@code tag}, throwing {@link IllegalArgumentException} with a uniform
+     * "Missing '{key}'" message when it is absent or malformed. Consolidates the getUUID + null-check idiom
+     * repeated across the client → server payloads.
+     */
+    static UUID requireUUID(CompoundTag tag, String key) {
+        UUID value = TagUtil.getUUID(tag, key);
+        if (value == null) {
+            throw new IllegalArgumentException("Missing '" + key + "'");
+        }
+        return value;
+    }
+
     /** Reads {@link #TAG_PAYLOAD_ID} without instantiating a payload (for dispatch). */
     static String peekPayloadId(CompoundTag tag) {
         Objects.requireNonNull(tag, "tag");
@@ -123,40 +137,6 @@ public interface Payload extends TagSerializable {
             }
             out.writeInt(payload.length);
             out.writeBytes(payload);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    /**
-     * Reads the default wire format from {@code in} (length prefix + tag binary) and {@link #load(CompoundTag)}s
-     * the root compound. Consumes exactly the framed bytes from the buffer.
-     */
-    default void decode(ByteBuf in) {
-        Objects.requireNonNull(in, "in");
-        if (in.readableBytes() < 4) {
-            throw new IllegalArgumentException("ByteBuf too short for length prefix");
-        }
-        int length = in.readInt();
-        if (length < 0) {
-            throw new IllegalArgumentException("negative frame length: " + length);
-        }
-        if (length > TagBinaryEncoder.DEFAULT_MAX_PAYLOAD_LENGTH) {
-            throw new IllegalArgumentException(
-                    "frame length " + length + " exceeds max " + TagBinaryEncoder.DEFAULT_MAX_PAYLOAD_LENGTH);
-        }
-        if (in.readableBytes() < length) {
-            throw new IllegalArgumentException("ByteBuf too short: need " + length + " payload bytes");
-        }
-        byte[] payload = new byte[length];
-        in.readBytes(payload);
-        try (DataInputStream din = new DataInputStream(new ByteArrayInputStream(payload))) {
-            Tag.BinaryWithContext decoded = Tag.readBinary(din);
-            Tag root = decoded.root();
-            if (!(root instanceof CompoundTag compound)) {
-                throw new IllegalArgumentException("Expected CompoundTag root, got " + root.getClass().getName());
-            }
-            load(compound);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

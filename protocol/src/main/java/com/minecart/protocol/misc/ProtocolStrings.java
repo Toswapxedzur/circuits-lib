@@ -28,8 +28,6 @@ public final class ProtocolStrings {
     public static final String PAYLOAD_ELEMENT_INFO_UPDATE = "minecart.element_info_update_payload";
     public static final String PAYLOAD_COMBINE_CASCADE = "minecart.combine_cascade_payload";
     public static final String PAYLOAD_ROTATE_ELEMENT = "minecart.rotate_element_payload";
-    public static final String PAYLOAD_DRAG_BEGIN = "minecart.drag_begin_payload";
-    public static final String PAYLOAD_DRAG_END = "minecart.drag_end_payload";
 
     public static final String PAYLOAD_ENVELOPE_ID = "payload_id";
 
@@ -45,6 +43,12 @@ public final class ProtocolStrings {
     public static final String TAG_ACTION = "action";
     public static final String TAG_CHANGES = "changes";
     public static final String TAG_KIND = "kind";
+    /**
+     * {@link com.minecart.registry.CircuitElementType} id string (same key as
+     * {@link com.minecart.misc.CoreStrings#ELEMENT_TYPE} in serialized element tags). Canonical
+     * name for the wire key {@code "element_type_id"}, shared by placement payloads and
+     * {@link com.minecart.protocol.payload.server.CircuitElementChange}.
+     */
     public static final String TAG_ELEMENT_TYPE_ID = "element_type_id";
     public static final String TAG_X = "x";
     public static final String TAG_Y = "y";
@@ -96,18 +100,9 @@ public final class ProtocolStrings {
     public static final String TAG_PIVOT_Y = "pivot_y";
     public static final String TAG_DELTA_RADIANS = "delta_radians";
 
-    /**
-     * Drag-lease payload tags. {@code element_ids} is the list of element UUIDs the gesture wants
-     * to lease (component / free node / edge ids — whatever the client identifies as "I'm moving
-     * this"). {@code TAG_GESTURE_ID} is reused from the combine-cascade family.
-     */
-    public static final String TAG_ELEMENT_IDS = "element_ids";
-
     /** Snapshot body: embedded circuit compound under the payload root. */
     public static final String SNAPSHOT_TAG_CIRCUIT = "circuit";
 
-    /** {@link com.minecart.registry.CircuitElementType} id string (same as {@link com.minecart.misc.CoreStrings#ELEMENT_TYPE} in element tags). */
-    public static final String ELEMENT_TAG_ELEMENT_REGISTRY_ID = "element_type_id";
     public static final String ELEMENT_TAG_DATA = "data";
 
     public static final String KIND_INSERT = "insert";

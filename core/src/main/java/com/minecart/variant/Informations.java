@@ -117,9 +117,9 @@ public class Informations {
         protected double internalResistance;
 
         public CapacitorInfo(double capacitance, double resistance) {
-            this.capacitance = capacitance;
+            setCapacitance(capacitance);
             this.charge = 0.0;
-            this.internalResistance = resistance;
+            setInternalResistance(resistance);
         }
 
         @Override
@@ -141,7 +141,9 @@ public class Informations {
         }
 
         public void setCapacitance(double capacitance) {
-            this.capacitance = capacitance;
+            // Clamp to DELTA so voltage = charge / capacitance can never divide by zero and feed
+            // Inf/NaN into the solver via Capacitor.collectRule (mirrors ResistorInfo/DiodeInfo/BJTInfo).
+            this.capacitance = Math.max(capacitance, DELTA);
         }
 
         public double getInternalResistance() {
@@ -149,7 +151,9 @@ public class Informations {
         }
 
         public void setInternalResistance(double internalResistance) {
-            this.internalResistance = internalResistance;
+            // Clamp to DELTA for the same reason a resistor's resistance is clamped: a zero internal
+            // resistance degenerates the capacitor's branch equation.
+            this.internalResistance = Math.max(internalResistance, DELTA);
         }
 
         public double getCharge() {

@@ -24,7 +24,7 @@ public class Actions {
 
         @Override
         public void save(CompoundTag tag) {
-            tag.putString(Action.TAG_ACTION_ID, getActionType().getId());
+            // TAG_ACTION_ID is written once by the canonical Action.saveAction; don't duplicate it.
             tag.putDouble("double_value", value);
         }
 
@@ -54,7 +54,7 @@ public class Actions {
 
         @Override
         public void save(CompoundTag tag) {
-            tag.putString(Action.TAG_ACTION_ID, getActionType().getId());
+            // TAG_ACTION_ID is written once by the canonical Action.saveAction; don't duplicate it.
             tag.putInt("int_value", value);
         }
 

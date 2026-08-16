@@ -205,6 +205,9 @@ public class ServerWorld extends World {
         if (node1.getWorld() != this || node2.getWorld() != this) {
             throw new IllegalArgumentException("Can't coonect node that doesn't belong to the current ServerWorld");
         }
+        if (node1 == node2) {
+            throw new IllegalArgumentException("connect cannot create a self-loop");
+        }
         T edge = type.create(this, allowUnusual);
         edge.setWorld(this);
         if (!edge.connect(node1, node2, true)) {
@@ -298,13 +301,10 @@ public class ServerWorld extends World {
      * Removes a free {@link CircuitNode} from its circuit, plus every non-component wire incident to it.
      *
      * <p>Each incident wire gets its own {@link ElementRemoveEvent} so the client mirror sees a REMOVE
-     * delta for the wire instead of inheriting an orphan reference. We deliberately bypass
-     * {@link #disconnectWithoutRemoveEvent(CircuitEdge)} for those wires: that path triggers
-     * {@link com.minecart.foundation.Circuit#seperate} which would shuffle {@code node} into a freshly
-     * created circuit between the REMOVE event and the actual {@code nodes.remove}, leaving the node
-     * stranded on the server (and {@code lastKnownCircuitId} pointing at the original circuit while the
-     * element actually lives somewhere else). Direct removal keeps node and circuit identities aligned
-     * with whatever the listener captured at REMOVE time.
+     * delta for the wire instead of inheriting an orphan reference. Removing a wire never splits its
+     * circuit: disconnected subgraphs stay in one circuit for persistence / replication stability
+     * (per-component grounding in {@link ServerCircuit} keeps the solve well-posed). Direct removal
+     * keeps node and circuit identities aligned with whatever the listener captured at REMOVE time.
      *
      * <p>Edges that are part of a {@link com.minecart.logic.CircuitComponent}'s internal star graph are
      * skipped here — those are owned by the component and only {@link CircuitComponent#destroy} is
@@ -372,13 +372,11 @@ public class ServerWorld extends World {
      * silently refuse. After the swap:
      *
      * <ol>
-     *     <li>If detaching from a former endpoint disconnects the old circuit's BFS reachability between
-     *         the surviving and removed neighbours, the unreachable side is split into a fresh
-     *         {@link ServerCircuit} via {@link Circuit#seperate} (same code path as a wire-removal split).
-     *         Each migrated element fires {@link com.minecart.event.events.ElementCircuitChangedEvent} so
-     *         the listener emits a rebind CHANGE op.</li>
+     *     <li>Detaching from a former endpoint never splits the old circuit: disconnected subgraphs
+     *         are left in one circuit for persistence / replication stability, and {@link ServerCircuit}
+     *         grounds one reference node per connected component so the solve stays well-posed.</li>
      *     <li>If the new endpoints sit in different circuits than each other, the smaller side is merged
-     *         into the larger via {@link Circuit#mergeInto}, again firing rebind events.</li>
+     *         into the larger via {@link Circuit#mergeInto}, firing rebind events.</li>
      *     <li>The edge itself is moved to whichever circuit its new endpoints share.</li>
      *     <li>{@link CircuitElementEndpointChangeEvent} is posted; the listener catches it and marks the
      *         edge as {@code changed} so the resulting CHANGE op carries the new endpoint UUIDs in

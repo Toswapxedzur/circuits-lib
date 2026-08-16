@@ -22,6 +22,7 @@ public class MainMenuScreen extends ScreenAdapter {
     private final DisplayApp app;
     private final Skin skin;
     private final Stage stage;
+    private boolean disposed;
 
     public MainMenuScreen(DisplayApp app) {
         this.app = app;
@@ -88,6 +89,10 @@ public class MainMenuScreen extends ScreenAdapter {
     }
 
     @Override public void dispose() {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
         stage.dispose();
     }
 }

@@ -27,7 +27,8 @@ public final class DeleteWorldHandler implements PayloadHandler<DeleteWorldPaylo
 
     @Override
     public void handle(DeleteWorldPayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(DeleteWorldPayload payload) {

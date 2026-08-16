@@ -57,13 +57,7 @@ public final class DeleteElementPayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
-        worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        if (worldId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_WORLD_ID + "'");
-        }
-        elementId = TagUtil.getUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
-        if (elementId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_ELEMENT_ID + "'");
-        }
+        worldId = Payload.requireUUID(tag, ProtocolStrings.TAG_WORLD_ID);
+        elementId = Payload.requireUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
     }
 }

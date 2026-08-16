@@ -103,14 +103,8 @@ public final class MoveElementPayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
-        worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        if (worldId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_WORLD_ID + "'");
-        }
-        elementId = TagUtil.getUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
-        if (elementId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_ELEMENT_ID + "'");
-        }
+        worldId = Payload.requireUUID(tag, ProtocolStrings.TAG_WORLD_ID);
+        elementId = Payload.requireUUID(tag, ProtocolStrings.TAG_ELEMENT_ID);
         gestureId = TagUtil.getUUID(tag, ProtocolStrings.TAG_GESTURE_ID);
         x = tag.getDouble(ProtocolStrings.TAG_X);
         y = tag.getDouble(ProtocolStrings.TAG_Y);

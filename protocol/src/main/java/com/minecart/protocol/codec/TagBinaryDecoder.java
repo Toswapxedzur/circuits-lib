@@ -2,7 +2,6 @@ package com.minecart.protocol.codec;
 
 import com.minecart.serialization.tag.Tag;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.CorruptedFrameException;
@@ -15,8 +14,11 @@ import java.util.List;
 /**
  * Decodes length-prefixed frames produced by {@link TagBinaryEncoder} into {@link Tag.BinaryWithContext}
  * via {@link Tag#readBinary(java.io.DataInput)}.
+ *
+ * <p><strong>Not</strong> {@link io.netty.channel.ChannelHandler.Sharable}: {@link ByteToMessageDecoder}
+ * keeps a per-channel cumulation buffer, so a fresh instance is required per pipeline (matching
+ * {@link PayloadDecoder}).
  */
-@ChannelHandler.Sharable
 public class TagBinaryDecoder extends ByteToMessageDecoder {
 
     private final int maxFrameLength;

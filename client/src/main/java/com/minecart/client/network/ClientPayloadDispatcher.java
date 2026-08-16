@@ -4,6 +4,8 @@ import com.minecart.protocol.payload.Payload;
 import com.minecart.protocol.payload.PayloadHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +24,8 @@ import java.util.concurrent.Executor;
  * mutable per-instance.
  */
 public class ClientPayloadDispatcher extends SimpleChannelInboundHandler<Payload> {
+
+    private static final Logger log = LoggerFactory.getLogger(ClientPayloadDispatcher.class);
 
     private final Executor mainThread;
     private final Map<Class<? extends Payload>, PayloadHandler<?>> handlers = new HashMap<>();
@@ -47,23 +51,35 @@ public class ClientPayloadDispatcher extends SimpleChannelInboundHandler<Payload
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Payload msg) {
         if (msg.getDestination() != Payload.Destination.CLIENT) {
+            log.warn("Rejecting server-bound payload {} received on the client; closing channel",
+                    msg.getClass().getSimpleName());
             ctx.close();
             return;
         }
-        mainThread.execute(() -> dispatch(msg));
+        mainThread.execute(() -> dispatch(ctx, msg));
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private void dispatch(Payload msg) {
+    private void dispatch(ChannelHandlerContext ctx, Payload msg) {
         PayloadHandler handler = handlers.get(msg.getClass());
         if (handler == null) {
             return;
         }
-        handler.handle(msg);
+        try {
+            handler.handle(msg);
+        } catch (Throwable t) {
+            // The handler runs on the UI thread (not the Netty pipeline), so a thrown exception would
+            // never reach exceptionCaught — it would bubble up through the render loop and kill it.
+            // Log it and close the connection instead (ctx.close() is safe to call from any thread).
+            log.error("Handler for payload {} threw; closing connection",
+                    msg.getClass().getSimpleName(), t);
+            ctx.close();
+        }
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        log.error("Client network pipeline error; closing connection", cause);
         ctx.close();
     }
 }

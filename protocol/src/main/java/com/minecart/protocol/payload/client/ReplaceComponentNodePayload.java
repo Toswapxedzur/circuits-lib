@@ -79,21 +79,9 @@ public final class ReplaceComponentNodePayload implements Payload {
     @Override
     public void load(CompoundTag tag) {
         Payload.super.load(tag);
-        worldId = TagUtil.getUUID(tag, ProtocolStrings.TAG_WORLD_ID);
-        if (worldId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_WORLD_ID + "'");
-        }
-        componentId = TagUtil.getUUID(tag, ProtocolStrings.TAG_COMPONENT_ID);
-        if (componentId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_COMPONENT_ID + "'");
-        }
-        oldNodeId = TagUtil.getUUID(tag, ProtocolStrings.TAG_OLD_NODE_ID);
-        if (oldNodeId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_OLD_NODE_ID + "'");
-        }
-        newNodeId = TagUtil.getUUID(tag, ProtocolStrings.TAG_NEW_NODE_ID);
-        if (newNodeId == null) {
-            throw new IllegalArgumentException("Missing '" + ProtocolStrings.TAG_NEW_NODE_ID + "'");
-        }
+        worldId = Payload.requireUUID(tag, ProtocolStrings.TAG_WORLD_ID);
+        componentId = Payload.requireUUID(tag, ProtocolStrings.TAG_COMPONENT_ID);
+        oldNodeId = Payload.requireUUID(tag, ProtocolStrings.TAG_OLD_NODE_ID);
+        newNodeId = Payload.requireUUID(tag, ProtocolStrings.TAG_NEW_NODE_ID);
     }
 }

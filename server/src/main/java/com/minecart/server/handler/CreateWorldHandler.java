@@ -30,7 +30,8 @@ public final class CreateWorldHandler implements PayloadHandler<CreateWorldPaylo
 
     @Override
     public void handle(CreateWorldPayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(CreateWorldPayload payload) {

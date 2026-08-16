@@ -116,6 +116,18 @@ public final class RotateComponentOp implements CascadeOp {
         p.set(pivotX + rx * cos - ry * sin, pivotY + rx * sin + ry * cos);
     }
 
+    @Override
+    public java.util.List<com.minecart.logic.CircuitElement> movedElements() {
+        if (component == null || deltaRadians == 0.0) {
+            return java.util.List.of();
+        }
+        java.util.List<com.minecart.logic.CircuitElement> moved =
+                new java.util.ArrayList<>(rotated.size() + 1);
+        moved.add(component);
+        moved.addAll(rotated);
+        return moved;
+    }
+
     public CircuitComponent getComponent() {
         return component;
     }

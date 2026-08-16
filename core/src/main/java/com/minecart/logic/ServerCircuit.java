@@ -171,8 +171,20 @@ public class ServerCircuit extends Circuit {
         for (CircuitNode node : nodes) {
             node.setGround(false);
         }
-        if (!nodes.isEmpty()) {
-            nodes.iterator().next().setGround(true);
+        // Ground exactly one reference node PER connected component. A circuit can hold several
+        // disconnected subgraphs (circuits only ever merge, never split), so grounding only the
+        // first node of the whole circuit leaves every other component's voltages unconstrained
+        // and the matrix singular -> solve() fails -> everything gets zeroed each tick. A degree-0
+        // node forms its own component and is grounded too, giving it a well-posed V=0 equation
+        // (CircuitNode.collectRule stamps nothing for an isolated, ungrounded node). For the normal
+        // single-connected-circuit case this grounds exactly the first node, identical to before.
+        Set<CircuitNode> visited = new java.util.HashSet<>();
+        for (CircuitNode seed : nodes) {
+            if (visited.contains(seed)) {
+                continue;
+            }
+            seed.setGround(true);
+            bfs(seed, visited::add, e -> {});
         }
         system.collectVar(this::collectVariable);
         system.init();
@@ -216,9 +228,12 @@ public class ServerCircuit extends Circuit {
         for (CircuitEdge edge : edges) {
             edge.collectRule(provider);
         }
-        // Components currently own internal nodes/edges for persistence and rendering. Their
-        // constitutive behavior must be expressed through those internal edges until the linear
-        // system supports extra component equations without becoming overdetermined.
+        // Components contribute their constitutive relations (e.g. BJTransistor's I_C = beta*I_B)
+        // on top of the branch/device equations their internal nodes/edges already supply. Without
+        // this loop CircuitComponent.collectRule is dead and controlled sources are never enforced.
+        for (CircuitComponent component : components) {
+            component.collectRule(provider);
+        }
     }
 
     public void collectVariable(Set<DoubleVar> collector) {
@@ -227,6 +242,11 @@ public class ServerCircuit extends Circuit {
         }
         for (CircuitEdge edge : edges) {
             edge.collectVariable(collector);
+        }
+        // Mirror collectRelation: give components a chance to register any extra variables their
+        // constitutive relations reference beyond the internal node/edge variables above.
+        for (CircuitComponent component : components) {
+            component.collectVariable(collector);
         }
     }
 
@@ -252,17 +272,5 @@ public class ServerCircuit extends Circuit {
         }
         super.load(world, tag);
         markDirty();
-    }
-
-    @Override
-    public boolean seperate(CircuitNode node1, CircuitNode node2, CircuitEdge edge, Circuit newCircuit) {
-        boolean split = super.seperate(node1, node2, edge, newCircuit);
-        if (!split) {
-            markDirty();
-            return false;
-        }
-        markDirty();
-        ((ServerCircuit) newCircuit).markDirty();
-        return true;
     }
 }

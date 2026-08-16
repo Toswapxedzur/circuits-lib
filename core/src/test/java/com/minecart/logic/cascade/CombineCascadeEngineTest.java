@@ -1,7 +1,9 @@
 package com.minecart.logic.cascade;
 
 import com.minecart.elements.component.BJTransistor;
+import com.minecart.event.events.RegisterElementChangeListenerEvent;
 import com.minecart.foundation.Circuit;
+import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
@@ -13,6 +15,7 @@ import com.minecart.variant.info.PositionInfo;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -129,6 +132,49 @@ class CombineCascadeEngineTest {
         for (Circuit c : w.getCircuits()) {
             assertFalse(c.nodes().contains(absorbedPort));
         }
+    }
+
+    @Test
+    void tryCombine_crossComponentCascade_broadcastsMovedComponentAndNodes() {
+        ServerLevel level = new ServerLevel();
+        ServerWorld w = level.createWorld();
+
+        // Capture every element handed to Level.notifyElementChanged. Register before init() so the
+        // consumer is installed when the level wires up its notifier.
+        Set<CircuitElement> notified = new LinkedHashSet<>();
+        level.register(RegisterElementChangeListenerEvent.class, evt -> evt.register(notified::add));
+        level.init();
+
+        BJTransistor survivorBJT = w.createComponent(AllComponents.BJ_TRANSISTOR);
+        BJTransistor absorbedBJT = w.createComponent(AllComponents.BJ_TRANSISTOR);
+
+        survivorBJT.setInfo(AllElementInfos.POSITION, new PositionInfo(0.0, 0.0));
+        place(survivorBJT.getPort(0), -1.0, 0.0);
+        place(survivorBJT.getPort(1), 1.0, 0.5);
+        place(survivorBJT.getPort(2), 1.0, -0.5);
+        place(survivorBJT.getCenter(), 0.0, 0.0);
+
+        absorbedBJT.setInfo(AllElementInfos.POSITION, new PositionInfo(10.0, 0.0));
+        place(absorbedBJT.getPort(0), 9.0, 0.0);
+        place(absorbedBJT.getPort(1), 11.0, 0.5);
+        place(absorbedBJT.getPort(2), 11.0, -0.5);
+        place(absorbedBJT.getCenter(), 10.0, 0.0);
+
+        // Snapshot the nodes that will translate (absorbedBJT moves; its port 0 is the absorbed slot,
+        // which is destroyed rather than translated).
+        CircuitNode movedCenter = absorbedBJT.getCenter();
+        CircuitNode movedPort1 = absorbedBJT.getPort(1);
+        CircuitNode movedPort2 = absorbedBJT.getPort(2);
+
+        notified.clear();
+        boolean ok = CombineCascadeEngine.tryCombine(w, survivorBJT.getPort(0), absorbedBJT.getPort(0));
+        assertTrue(ok, "cross-component cascade should succeed");
+
+        // M3: the engine emits a batched notify for the moved component and each translated node.
+        assertTrue(notified.contains(absorbedBJT), "moved component should be broadcast");
+        assertTrue(notified.contains(movedCenter), "moved centre node should be broadcast");
+        assertTrue(notified.contains(movedPort1), "moved port node should be broadcast");
+        assertTrue(notified.contains(movedPort2), "moved port node should be broadcast");
     }
 
     @Test

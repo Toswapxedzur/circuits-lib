@@ -10,6 +10,8 @@ import com.minecart.registry.AllElementInfos;
 import com.minecart.registry.CircuitElementRegistry;
 import com.minecart.registry.CircuitElementType;
 import com.minecart.variant.info.PositionInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 
@@ -22,6 +24,8 @@ import java.util.Objects;
  */
 public final class PlaceNodeHandler implements PayloadHandler<PlaceNodePayload> {
 
+    private static final Logger log = LoggerFactory.getLogger(PlaceNodeHandler.class);
+
     private final ServerLevel level;
 
     public PlaceNodeHandler(ServerLevel level) {
@@ -30,7 +34,8 @@ public final class PlaceNodeHandler implements PayloadHandler<PlaceNodePayload> 
 
     @Override
     public void handle(PlaceNodePayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(PlaceNodePayload payload) {
@@ -38,8 +43,14 @@ public final class PlaceNodeHandler implements PayloadHandler<PlaceNodePayload> 
         if (!(world instanceof ServerWorld serverWorld)) {
             return;
         }
-        CircuitElementType<?> rawType = CircuitElementRegistry.getType(payload.getElementTypeId());
-        if (rawType == null || rawType.isUnusual()) {
+        CircuitElementType<?> rawType;
+        try {
+            rawType = CircuitElementRegistry.getType(payload.getElementTypeId());
+        } catch (IllegalArgumentException ex) {
+            log.debug("place-node: unknown element type '{}', dropping", payload.getElementTypeId());
+            return;
+        }
+        if (rawType.isUnusual()) {
             return;
         }
         CircuitNode node;

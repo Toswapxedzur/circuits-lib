@@ -19,6 +19,15 @@ public final class RenderRegistry {
     private static final Map<String, RenderElementType<?>> TYPE_BINDINGS = new HashMap<>();
     private static final Map<RenderElementType<?>, List<RenderContribution<?>>> CONTRIBUTIONS =
             new LinkedHashMap<>();
+    /**
+     * Memoized render plans keyed by the resolved leaf {@link RenderElementType}. Registrations are
+     * static after {@link DefaultRenderRegistrations#install()} runs, so the plan (and its part
+     * instances) is identical every frame — rebuilding it per layout/draw call allocated a fresh
+     * builder + N part objects ~2*N times per frame. The cache is invalidated whenever
+     * {@link #register} or {@link #bind} mutates the registry, so a late/dynamic registration still
+     * produces a correct plan on the next call.
+     */
+    private static final Map<RenderElementType<?>, RenderPlan<?>> PLAN_CACHE = new HashMap<>();
 
     private RenderRegistry() {}
 
@@ -27,6 +36,7 @@ public final class RenderRegistry {
         Objects.requireNonNull(elementType, "elementType");
         Objects.requireNonNull(renderType, "renderType");
         TYPE_BINDINGS.put(elementType.getTypeId(), renderType);
+        PLAN_CACHE.clear();
     }
 
     public static <T extends CircuitElement> void register(
@@ -34,24 +44,35 @@ public final class RenderRegistry {
         Objects.requireNonNull(renderType, "renderType");
         Objects.requireNonNull(contribution, "contribution");
         CONTRIBUTIONS.computeIfAbsent(renderType, k -> new ArrayList<>()).add(contribution);
+        PLAN_CACHE.clear();
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static void layout(CircuitElement element, RenderContext context) {
-        RenderPlan plan = buildPlan(element);
+        RenderPlan plan = planFor(element);
         plan.layout(element, context);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static void draw(CircuitElement element, RenderContext context) {
-        RenderPlan plan = buildPlan(element);
+        RenderPlan plan = planFor(element);
         plan.draw(element, context);
     }
 
+    private static RenderPlan<?> planFor(CircuitElement element) {
+        RenderElementType<?> leaf = leafTypeFor(element);
+        RenderPlan<?> cached = PLAN_CACHE.get(leaf);
+        if (cached == null) {
+            cached = buildPlan(leaf);
+            PLAN_CACHE.put(leaf, cached);
+        }
+        return cached;
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static RenderPlan<?> buildPlan(CircuitElement element) {
+    private static RenderPlan<?> buildPlan(RenderElementType<?> leaf) {
         RenderTreeBuilder builder = new RenderTreeBuilder();
-        for (RenderElementType<?> type : ancestryFor(element)) {
+        for (RenderElementType<?> type : ancestryOf(leaf)) {
             List<RenderContribution<?>> contributions = CONTRIBUTIONS.get(type);
             if (contributions == null) {
                 continue;
@@ -63,7 +84,7 @@ public final class RenderRegistry {
         return builder.build();
     }
 
-    private static List<RenderElementType<?>> ancestryFor(CircuitElement element) {
+    private static RenderElementType<?> leafTypeFor(CircuitElement element) {
         RenderElementType<?> type = TYPE_BINDINGS.get(element.getRegistryTypeId());
         if (type == null) {
             if (element instanceof CircuitNode) {
@@ -76,8 +97,12 @@ public final class RenderRegistry {
                 type = RenderTypes.ELEMENT;
             }
         }
+        return type;
+    }
+
+    private static List<RenderElementType<?>> ancestryOf(RenderElementType<?> leaf) {
         ArrayList<RenderElementType<?>> reversed = new ArrayList<>();
-        for (RenderElementType<?> p = type; p != null; p = p.parent()) {
+        for (RenderElementType<?> p = leaf; p != null; p = p.parent()) {
             reversed.add(p);
         }
         ArrayList<RenderElementType<?>> ordered = new ArrayList<>();

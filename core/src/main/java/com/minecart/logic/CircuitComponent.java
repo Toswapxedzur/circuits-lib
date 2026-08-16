@@ -252,6 +252,11 @@ public non-sealed class CircuitComponent extends CircuitElement {
     protected <T extends CircuitEdge> T newEdge(CircuitElementType<T> type, CircuitNode node1, CircuitNode node2){
         ServerWorld serverWorld = (ServerWorld) getWorld();
         T edge = serverWorld.connectInComponent(type, node1, node2);
+        if (edge == null) {
+            throw new IllegalStateException(
+                    "connectInComponent returned null (a port node rejected the edge) for component "
+                            + getRegistryTypeId());
+        }
         edges.add(edge);
         edge.setComponent(this);
         return edge;
@@ -261,6 +266,11 @@ public non-sealed class CircuitComponent extends CircuitElement {
             CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, O propertyInfo) {
         ServerWorld serverWorld = (ServerWorld) getWorld();
         T edge = serverWorld.connectInComponent(type, node1, node2, propertyInfo);
+        if (edge == null) {
+            throw new IllegalStateException(
+                    "connectInComponent returned null (a port node rejected the edge) for component "
+                            + getRegistryTypeId());
+        }
         edges.add(edge);
         edge.setComponent(this);
         return edge;
@@ -270,9 +280,12 @@ public non-sealed class CircuitComponent extends CircuitElement {
             CircuitElementType<T> type, CircuitNode node1, CircuitNode node2, int propertyIndex, Object property) {
         ServerWorld serverWorld = (ServerWorld) getWorld();
         T edge = serverWorld.connectInComponent(type, node1, node2);
-        if (edge != null) {
-            edge.set(propertyIndex, property);
+        if (edge == null) {
+            throw new IllegalStateException(
+                    "connectInComponent returned null (a port node rejected the edge) for component "
+                            + getRegistryTypeId());
         }
+        edge.set(propertyIndex, property);
         edges.add(edge);
         edge.setComponent(this);
         return edge;
@@ -457,18 +470,18 @@ public non-sealed class CircuitComponent extends CircuitElement {
      * <ol>
      *     <li><b>External wires first:</b> any edge connected to a port whose {@code component == null}
      *     is a user-placed wire — drop it through the regular {@link ServerWorld#disconnect} path so the
-     *     CircuitElementListener emits a REMOVE delta and any seperate-driven free-node rebind on the
-     *     other side gets replicated correctly.</li>
+     *     CircuitElementListener emits a REMOVE delta. Disconnecting a wire no longer splits the circuit;
+     *     any now-disconnected free-node side simply stays in the same circuit.</li>
      *     <li><b>Clear the internal lock:</b> null out {@code component} on every internal node and edge
      *     so the subsequent direct-removal path doesn't trip the hasComponent guards.</li>
      *     <li><b>Direct removal:</b> for each internal edge / node, post {@link ElementRemoveEvent}
      *     manually and yank it out of its actual circuit (which may differ from {@code masterCircuit}
      *     because {@code generate()} merges every internal into one shared circuit). We deliberately
-     *     bypass {@link ServerWorld#disconnect}/{@link ServerWorld#destroy} here to skip their
-     *     {@code seperate} pass — splitting Cmerged into per-leaf circuits during teardown would create
-     *     a flurry of new circuits and ElementCircuitChangedEvents that the client mirror would have to
-     *     unwind, which historically caused REBIND-source-circuit-not-found errors when the client's
-     *     own destroy cascade reshuffled membership independently.</li>
+     *     bypass {@link ServerWorld#disconnect}/{@link ServerWorld#destroy} here so teardown removes
+     *     internals directly rather than routing each through the standard wire-management path, which
+     *     would fire a flurry of extra events the client mirror has to unwind and historically caused
+     *     REBIND-source-circuit-not-found errors when the client's own destroy cascade reshuffled
+     *     membership independently.</li>
      * </ol>
      *
      * <p>The component itself is removed from {@code masterCircuit.components()} after all internals are
@@ -487,8 +500,8 @@ public non-sealed class CircuitComponent extends CircuitElement {
         ArrayList<CircuitNode> nodesSnap = new ArrayList<>(nodes);
         ArrayList<CircuitEdge> edgesSnap = new ArrayList<>(edges);
 
-        // 1) External wires attached to ports: standard disconnect path (REMOVE event + seperate-driven
-        //    rebind for the free-node side, which is correct for that side).
+        // 1) External wires attached to ports: standard disconnect path (REMOVE event). Disconnect no
+        //    longer splits the circuit, so the free-node side just stays put.
         for (CircuitNode n : nodesSnap) {
             for (CircuitEdge ext : new ArrayList<>(n.getConnection())) {
                 if (ext.hasComponent()) {

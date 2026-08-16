@@ -16,10 +16,7 @@ import com.minecart.protocol.payload.client.PlaceNodePayload;
 import com.minecart.protocol.payload.client.RenameWorldPayload;
 import com.minecart.protocol.payload.client.ReplaceComponentNodePayload;
 import com.minecart.protocol.payload.client.RotateElementPayload;
-import com.minecart.protocol.payload.server.CircuitLifecyclePayload;
-import com.minecart.protocol.payload.server.WorldLifecyclePayload;
 import com.minecart.server.handler.ActionPayloadHandler;
-import com.minecart.server.handler.CircuitLifecycleHandler;
 import com.minecart.server.handler.CombineCascadeHandler;
 import com.minecart.server.handler.ConnectEdgeHandler;
 import com.minecart.server.handler.CreateWorldHandler;
@@ -33,7 +30,6 @@ import com.minecart.server.handler.PlaceNodeHandler;
 import com.minecart.server.handler.RenameWorldHandler;
 import com.minecart.server.handler.ReplaceComponentNodeHandler;
 import com.minecart.server.handler.RotateElementHandler;
-import com.minecart.server.handler.WorldLifecycleHandler;
 
 import java.util.function.Consumer;
 
@@ -59,9 +55,12 @@ public final class StandardServerHandlers {
             ServerPayloadDispatcher dispatcher,
             ServerLevel level,
             Consumer<Payload> broadcast) {
+        // NOTE: CircuitLifecyclePayload and WorldLifecyclePayload are Destination.CLIENT — the
+        // ServerPayloadDispatcher rejects (closes) any non-SERVER inbound payload before dispatch, so
+        // registering server-side handlers for them was unreachable dead code. Circuit/world lifecycle
+        // replication is server->client only (see CircuitLifecycleListener / the world handlers'
+        // broadcast sink); there is no inbound-to-server lifecycle path.
         dispatcher.register(ActionPayload.class, new ActionPayloadHandler(level));
-        dispatcher.register(CircuitLifecyclePayload.class, new CircuitLifecycleHandler(level));
-        dispatcher.register(WorldLifecyclePayload.class, new WorldLifecycleHandler(level));
         dispatcher.register(PlaceNodePayload.class, new PlaceNodeHandler(level));
         dispatcher.register(PlaceComponentPayload.class, new PlaceComponentHandler(level));
         dispatcher.register(ConnectEdgePayload.class, new ConnectEdgeHandler(level));

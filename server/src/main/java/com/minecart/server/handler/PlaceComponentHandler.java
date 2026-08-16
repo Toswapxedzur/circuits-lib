@@ -13,6 +13,8 @@ import com.minecart.registry.CircuitElementType;
 import com.minecart.registry.ComponentAnchorRegistry;
 import com.minecart.variant.info.PositionInfo;
 import com.minecart.variant.info.RotationInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -29,6 +31,8 @@ import java.util.Set;
  */
 public final class PlaceComponentHandler implements PayloadHandler<PlaceComponentPayload> {
 
+    private static final Logger log = LoggerFactory.getLogger(PlaceComponentHandler.class);
+
     private final ServerLevel level;
 
     public PlaceComponentHandler(ServerLevel level) {
@@ -37,7 +41,8 @@ public final class PlaceComponentHandler implements PayloadHandler<PlaceComponen
 
     @Override
     public void handle(PlaceComponentPayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(PlaceComponentPayload payload) {
@@ -45,8 +50,14 @@ public final class PlaceComponentHandler implements PayloadHandler<PlaceComponen
         if (!(world instanceof ServerWorld serverWorld)) {
             return;
         }
-        CircuitElementType<?> rawType = CircuitElementRegistry.getType(payload.getElementTypeId());
-        if (rawType == null || rawType.isUnusual()) {
+        CircuitElementType<?> rawType;
+        try {
+            rawType = CircuitElementRegistry.getType(payload.getElementTypeId());
+        } catch (IllegalArgumentException ex) {
+            log.debug("place-component: unknown element type '{}', dropping", payload.getElementTypeId());
+            return;
+        }
+        if (rawType.isUnusual()) {
             return;
         }
         CircuitComponent comp;

@@ -1,8 +1,6 @@
 package com.minecart.protocol.codec;
 
 import com.minecart.protocol.payload.Payload;
-import com.minecart.protocol.payload.PayloadRegistry;
-import com.minecart.protocol.payload.PayloadType;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.serialization.tag.Tag;
 import io.netty.buffer.ByteBuf;
@@ -16,8 +14,9 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Inbound Netty handler: reads a length-prefixed binary tag frame from the channel, looks up the matching
- * {@link PayloadType} in {@link PayloadRegistry}, instantiates a fresh {@link Payload}, and forwards it down the
+ * Inbound Netty handler: reads a length-prefixed binary tag frame from the channel and dispatches it through
+ * {@link Payload#deserialize(com.minecart.serialization.tag.CompoundTag)} (id lookup in
+ * {@link com.minecart.protocol.payload.PayloadRegistry}, instantiate, load), then forwards the payload down the
  * pipeline. Pair with {@link PayloadEncoder} on the send side. Handles partial frames safely (resets reader index
  * until the full payload has arrived).
  * <p>
@@ -64,16 +63,14 @@ public class PayloadDecoder extends ByteToMessageDecoder {
             if (!(root instanceof CompoundTag compound)) {
                 throw new CorruptedFrameException("Expected CompoundTag root, got " + root.getClass().getName());
             }
-            String id = Payload.peekPayloadId(compound);
-            if (id == null || id.isEmpty()) {
-                throw new CorruptedFrameException("Missing or empty payload id in tag");
-            }
-            PayloadType<?> type = PayloadRegistry.getType(id);
-            Payload payload = type.create();
-            payload.load(compound);
-            out.add(payload);
+            // Single source of truth for id-dispatch + instantiate + load (see Payload.deserialize);
+            // avoids re-implementing the same peek/getType/create/load sequence here.
+            out.add(Payload.deserialize(compound));
         } catch (IOException e) {
             throw new CorruptedFrameException("Failed to parse payload tag", e);
+        } catch (IllegalArgumentException e) {
+            // Missing/empty/unknown payload id or id mismatch: a malformed frame from the peer.
+            throw new CorruptedFrameException(e.getMessage(), e);
         }
     }
 }

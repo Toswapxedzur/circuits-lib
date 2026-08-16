@@ -1,8 +1,6 @@
 package com.minecart.server.handler;
 
 import com.minecart.action.Actionable;
-import com.minecart.foundation.Circuit;
-import com.minecart.foundation.Level;
 import com.minecart.logic.ServerLevel;
 import com.minecart.protocol.payload.PayloadHandler;
 import com.minecart.protocol.payload.client.ActionPayload;
@@ -10,7 +8,7 @@ import com.minecart.protocol.payload.client.ActionPayload;
 import java.util.Objects;
 
 /**
- * Resolves {@link ActionPayload} to an {@link Actionable} and {@linkplain ServerLevel#submit(Runnable) submits} it.
+ * Resolves {@link ActionPayload} to an {@link Actionable} and runs it on the server tick thread.
  */
 public final class ActionPayloadHandler implements PayloadHandler<ActionPayload> {
 
@@ -20,17 +18,16 @@ public final class ActionPayloadHandler implements PayloadHandler<ActionPayload>
         this.level = Objects.requireNonNull(level, "level");
     }
 
-    public ServerLevel getLevel() {
-        return level;
-    }
-
     @Override
     public void handle(ActionPayload payload) {
+        // The dispatcher already marshals onto the tick thread; run the resolved action directly
+        // rather than submitting a second time.
         receive(payload, level);
     }
 
     /**
-     * Queues the action for execution when the server level drains its action queue.
+     * Resolves the action for {@code payload} against {@code level} and runs it. Invoked on the tick
+     * thread (the dispatcher has already marshalled execution there).
      */
     public static void receive(ActionPayload payload, ServerLevel level) {
         Objects.requireNonNull(payload, "payload");
@@ -41,29 +38,6 @@ public final class ActionPayloadHandler implements PayloadHandler<ActionPayload>
                 payload.getCircuitId(),
                 payload.getElementId(),
                 payload.getAction());
-        level.submit(runnable);
-    }
-
-    /**
-     * Resolves when the target {@link Circuit} is already known.
-     */
-    public static Runnable toRunnable(ActionPayload payload, Circuit circuit) {
-        if (!payload.getCircuitId().equals(circuit.getId())) {
-            throw new IllegalArgumentException(
-                    "Circuit id mismatch: payload " + payload.getCircuitId() + ", actual " + circuit.getId());
-        }
-        return Actionable.fromPayload(circuit, payload.getElementId(), payload.getAction());
-    }
-
-    /**
-     * Resolves using a generic {@link Level} (same rules as {@link Actionable#fromPayload(Level, java.util.UUID, java.util.UUID, java.util.UUID, com.minecart.action.Action)}).
-     */
-    public static Runnable toRunnable(ActionPayload payload, Level level) {
-        return Actionable.fromPayload(
-                level,
-                payload.getWorldId(),
-                payload.getCircuitId(),
-                payload.getElementId(),
-                payload.getAction());
+        runnable.run();
     }
 }

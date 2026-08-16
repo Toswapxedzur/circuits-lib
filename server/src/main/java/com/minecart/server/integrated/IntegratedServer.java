@@ -7,6 +7,7 @@ import com.minecart.foundation.World;
 import com.minecart.logic.ServerLevel;
 import com.minecart.registry.AllComponents;
 import com.minecart.registry.AllElementInfos;
+import com.minecart.protocol.payload.AllPayloads;
 import com.minecart.protocol.codec.PayloadDecoder;
 import com.minecart.protocol.codec.PayloadEncoder;
 import com.minecart.protocol.payload.Payload;
@@ -187,6 +188,11 @@ public class IntegratedServer {
         // of this code used `.class` and silently failed on cold-start saved-world loads.
         AllComponents.init();
         AllElementInfos.init();
+        // Force the payload-type registry to initialise too: each Payload subclass registers its
+        // PayloadType in its <clinit>, and the decoder resolves inbound wire ids against that registry.
+        // Without this, a client connecting before any code touched a Payload class would hit "unknown
+        // payload id" on the first message.
+        AllPayloads.init();
         // Attach the info-panel save dispatcher to this level so ElementInfoUpdateEvents posted by
         // ElementInfoUpdateHandler route to the static save handlers element classes register in
         // their <clinit>. Installation timing relative to element-class init is irrelevant because
@@ -330,17 +336,29 @@ public class IntegratedServer {
     /**
      * Saves synchronously (blocks the calling thread until the snapshot is written) then stops. Suitable for
      * "Save & Quit" UI: the caller can show a spinner while this returns.
+     *
+     * <p>The pumps (tick + drag) are stopped <strong>before</strong> the save runs, so the serialization walks
+     * the level's mutable, unsynchronized collections while no tick thread is mutating them — previously the
+     * save read live state on the UI thread concurrently with the tick, risking a
+     * {@link java.util.ConcurrentModificationException} or a torn snapshot. The save is wrapped so
+     * {@link #stop()} always runs even if serialization throws (otherwise a save failure would leak the
+     * event loop / channel and leave {@code started} true).
      */
     public synchronized void saveAndStop() throws IOException {
         if (!started) {
             return;
         }
-        if (saveDir != null) {
-            // Run on calling thread: writes are independent of any in-flight tick because we
-            // copy nothing — we read the live level. Acceptable trade-off for shutdown.
-            WorldStorage.save(level, saveDir);
+        try {
+            if (saveDir != null) {
+                // Halt the pumps FIRST so the tick thread has fully terminated (LevelPumps.stop awaits
+                // termination) and can't mutate the level's LinkedHashSets while we serialize them here.
+                pumps.stop();
+                WorldStorage.save(level, saveDir);
+            }
+        } finally {
+            // stop() re-invokes pumps.stop() (idempotent) and tears down listeners / channels / loop.
+            stop();
         }
-        stop();
     }
 
     public boolean isStarted() {

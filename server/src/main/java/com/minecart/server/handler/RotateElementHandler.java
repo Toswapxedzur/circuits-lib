@@ -1,6 +1,5 @@
 package com.minecart.server.handler;
 
-import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitElement;
@@ -11,7 +10,6 @@ import com.minecart.protocol.payload.PayloadHandler;
 import com.minecart.protocol.payload.client.RotateElementPayload;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Server-side handler for {@link RotateElementPayload}. Used by the gesture surface (Phase 3c:
@@ -41,7 +39,8 @@ public final class RotateElementHandler implements PayloadHandler<RotateElementP
 
     @Override
     public void handle(RotateElementPayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(RotateElementPayload payload) {
@@ -49,7 +48,7 @@ public final class RotateElementHandler implements PayloadHandler<RotateElementP
         if (!(world instanceof ServerWorld serverWorld)) {
             return;
         }
-        CircuitElement element = findElement(world, payload.getElementId());
+        CircuitElement element = ElementLookup.findElement(world, payload.getElementId());
         if (!(element instanceof CircuitComponent component)) {
             // Phase 3c scope: rotation only for components. Drop silently; sync will re-assert.
             return;
@@ -60,14 +59,5 @@ public final class RotateElementHandler implements PayloadHandler<RotateElementP
                 serverWorld, component,
                 payload.getPivotX(), payload.getPivotY(),
                 payload.getDeltaRadians());
-    }
-
-    private static CircuitElement findElement(World world, UUID id) {
-        if (id == null) return null;
-        for (Circuit c : world.getCircuits()) {
-            CircuitElement el = c.findElement(id);
-            if (el != null) return el;
-        }
-        return null;
     }
 }

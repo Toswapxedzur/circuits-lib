@@ -1,9 +1,7 @@
 package com.minecart.server.handler;
 
-import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitComponent;
-import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.logic.ServerLevel;
 import com.minecart.logic.ServerWorld;
@@ -13,7 +11,6 @@ import com.minecart.variant.info.LockMode;
 import com.minecart.variant.info.LockState;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Server-side handler for {@link ReplaceComponentNodePayload}: looks up the component, validates that
@@ -43,7 +40,8 @@ public final class ReplaceComponentNodeHandler implements PayloadHandler<Replace
 
     @Override
     public void handle(ReplaceComponentNodePayload payload) {
-        level.submit(() -> apply(payload));
+        // The dispatcher already marshals onto the tick thread; apply directly (no second submit hop).
+        apply(payload);
     }
 
     private void apply(ReplaceComponentNodePayload payload) {
@@ -51,7 +49,7 @@ public final class ReplaceComponentNodeHandler implements PayloadHandler<Replace
         if (!(world instanceof ServerWorld)) {
             return;
         }
-        CircuitComponent comp = findComponent(world, payload.getComponentId());
+        CircuitComponent comp = ElementLookup.findComponent(world, payload.getComponentId());
         if (comp == null) {
             return;
         }
@@ -63,14 +61,14 @@ public final class ReplaceComponentNodeHandler implements PayloadHandler<Replace
             // Rebroadcast the component (and the two nodes the swap would have touched, when
             // known) so any client that already showed an optimistic port replacement reverts.
             level.notifyElementChanged(comp);
-            CircuitNode oldNode = findNode(world, payload.getOldNodeId());
-            CircuitNode newNode = findNode(world, payload.getNewNodeId());
+            CircuitNode oldNode = ElementLookup.findNode(world, payload.getOldNodeId());
+            CircuitNode newNode = ElementLookup.findNode(world, payload.getNewNodeId());
             if (oldNode != null) level.notifyElementChanged(oldNode);
             if (newNode != null) level.notifyElementChanged(newNode);
             return;
         }
-        CircuitNode oldNode = findNode(world, payload.getOldNodeId());
-        CircuitNode newNode = findNode(world, payload.getNewNodeId());
+        CircuitNode oldNode = ElementLookup.findNode(world, payload.getOldNodeId());
+        CircuitNode newNode = ElementLookup.findNode(world, payload.getNewNodeId());
         if (oldNode == null || newNode == null || oldNode == newNode) {
             return;
         }
@@ -89,32 +87,5 @@ public final class ReplaceComponentNodeHandler implements PayloadHandler<Replace
         level.notifyElementChanged(newNode);
         level.notifyElementChanged(oldNode);
         level.notifyElementChanged(comp);
-    }
-
-    private static CircuitComponent findComponent(World world, UUID id) {
-        if (id == null) {
-            return null;
-        }
-        for (Circuit circuit : world.getCircuits()) {
-            for (CircuitComponent c : circuit.components()) {
-                if (id.equals(c.getId())) {
-                    return c;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static CircuitNode findNode(World world, UUID id) {
-        if (id == null) {
-            return null;
-        }
-        for (Circuit circuit : world.getCircuits()) {
-            CircuitNode n = circuit.findNode(id);
-            if (n != null) {
-                return n;
-            }
-        }
-        return null;
     }
 }

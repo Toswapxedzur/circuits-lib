@@ -3,9 +3,9 @@ package com.minecart.protocol.sync;
 import com.minecart.logic.CircuitElement;
 import com.minecart.serialization.tag.CompoundTag;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 /**
@@ -15,7 +15,10 @@ import java.util.function.BiConsumer;
  */
 public final class SyncRegistry {
 
-    private static final Map<Class<? extends CircuitElement>, SyncHandler<?>> REGISTRY = new HashMap<>();
+    // ConcurrentHashMap: handlers are registered lazily via ensureHandlersRegistered() on app threads
+    // and read during writeSyncData/readSyncData that may run on Netty IO threads, so publication must
+    // be safe (a plain HashMap gives no happens-before and could lose entries under concurrent resize).
+    private static final Map<Class<? extends CircuitElement>, SyncHandler<?>> REGISTRY = new ConcurrentHashMap<>();
 
     private static volatile boolean handlersLoaded;
 

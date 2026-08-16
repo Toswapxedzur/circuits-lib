@@ -32,7 +32,9 @@ public class ClientConnection {
     private final ClientPayloadDispatcher dispatcher;
 
     private EventLoopGroup loop;
-    private Channel channel;
+    // volatile so cross-thread readers (send / isConnected, called off the connecting thread) get a
+    // happens-before with the connect/close writes under the instance lock.
+    private volatile Channel channel;
 
     public ClientConnection(ClientPayloadDispatcher dispatcher) {
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
@@ -53,9 +55,7 @@ public class ClientConnection {
                 .group(loop)
                 .channel(LocalChannel.class)
                 .handler(buildInitializer());
-        ChannelFuture f = b.connect(address).sync();
-        channel = f.channel();
-        return f;
+        return connectOrCleanup(b.connect(address));
     }
 
     /**
@@ -74,9 +74,30 @@ public class ClientConnection {
                 .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .handler(buildInitializer());
-        ChannelFuture f = b.connect(host, port).sync();
-        channel = f.channel();
-        return f;
+        return connectOrCleanup(b.connect(host, port));
+    }
+
+    /**
+     * Blocks on {@code future}; on success publishes the channel, on failure shuts down the freshly
+     * created {@link EventLoopGroup} (otherwise the group leaks — {@code channel} stays null, so a
+     * later retry would overwrite {@code loop} and orphan this group) and rethrows.
+     */
+    private ChannelFuture connectOrCleanup(ChannelFuture future) throws InterruptedException {
+        boolean connected = false;
+        try {
+            ChannelFuture f = future.sync();
+            channel = f.channel();
+            connected = true;
+            return f;
+        } finally {
+            // Covers InterruptedException, connect failures (Netty sneaky-throws the cause, which may
+            // be a checked exception), and any Error: if we never published a channel, the group is
+            // orphaned unless we shut it down here.
+            if (!connected && loop != null) {
+                loop.shutdownGracefully();
+                loop = null;
+            }
+        }
     }
 
     /**
