@@ -58,7 +58,7 @@ public final class SnapRenderer implements Disposable {
 
     // Ghost box meshes cached by size+material so the ghost gets the same proportional UVs as real parts.
     private final Map<String, Model> ghostCache = new HashMap<>();
-    private final List<BoxSpec> ghostBoxes = new ArrayList<>();
+    private final List<OrientedBox> ghostParts = new ArrayList<>();
     private boolean ghostValid;
 
     private final Vector3 c00 = new Vector3(), c10 = new Vector3(), c11 = new Vector3(), c01 = new Vector3();
@@ -129,11 +129,11 @@ public final class SnapRenderer implements Disposable {
         sceneInstance = new ModelInstance(sceneModel);
     }
 
-    /** Sets the ghost geometry (body + terminal bumps) and whether the placement is valid. */
-    public void setGhost(List<BoxSpec> boxes, boolean valid) {
-        ghostBoxes.clear();
+    /** Sets the ghost geometry (rotating body bar + terminal bumps) and whether the placement is valid. */
+    public void setGhost(List<OrientedBox> boxes, boolean valid) {
+        ghostParts.clear();
         if (boxes != null) {
-            ghostBoxes.addAll(boxes);
+            ghostParts.addAll(boxes);
         }
         ghostValid = valid;
     }
@@ -157,27 +157,30 @@ public final class SnapRenderer implements Disposable {
         if (highlightActive) {
             modelBatch.render(highlightInstance, environment);
         }
-        for (BoxSpec b : ghostBoxes) {
-            Model mesh = ghostMesh(b);
+        for (OrientedBox g : ghostParts) {
+            Model mesh = ghostMesh(g.sizeX(), g.sizeY(), g.sizeZ(), g.category());
             ModelInstance inst = new ModelInstance(mesh);
-            inst.transform.setToTranslation(b.cx(), b.cy(), b.cz());
+            inst.transform.setToTranslation(g.cx(), g.cy(), g.cz());
+            if (g.yawDeg() != 0f) {
+                inst.transform.rotate(Vector3.Y, -g.yawDeg()); // align mesh +X with the heading in XZ
+            }
             modelBatch.render(inst, environment);
         }
         modelBatch.end();
     }
 
-    /** A cached, origin-centred, proportional-UV box mesh matching {@code box}'s size + ghost material. */
-    private Model ghostMesh(BoxSpec box) {
-        int sx = Math.round(box.sizeX()), sy = Math.round(box.sizeY()), sz = Math.round(box.sizeZ());
-        String matKey = ghostValid ? box.category().name() : "INVALID";
+    /** A cached, origin-centred, proportional-UV box mesh of the given size + ghost material. */
+    private Model ghostMesh(float sizeX, float sizeY, float sizeZ, BoxSpec.Category category) {
+        int sx = Math.round(sizeX), sy = Math.round(sizeY), sz = Math.round(sizeZ);
+        String matKey = ghostValid ? category.name() : "INVALID";
         String key = sx + "_" + sy + "_" + sz + "_" + matKey;
         Model cached = ghostCache.get(key);
         if (cached == null) {
-            Material mat = ghostValid ? ghostMaterials.get(box.category()) : ghostInvalidMaterial;
+            Material mat = ghostValid ? ghostMaterials.get(category) : ghostInvalidMaterial;
             ModelBuilder mb = new ModelBuilder();
             mb.begin();
             MeshPartBuilder part = mb.part("ghost", GL20.GL_TRIANGLES, ATTRS, mat);
-            addBox(part, 0f, 0f, 0f, box.sizeX(), box.sizeY(), box.sizeZ());
+            addBox(part, 0f, 0f, 0f, sizeX, sizeY, sizeZ);
             cached = mb.end();
             ghostCache.put(key, cached);
         }
