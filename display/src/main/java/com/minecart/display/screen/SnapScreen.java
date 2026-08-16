@@ -1,13 +1,15 @@
 package com.minecart.display.screen;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input.Buttons;
+import com.badlogic.gdx.Input.Keys;
+import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
-import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Vector3;
-import com.badlogic.gdx.math.collision.Ray;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
@@ -20,6 +22,7 @@ import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.display.DisplayApp;
 import com.minecart.display.input.FreeCameraController;
+import com.minecart.display.render.snap.SnapEditor;
 import com.minecart.display.render.snap.SnapRenderer;
 import com.minecart.display.render.snap.SnapScene;
 import com.minecart.display.render.snap.SnapSceneGeometry;
@@ -27,6 +30,7 @@ import com.minecart.foundation.World;
 import com.minecart.logic.ServerWorld;
 import com.minecart.server.integrated.IntegratedServer;
 import com.minecart.snap.SnapBoard;
+import com.minecart.snap.SnapPlacement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,10 +40,12 @@ import java.io.IOException;
  * The 3D snap-circuit editor ({@link com.minecart.foundation.GameMode#SNAP_3D}). Reached from
  * {@link WorldListScreen} for any save created in snap mode, in place of the 2D {@link GameScreen}.
  *
- * <p><b>Phase 3 status:</b> renders the board as noise-textured, lit 3D boxes; the player flies freely
- * (W/A/S/D + Space/Ctrl, right-drag to look, scroll to dolly); and a ray from the cursor picks the part
- * under it against its bounding box, highlighting it and naming it in the HUD. Server-authoritative
- * placement/removal and the part palette build on this picking + scene refresh next.
+ * <p><b>Phase 3b status:</b> a Minecraft/Lego-style build loop. A bottom hotbar chooses the item
+ * (wire / resistor / battery / eraser); a translucent ghost previews the placement — green where valid,
+ * red where not — snapping to the ground lattice or stacking on the part under the cursor; <kbd>R</kbd>
+ * rotates it; left-click places (or, with the eraser, removes) the part. Edits are applied on the server's
+ * tick thread via its action queue, then the scene refreshes when the board's revision advances. The
+ * player flies freely (W/A/S/D + Space/Ctrl, right-drag to look, scroll to dolly).
  */
 public final class SnapScreen extends ScreenAdapter {
 
@@ -52,17 +58,19 @@ public final class SnapScreen extends ScreenAdapter {
     private final IntegratedServer integrated;
 
     private final Stage uiStage;
+    private final ServerWorld serverWorld;
     private final SnapBoard board;
 
     private PerspectiveCamera camera;
     private FreeCameraController flyCam;
     private SnapRenderer renderer;
     private SnapScene scene;
+    private SnapEditor editor;
     private InputMultiplexer input;
-    private Label hoverLabel;
 
-    private final Vector3 hitPoint = new Vector3();
-    private SnapScene.Pickable hovered;
+    private Label statusLabel;
+    private TextButton[] hotbarButtons;
+    private int lastRevision = Integer.MIN_VALUE;
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -75,7 +83,8 @@ public final class SnapScreen extends ScreenAdapter {
         this.connection = connection;
         this.integrated = integrated;
         this.uiStage = new Stage(new ScreenViewport());
-        this.board = boardFrom(integrated);
+        this.serverWorld = snapWorld(integrated);
+        this.board = serverWorld != null ? serverWorld.getSnapBoard() : null;
         buildUi();
         if (board != null) {
             buildScene();
@@ -83,13 +92,13 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     /** In singleplayer the authoritative board lives on the integrated server's world. */
-    private static SnapBoard boardFrom(IntegratedServer integrated) {
+    private static ServerWorld snapWorld(IntegratedServer integrated) {
         if (integrated == null) {
             return null;
         }
         for (World w : integrated.level().getWorlds()) {
             if (w instanceof ServerWorld sw && sw.getSnapBoard() != null) {
-                return sw.getSnapBoard();
+                return sw;
             }
         }
         return null;
@@ -108,15 +117,17 @@ public final class SnapScreen extends ScreenAdapter {
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
         renderer = new SnapRenderer();
-        scene = SnapScene.of(board);
-        renderer.setScene(scene);
+        editor = new SnapEditor(board);
+        refreshScene();
     }
+
+    // --- UI -------------------------------------------------------------------------------------
 
     private void buildUi() {
         Skin skin = app.getSkin();
 
         Label title = new Label("3D Snap: " + worldName, skin);
-        hoverLabel = new Label("", skin, "muted");
+        statusLabel = new Label("", skin, "muted");
 
         TextButton saveBack = new TextButton("Save & Back", skin);
         TextButton back = new TextButton("Back", skin);
@@ -133,50 +144,125 @@ public final class SnapScreen extends ScreenAdapter {
         topBar.add(title).left().expandX();
         topBar.add(saveBack).width(150f).height(40f).padRight(8f);
         topBar.add(back).width(110f).height(40f).row();
-        topBar.add(hoverLabel).left().colspan(3).padTop(6f);
+        topBar.add(statusLabel).left().colspan(3).padTop(6f);
         uiStage.addActor(topBar);
-        updateHoverLabel();
-    }
 
-    private void updateHoverLabel() {
-        if (board == null) {
-            hoverLabel.setText("No board to display for this session.");
-            return;
-        }
-        String base = "WASD move • Space/Ctrl up/down • right-drag look • scroll dolly";
-        if (hovered != null) {
-            hoverLabel.setText(base + "    |    hovering: " + hovered.placement().type().id());
+        if (board != null) {
+            buildHotbar(skin);
         } else {
-            hoverLabel.setText(base);
+            statusLabel.setText("No board to display for this session.");
         }
     }
 
-    /** Casts a ray from the cursor and keeps the nearest part whose bounding box it hits. */
-    private void pick() {
-        hovered = null;
-        if (scene == null || camera == null) {
+    private void buildHotbar(Skin skin) {
+        SnapEditor.Tool[] tools = SnapEditor.Tool.values();
+        hotbarButtons = new TextButton[tools.length];
+
+        Table hotbar = new Table();
+        hotbar.setFillParent(true);
+        hotbar.bottom().pad(16f);
+        for (int i = 0; i < tools.length; i++) {
+            SnapEditor.Tool tool = tools[i];
+            TextButton button = new TextButton((i + 1) + "  " + tool.label(), skin);
+            button.addListener(new ClickListener() {
+                @Override public void clicked(InputEvent e, float x, float y) {
+                    if (editor != null) {
+                        editor.select(tool);
+                        refreshHotbar();
+                    }
+                }
+            });
+            hotbarButtons[i] = button;
+            hotbar.add(button).width(120f).height(44f).padLeft(6f).padRight(6f);
+        }
+        uiStage.addActor(hotbar);
+    }
+
+    private void refreshHotbar() {
+        if (hotbarButtons == null || editor == null) {
             return;
         }
-        Ray ray = camera.getPickRay(Gdx.input.getX(), Gdx.input.getY());
-        float bestDist2 = Float.MAX_VALUE;
-        for (SnapScene.Pickable pk : scene.pickables()) {
-            if (Intersector.intersectRayBounds(ray, pk.bounds(), hitPoint)) {
-                float d2 = hitPoint.dst2(camera.position);
-                if (d2 < bestDist2) {
-                    bestDist2 = d2;
-                    hovered = pk;
-                }
-            }
+        SnapEditor.Tool[] tools = SnapEditor.Tool.values();
+        for (int i = 0; i < hotbarButtons.length; i++) {
+            hotbarButtons[i].setColor(tools[i] == editor.tool() ? Color.LIME : Color.WHITE);
         }
     }
+
+    private void updateStatus() {
+        if (editor == null) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("Item: ").append(editor.tool().label());
+        if (!editor.tool().isDelete()) {
+            sb.append("  Facing: ").append(editor.facing());
+        }
+        sb.append("    |    1-4 select • R rotate • LMB ");
+        sb.append(editor.tool().isDelete() ? "erase" : "place");
+        sb.append(" • WASD move • right-drag look");
+        if (editor.hovered() != null) {
+            sb.append("    |    aiming: ").append(editor.hovered().placement().type().id());
+        }
+        statusLabel.setText(sb.toString());
+    }
+
+    // --- edit actions (server-authoritative) ----------------------------------------------------
+
+    /** Left-click: place the ghost, or with the eraser remove the part under the cursor. */
+    private void primaryAction() {
+        if (editor == null || board == null || integrated == null) {
+            return;
+        }
+        if (editor.tool().isDelete()) {
+            SnapScene.Pickable target = editor.hovered();
+            if (target != null) {
+                submitRemove(target.placement());
+            }
+        } else if (editor.ghostValid()) {
+            submitPlace(editor.ghost());
+        }
+    }
+
+    private void submitPlace(SnapPlacement placement) {
+        integrated.level().submit(() -> {
+            SnapBoard b = serverWorld.getSnapBoard();
+            if (b != null && b.place(placement)) {
+                b.rebuild(serverWorld);
+            }
+        });
+    }
+
+    private void submitRemove(SnapPlacement placement) {
+        integrated.level().submit(() -> {
+            SnapBoard b = serverWorld.getSnapBoard();
+            if (b != null && b.remove(placement.postA(), placement.postB()) != null) {
+                b.rebuild(serverWorld);
+            }
+        });
+    }
+
+    /** Rebuilds the drawable/pickable scene from the current board and records its revision. */
+    private void refreshScene() {
+        // Read the revision BEFORE snapshotting. If an edit lands in the gap, the snapshot includes it
+        // while lastRevision stays behind, forcing one harmless extra refresh next frame — rather than
+        // recording a newer revision than the scene reflects, which would drop that edit until the next.
+        int rev = board.revision();
+        scene = SnapScene.of(board);
+        renderer.setScene(scene);
+        lastRevision = rev;
+    }
+
+    // --- screen lifecycle -----------------------------------------------------------------------
 
     @Override public void show() {
         input = new InputMultiplexer();
         input.addProcessor(uiStage);
+        input.addProcessor(new EditInput());
         if (flyCam != null) {
             input.addProcessor(flyCam);
         }
         Gdx.input.setInputProcessor(input);
+        refreshHotbar();
     }
 
     @Override public void render(float dt) {
@@ -184,12 +270,17 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         if (renderer != null && camera != null) {
             flyCam.update(dt);
-            pick();
-            renderer.setHighlight(hovered != null ? hovered.box() : null);
+            if (board.revision() != lastRevision) {
+                refreshScene();
+            }
+            editor.update(camera, scene);
+            renderer.setHighlight(editor.hovered() != null ? editor.hovered().box() : null);
+            renderer.setGhost(editor.ghostBox(), editor.ghostValid());
+
             Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
             renderer.render(camera);
             Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
-            updateHoverLabel();
+            updateStatus();
         }
         uiStage.act(dt);
         uiStage.draw();
@@ -201,6 +292,33 @@ public final class SnapScreen extends ScreenAdapter {
             camera.viewportWidth = width;
             camera.viewportHeight = height;
             camera.update();
+        }
+    }
+
+    /** Handles world clicks (place/erase) and edit hotkeys; camera keys are polled by the fly cam. */
+    private final class EditInput extends InputAdapter {
+        @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+            if (button == Buttons.LEFT && editor != null) {
+                primaryAction();
+                return true;
+            }
+            return false;
+        }
+
+        @Override public boolean keyDown(int keycode) {
+            if (editor == null) {
+                return false;
+            }
+            if (keycode == Keys.R) {
+                editor.rotate();
+                return true;
+            }
+            if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {
+                editor.selectIndex(keycode - Keys.NUM_1);
+                refreshHotbar();
+                return true;
+            }
+            return false;
         }
     }
 

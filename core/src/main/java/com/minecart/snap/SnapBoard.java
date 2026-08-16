@@ -40,6 +40,12 @@ public final class SnapBoard {
     // Keyed by occupied edge so a second part can't be placed on the same two posts.
     private final Map<SnapPlacement.EdgeKey, SnapPlacement> placements = new LinkedHashMap<>();
 
+    // Bumped on every structural change. In snap mode the render thread reads the board (via snapshot())
+    // to build the scene while the tick thread mutates it (edits are submitted to the server's action
+    // queue), so all placement access is synchronized on {@code this} and the render thread rebuilds its
+    // scene whenever this revision advances.
+    private int revision;
+
     /** Default starting board dimensions for a freshly created snap world (extensible thereafter). */
     public static final int DEFAULT_WIDTH = 8;
     public static final int DEFAULT_HEIGHT = 8;
@@ -85,9 +91,14 @@ public final class SnapBoard {
     public int height() { return height; }
     public int layers() { return layers; }
 
-    /** All placed parts, in insertion order. */
-    public Collection<SnapPlacement> placements() {
-        return Collections.unmodifiableCollection(placements.values());
+    /** All placed parts, in insertion order. Prefer {@link #snapshot()} for cross-thread reads. */
+    public synchronized Collection<SnapPlacement> placements() {
+        return new ArrayList<>(placements.values());
+    }
+
+    /** A monotonically increasing counter bumped on every structural change (place/remove/resize). */
+    public synchronized int revision() {
+        return revision;
     }
 
     /** Whether {@code post} lies on this board (col/row within the lattice, layer within range). */
@@ -98,7 +109,7 @@ public final class SnapBoard {
     }
 
     /** Whether {@code placement} fits on the board and its edge isn't already occupied. */
-    public boolean canPlace(SnapPlacement placement) {
+    public synchronized boolean canPlace(SnapPlacement placement) {
         return inBounds(placement.postA())
                 && inBounds(placement.postB())
                 && !placements.containsKey(placement.edgeKey());
@@ -109,30 +120,36 @@ public final class SnapBoard {
      *
      * @return {@code true} if placed, {@code false} if out of bounds or the edge is occupied.
      */
-    public boolean place(SnapPlacement placement) {
+    public synchronized boolean place(SnapPlacement placement) {
         if (!canPlace(placement)) {
             return false;
         }
         placements.put(placement.edgeKey(), placement);
+        revision++;
         return true;
     }
 
     /** Removes whatever part occupies the edge between {@code a} and {@code b}. */
-    public SnapPlacement remove(Post a, Post b) {
-        return placements.remove(SnapPlacement.EdgeKey.of(a, b));
+    public synchronized SnapPlacement remove(Post a, Post b) {
+        SnapPlacement removed = placements.remove(SnapPlacement.EdgeKey.of(a, b));
+        if (removed != null) {
+            revision++;
+        }
+        return removed;
     }
 
     /**
      * Grows the board to at least {@code newWidth × newHeight} slots. Extend-only: shrinking below the
      * current size (which could strand placed parts) is rejected.
      */
-    public void resize(int newWidth, int newHeight) {
+    public synchronized void resize(int newWidth, int newHeight) {
         if (newWidth < width || newHeight < height) {
             throw new IllegalArgumentException("board can only grow (extensible); got "
                     + newWidth + "x" + newHeight + " vs current " + width + "x" + height);
         }
         this.width = newWidth;
         this.height = newHeight;
+        revision++;
     }
 
     /**
@@ -140,7 +157,7 @@ public final class SnapBoard {
      * world already holds, then derives fresh nodes/elements from every placement. Safe to call
      * repeatedly (idempotent for a given board state).
      */
-    public void rebuild(ServerWorld world) {
+    public synchronized void rebuild(ServerWorld world) {
         for (Circuit existing : new ArrayList<>(world.getCircuits())) {
             world.removeCircuit(existing);
         }
@@ -170,7 +187,7 @@ public final class SnapBoard {
     }
 
     /** Placements as a mutable snapshot list (for persistence/iteration without exposing the map). */
-    public List<SnapPlacement> snapshot() {
+    public synchronized List<SnapPlacement> snapshot() {
         return new ArrayList<>(placements.values());
     }
 
@@ -191,7 +208,7 @@ public final class SnapBoard {
     private static final String TAG_VALUE = "value";
 
     /** Writes dimensions and every placement into {@code tag}. */
-    public void save(CompoundTag tag) {
+    public synchronized void save(CompoundTag tag) {
         tag.putInt(TAG_WIDTH, width);
         tag.putInt(TAG_HEIGHT, height);
         tag.putInt(TAG_LAYERS, layers);

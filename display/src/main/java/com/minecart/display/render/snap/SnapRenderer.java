@@ -47,6 +47,13 @@ public final class SnapRenderer implements Disposable {
     private final ModelInstance highlightInstance;
     private boolean highlightActive;
 
+    private final Model ghostValidBox;
+    private final Model ghostInvalidBox;
+    private final ModelInstance ghostValidInstance;
+    private final ModelInstance ghostInvalidInstance;
+    private BoxSpec ghostBox;
+    private boolean ghostValid;
+
     public SnapRenderer() {
         environment.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.45f, 0.45f, 0.50f, 1f));
         DirectionalLight sun = new DirectionalLight();
@@ -74,6 +81,21 @@ public final class SnapRenderer implements Disposable {
         this.highlightBox = mb.createBox(1f, 1f, 1f, hl,
                 VertexAttributes.Usage.Position | VertexAttributes.Usage.Normal);
         this.highlightInstance = new ModelInstance(highlightBox);
+
+        // Placement ghost: translucent green when the target is valid, red when it isn't.
+        long ghostAttrs = VertexAttributes.Usage.Position | VertexAttributes.Usage.Normal;
+        Material valid = new Material(
+                ColorAttribute.createDiffuse(0.30f, 1f, 0.45f, 1f),
+                ColorAttribute.createEmissive(0.10f, 0.45f, 0.15f, 1f),
+                new BlendingAttribute(0.45f));
+        Material invalid = new Material(
+                ColorAttribute.createDiffuse(1f, 0.30f, 0.30f, 1f),
+                ColorAttribute.createEmissive(0.45f, 0.10f, 0.10f, 1f),
+                new BlendingAttribute(0.45f));
+        this.ghostValidBox = mb.createBox(1f, 1f, 1f, valid, ghostAttrs);
+        this.ghostInvalidBox = mb.createBox(1f, 1f, 1f, invalid, ghostAttrs);
+        this.ghostValidInstance = new ModelInstance(ghostValidBox);
+        this.ghostInvalidInstance = new ModelInstance(ghostInvalidBox);
     }
 
     /** Rebuilds the drawable instances from a scene. Call when the board changes. */
@@ -86,6 +108,12 @@ public final class SnapRenderer implements Disposable {
                     b.cx(), b.cy(), b.cz(), b.sizeX(), b.sizeY(), b.sizeZ());
             instances.add(instance);
         }
+    }
+
+    /** Sets (or clears with {@code null}) the translucent placement ghost and whether it's a valid spot. */
+    public void setGhost(BoxSpec box, boolean valid) {
+        this.ghostBox = box;
+        this.ghostValid = valid;
     }
 
     /** Sets (or clears with {@code null}) the box currently highlighted by the cursor. */
@@ -106,6 +134,13 @@ public final class SnapRenderer implements Disposable {
         }
         if (highlightActive) {
             modelBatch.render(highlightInstance, environment);
+        }
+        if (ghostBox != null) {
+            ModelInstance ghost = ghostValid ? ghostValidInstance : ghostInvalidInstance;
+            ghost.transform.setToTranslationAndScaling(
+                    ghostBox.cx(), ghostBox.cy(), ghostBox.cz(),
+                    ghostBox.sizeX(), ghostBox.sizeY(), ghostBox.sizeZ());
+            modelBatch.render(ghost, environment);
         }
         modelBatch.end();
     }
@@ -147,6 +182,8 @@ public final class SnapRenderer implements Disposable {
         unitBoxes.clear();
         instances.clear();
         highlightBox.dispose();
+        ghostValidBox.dispose();
+        ghostInvalidBox.dispose();
         noiseTexture.dispose();
     }
 }
