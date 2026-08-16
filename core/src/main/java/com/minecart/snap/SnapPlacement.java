@@ -1,11 +1,17 @@
 package com.minecart.snap;
 
 /**
- * One snap part placed on the board: a {@link SnapPartType}, its origin post {@code (col,row,layer)}, the
- * {@link Facing} it points, and an optional scalar {@code value} (e.g. a resistor's ohms or a battery's
- * volts — {@link Double#NaN} means "use the part type's default"). For the current unit-segment parts the
- * two electrical pins are the origin post and the post one lattice step along {@code facing}; multi-slot
- * footprints will generalize this later.
+ * One snap part placed on the board: a {@link SnapPartType}, its <b>origin</b> bump {@code (col,row,layer)},
+ * a direction <b>offset</b> {@code (dCol,dRow)} to the far bump, an anchor-port {@code flipped} flag, and an
+ * optional scalar {@code value} ({@link Double#NaN} → the type's default).
+ *
+ * <h2>Direction &amp; ports</h2>
+ * The two physical bumps a part occupies are {@link #originPost()} and {@link #farPost()} = origin +
+ * offset. The direction offset is a general integer vector (not limited to orthogonal): a length-{@code L}
+ * part accepts any {@code (dCol,dRow)} with {@code dCol²+dRow² = L²} — e.g. a length-5 part accepts the
+ * 3-4-5 set (see {@link SnapDirections}). The <b>anchor port</b> is which electrical terminal sits on the
+ * origin bump: {@link #flipped()} swaps terminals A/B (e.g. a battery's polarity) without changing the two
+ * occupied bumps. Electrical terminals are {@link #postA()} (−) and {@link #postB()} (+).
  */
 public final class SnapPlacement {
 
@@ -13,65 +19,91 @@ public final class SnapPlacement {
     private final int col;
     private final int row;
     private final int layer;
-    private final Facing facing;
+    private final int dCol;
+    private final int dRow;
+    private final boolean flipped;
     private final double value;
 
-    public SnapPlacement(SnapPartType type, int col, int row, int layer, Facing facing) {
-        this(type, col, row, layer, facing, Double.NaN);
-    }
-
-    public SnapPlacement(SnapPartType type, int col, int row, int layer, Facing facing, double value) {
+    public SnapPlacement(SnapPartType type, int col, int row, int layer, int dCol, int dRow,
+                         boolean flipped, double value) {
         if (type == null) throw new IllegalArgumentException("type");
-        if (facing == null) throw new IllegalArgumentException("facing");
+        if (dCol == 0 && dRow == 0) throw new IllegalArgumentException("zero direction");
         this.type = type;
         this.col = col;
         this.row = row;
         this.layer = layer;
-        this.facing = facing;
+        this.dCol = dCol;
+        this.dRow = dRow;
+        this.flipped = flipped;
         this.value = value;
+    }
+
+    /** Convenience: a unit part in a cardinal {@link Facing}, unflipped, default value. */
+    public SnapPlacement(SnapPartType type, int col, int row, int layer, Facing facing) {
+        this(type, col, row, layer, facing.dCol(), facing.dRow(), false, Double.NaN);
+    }
+
+    /** Convenience: a unit part in a cardinal {@link Facing} with an explicit value. */
+    public SnapPlacement(SnapPartType type, int col, int row, int layer, Facing facing, double value) {
+        this(type, col, row, layer, facing.dCol(), facing.dRow(), false, value);
     }
 
     public SnapPartType type() { return type; }
     public int col() { return col; }
     public int row() { return row; }
     public int layer() { return layer; }
-    public Facing facing() { return facing; }
+    public int dCol() { return dCol; }
+    public int dRow() { return dRow; }
+    public boolean flipped() { return flipped; }
+    public double value() { return value; }
 
-    /** Configured scalar, or {@code fallback} when this placement left it unset ({@link Double#NaN}). */
+    /** Configured scalar, or {@code fallback} when unset ({@link Double#NaN}). */
     public double valueOr(double fallback) {
         return Double.isNaN(value) ? fallback : value;
     }
 
-    /** Raw configured scalar ({@link Double#NaN} when unset). */
-    public double value() { return value; }
-
-    /** The origin electrical pin. */
-    public Post postA() {
+    /** The anchor bump (under the crosshair). */
+    public Post originPost() {
         return new Post(col, row, layer);
     }
 
-    /** The far electrical pin, one lattice step along {@link #facing()}. */
+    /** The far bump, origin + direction offset. */
+    public Post farPost() {
+        return new Post(col + dCol, row + dRow, layer);
+    }
+
+    /** Electrical terminal A (−): the origin unless {@link #flipped()}. */
+    public Post postA() {
+        return flipped ? farPost() : originPost();
+    }
+
+    /** Electrical terminal B (+): the far bump unless {@link #flipped()}. */
     public Post postB() {
-        return new Post(col + facing.dCol(), row + facing.dRow(), layer);
+        return flipped ? originPost() : farPost();
+    }
+
+    /** Returns a copy with the anchor port flipped (terminals A/B swapped). */
+    public SnapPlacement withFlipped(boolean flip) {
+        return new SnapPlacement(type, col, row, layer, dCol, dRow, flip, value);
+    }
+
+    /** Returns a copy pointing in a new direction offset. */
+    public SnapPlacement withDirection(int newDCol, int newDRow) {
+        return new SnapPlacement(type, col, row, layer, newDCol, newDRow, flipped, value);
     }
 
     /**
-     * Order-independent key identifying the board edge this part occupies, so two placements on the same
-     * two posts (regardless of which end is the origin) collide. Used by {@link SnapBoard} to reject
-     * double-placement on one edge.
+     * Order-independent key identifying the two bumps this part occupies, so two parts on the same pair of
+     * bumps (regardless of origin end) collide.
      */
     public EdgeKey edgeKey() {
-        return EdgeKey.of(postA(), postB());
+        return EdgeKey.of(originPost(), farPost());
     }
 
     /** Canonical unordered pair of posts. */
     public record EdgeKey(Post lo, Post hi) {
         static EdgeKey of(Post a, Post b) {
-            // Deterministic ordering so (a,b) and (b,a) produce the same key.
-            if (compare(a, b) <= 0) {
-                return new EdgeKey(a, b);
-            }
-            return new EdgeKey(b, a);
+            return compare(a, b) <= 0 ? new EdgeKey(a, b) : new EdgeKey(b, a);
         }
 
         private static int compare(Post a, Post b) {

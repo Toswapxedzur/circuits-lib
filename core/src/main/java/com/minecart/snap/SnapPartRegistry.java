@@ -15,11 +15,12 @@ public final class SnapPartRegistry {
 
     private SnapPartRegistry() {}
 
-    public static SnapPartType register(String id, int height, boolean connector, SnapPartType.Builder builder) {
+    public static SnapPartType register(String id, int height, int length, boolean connector,
+                                        SnapPartType.Builder builder) {
         if (REGISTRY.containsKey(id)) {
             throw new IllegalArgumentException("Snap part id already registered: " + id);
         }
-        SnapPartType type = new SnapPartType(id, height, connector, builder);
+        SnapPartType type = new SnapPartType(id, height, length, connector, builder);
         REGISTRY.put(id, type);
         return type;
     }

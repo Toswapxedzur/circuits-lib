@@ -201,8 +201,12 @@ public final class SnapScreen extends ScreenAdapter {
             return;
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Item: ").append(editor.tool().label()).append("  Facing: ").append(editor.facing());
-        sb.append("    |    scroll/1-3 select • R rotate • LMB place • RMB remove • WASD+Space/Ctrl fly • Esc cursor");
+        sb.append("Item: ").append(editor.tool().label());
+        if (editor.flipped()) {
+            sb.append(" (flipped)");
+        }
+        sb.append("    |    1-3 select • scroll/R direction • F flip port • LMB place • RMB remove"
+                + " • WASD+Space/Ctrl fly • Esc cursor");
         if (editor.hovered() != null) {
             sb.append("    |    aiming: ").append(editor.hovered().placement().type().id());
         }
@@ -241,7 +245,7 @@ public final class SnapScreen extends ScreenAdapter {
     private void submitRemove(SnapPlacement placement) {
         integrated.level().submit(() -> {
             SnapBoard b = serverWorld.getSnapBoard();
-            if (b != null && b.remove(placement.postA(), placement.postB()) != null) {
+            if (b != null && b.remove(placement.originPost(), placement.farPost()) != null) {
                 b.rebuild(serverWorld);
             }
         });
@@ -336,8 +340,7 @@ public final class SnapScreen extends ScreenAdapter {
             if (editor == null) {
                 return false;
             }
-            editor.cycle(amountY > 0 ? 1 : -1);
-            refreshHotbar();
+            editor.cycleDirection(amountY > 0 ? 1 : -1); // scroll changes the placement direction
             return true;
         }
 
@@ -350,7 +353,11 @@ public final class SnapScreen extends ScreenAdapter {
                 return true;
             }
             if (keycode == Keys.R) {
-                editor.rotate();
+                editor.cycleDirection(1);
+                return true;
+            }
+            if (keycode == Keys.F) {
+                editor.flipPort();
                 return true;
             }
             if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {

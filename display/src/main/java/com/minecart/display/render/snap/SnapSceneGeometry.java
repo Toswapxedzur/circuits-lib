@@ -58,8 +58,8 @@ public final class SnapSceneGeometry {
         addBaseBumps(board, boxes);
         for (SnapPlacement placement : board.snapshot()) {
             boxes.add(partBox(placement));
-            boxes.add(topBump(placement.postA(), placement.layer()));
-            boxes.add(topBump(placement.postB(), placement.layer()));
+            boxes.add(topBump(placement.originPost(), placement.layer()));
+            boxes.add(topBump(placement.farPost(), placement.layer()));
         }
         return boxes;
     }
@@ -93,10 +93,13 @@ public final class SnapSceneGeometry {
         return bump(terminal.col(), terminal.row(), level + 1);
     }
 
-    /** The component body bar spanning its two terminal bumps at its stack level. */
+    /**
+     * The component body bar spanning its two bumps at its stack level. (Axis-aligned; a diagonal
+     * (non-orthogonal) part would need a rotated bar — added when the first such part exists.)
+     */
     public static BoxSpec partBox(SnapPlacement placement) {
-        Post a = placement.postA();
-        Post b = placement.postB();
+        Post a = placement.originPost();
+        Post b = placement.farPost();
         float ax = worldX(a.col()), az = worldZ(a.row());
         float bx = worldX(b.col()), bz = worldZ(b.row());
         float cx = (ax + bx) / 2f;

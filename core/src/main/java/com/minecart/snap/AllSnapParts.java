@@ -22,12 +22,12 @@ public final class AllSnapParts {
      * a run of snap wires is a single node with no spurious resistance. Marked {@code connector = true}.
      */
     public static final SnapPartType SNAP_WIRE = SnapPartRegistry.register(
-            "snap_wire", SnapPartType.DEFAULT_HEIGHT, true,
+            "snap_wire", SnapPartType.DEFAULT_HEIGHT, SnapPartType.DEFAULT_LENGTH, true,
             (placement, world, posts) -> posts.union(placement.postA(), placement.postB()));
 
     /** Resistor between two posts; ohms come from the placement value or {@link #DEFAULT_RESISTANCE}. */
     public static final SnapPartType SNAP_RESISTOR = SnapPartRegistry.register(
-            "snap_resistor", SnapPartType.DEFAULT_HEIGHT, false,
+            "snap_resistor", SnapPartType.DEFAULT_HEIGHT, SnapPartType.DEFAULT_LENGTH, false,
             (placement, world, posts) -> {
                 var a = posts.at(placement.postA());
                 var b = posts.at(placement.postB());
@@ -41,7 +41,7 @@ public final class AllSnapParts {
      * A near-zero internal resistance keeps it an almost-ideal source while remaining solvable.
      */
     public static final SnapPartType SNAP_BATTERY = SnapPartRegistry.register(
-            "snap_battery", SnapPartType.DEFAULT_HEIGHT, false,
+            "snap_battery", SnapPartType.DEFAULT_HEIGHT, SnapPartType.DEFAULT_LENGTH, false,
             (placement, world, posts) -> {
                 var a = posts.at(placement.postA());
                 var b = posts.at(placement.postB());
