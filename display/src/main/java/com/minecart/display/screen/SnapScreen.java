@@ -26,6 +26,7 @@ import com.minecart.display.render.snap.SnapEditor;
 import com.minecart.display.render.snap.SnapRenderer;
 import com.minecart.display.render.snap.SnapScene;
 import com.minecart.display.render.snap.SnapSceneGeometry;
+import com.minecart.display.render.snap.ToonRenderer;
 import com.minecart.foundation.World;
 import com.minecart.logic.ServerWorld;
 import com.minecart.server.integrated.IntegratedServer;
@@ -64,6 +65,7 @@ public final class SnapScreen extends ScreenAdapter {
     private PerspectiveCamera camera;
     private FreeCameraController flyCam;
     private SnapRenderer renderer;
+    private ToonRenderer environment;
     private SnapScene scene;
     private SnapEditor editor;
     private InputMultiplexer input;
@@ -118,6 +120,7 @@ public final class SnapScreen extends ScreenAdapter {
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
         renderer = new SnapRenderer();
+        environment = new ToonRenderer(board);
         editor = new SnapEditor(board);
         refreshScene();
     }
@@ -282,7 +285,12 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     @Override public void render(float dt) {
-        Gdx.gl.glClearColor(0.06f, 0.07f, 0.10f, 1f);
+        if (environment != null) {
+            com.badlogic.gdx.graphics.Color sky = environment.skyColor();
+            Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
+        } else {
+            Gdx.gl.glClearColor(0.06f, 0.07f, 0.10f, 1f);
+        }
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         if (renderer != null && camera != null) {
             flyCam.update(dt);
@@ -294,6 +302,9 @@ public final class SnapScreen extends ScreenAdapter {
             renderer.setGhost(editor.ghostRender(), editor.ghostValid());
 
             Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+            if (environment != null) {
+                environment.render(camera); // toon meadow + trees behind the board
+            }
             renderer.render(camera);
             Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
             updateStatus();
@@ -435,6 +446,9 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.input.setCursorCatched(false);
         if (renderer != null) {
             renderer.dispose();
+        }
+        if (environment != null) {
+            environment.dispose();
         }
         if (!shuttingDown) {
             shuttingDown = true;
