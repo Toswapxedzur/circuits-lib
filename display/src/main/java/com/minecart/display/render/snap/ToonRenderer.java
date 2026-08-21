@@ -184,10 +184,20 @@ public final class ToonRenderer implements Disposable {
 
         placeRing(mountains, cx, cz, span * 2.2f + 1400f, 14, 1.7f,
                 600f, 1100f, 700f, 1400f, 0f);   // far, huge, on the ground
-        placeRing(hills, cx, cz, span * 1.1f + 500f, 7, 2.3f,
+        placeRing(hills, cx, cz, span * 1.1f + 500f, 9, 2.3f,
                 500f, 900f, 180f, 340f, 0f);     // mid rolling hills (half-buried spheres)
-        placeRing(trees, cx, cz, span * 0.75f + 130f, 16, 1.3f,
-                0.8f, 1.5f, 0f, 0f, -2f);        // near trees (scale range in width slot)
+        // A dense forest ringing the board at several depths (golden-angle spread so it's even, close
+        // enough that the toon shading + outlines are prominent from the build view).
+        int treeCount = 46;
+        for (int i = 0; i < treeCount; i++) {
+            float ang = i * 137.5f;
+            float rad = ang * MathUtils.degreesToRadians;
+            float r = (115f + (i % 5) * 95f) + (i * 29 % 45);   // rings ~115..500
+            float x = cx + r * MathUtils.cos(rad);
+            float z = cz + r * MathUtils.sin(rad);
+            float scale = 0.85f + ((i * 37) % 100) / 100f * 0.95f; // 0.85..1.8
+            trees.add(new Matrix4().translate(x, -2f, z).rotate(Vector3.Y, i * 57f).scale(scale, scale, scale));
+        }
         placeClouds(clouds, cx, cz, span * 1.6f + 900f, 9);
     }
 
