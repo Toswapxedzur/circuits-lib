@@ -114,8 +114,8 @@ public final class SnapScreen extends ScreenAdapter {
         float span = Math.max(board.width(), board.height()) * cell + cell;
 
         camera = new PerspectiveCamera(60f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        camera.near = 0.5f;
-        camera.far = span * 12f;
+        camera.near = 1f;
+        camera.far = Math.max(8000f, span * 12f); // far enough for the sky dome + distant scenery
         Vector3 start = new Vector3(centerX, span * 0.85f, centerZ + span * 1.15f);
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
