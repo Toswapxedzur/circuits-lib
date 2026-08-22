@@ -15,7 +15,6 @@ import com.badlogic.gdx.graphics.g3d.attributes.BlendingAttribute;
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.g3d.attributes.IntAttribute;
 import com.badlogic.gdx.graphics.g3d.attributes.TextureAttribute;
-import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight;
 import com.badlogic.gdx.graphics.g3d.utils.MeshPartBuilder;
 import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder;
 import com.badlogic.gdx.math.Vector3;
@@ -43,7 +42,7 @@ public final class SnapRenderer implements Disposable {
             | VertexAttributes.Usage.TextureCoordinates;
 
     private final ModelBatch modelBatch = new ModelBatch();
-    private final Environment environment = new Environment();
+    private final Environment environment; // shared: carries the sun + shadow map, so the board is shadowed
     private final Texture noiseTexture;
     private final EnumMap<BoxSpec.Category, Material> materials = new EnumMap<>(BoxSpec.Category.class);
     private final EnumMap<BoxSpec.Category, Material> ghostMaterials = new EnumMap<>(BoxSpec.Category.class);
@@ -65,11 +64,8 @@ public final class SnapRenderer implements Disposable {
     private final Vector3 c00 = new Vector3(), c10 = new Vector3(), c11 = new Vector3(), c01 = new Vector3();
     private final Vector3 nrm = new Vector3();
 
-    public SnapRenderer() {
-        environment.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.5f, 0.5f, 0.55f, 1f));
-        DirectionalLight sun = new DirectionalLight();
-        sun.set(0.95f, 0.95f, 0.9f, -0.45f, -1f, -0.65f);
-        environment.add(sun);
+    public SnapRenderer(Environment sharedEnvironment) {
+        this.environment = sharedEnvironment;
 
         noiseTexture = new Texture(Gdx.files.internal("textures/noise.png"), true);
         noiseTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
@@ -134,6 +130,11 @@ public final class SnapRenderer implements Disposable {
         }
         sceneModel = mb.end();
         sceneInstance = new ModelInstance(sceneModel);
+    }
+
+    /** The board mesh, for the shadow depth pass (so the board casts shadows). Null before the first scene. */
+    public ModelInstance shadowCaster() {
+        return sceneInstance;
     }
 
     /** Sets the ghost geometry (rotating body bar + terminal bumps) and whether the placement is valid. */
