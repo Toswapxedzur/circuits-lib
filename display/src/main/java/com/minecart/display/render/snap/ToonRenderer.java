@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 /**
  * The dramatic, non-navigable backdrop around the snap board — a gradient sunset sky plus layered scenery
@@ -83,6 +84,7 @@ public final class ToonRenderer implements Disposable {
     public static final Vector3 SUN_TO_LIGHT = new Vector3(0.45f, 0.62f, 0.4f).nor();
 
     private final Environment environment;
+    private final TerrainGenerator terrain;
     private final ModelBatch modelBatch = new ModelBatch();
 
     private final ShaderProgram sky;
@@ -110,9 +112,8 @@ public final class ToonRenderer implements Disposable {
 
         long attrs = VertexAttributes.Usage.Position | VertexAttributes.Usage.Normal;
         ModelBuilder mb = new ModelBuilder();
-        this.groundModel = mb.createBox(8000f, 4f, 8000f, mat(GROUND), attrs);
         this.mountainModel = coneBaseAtZero(mb, attrs, MOUNTAIN);
-        this.hillModel = mb.createSphere(1f, 1f, 1f, 12, 8, mat(HILL), attrs);
+        this.hillModel = mb.createSphere(1f, 1f, 1f, 12, 8, mat(HILL), attrs); // unused now; terrain gives hills
         this.cloudModel = mb.createSphere(1f, 1f, 1f, 10, 6, mat(CLOUD), attrs);
         this.treeModel = treeModel(mb, attrs);
 
@@ -120,14 +121,16 @@ public final class ToonRenderer implements Disposable {
         float cx = board.width() * s / 2f, cz = board.height() * s / 2f;
         float span = Math.max(board.width(), board.height()) * s;
 
-        groundInstance = new ModelInstance(groundModel);
-        groundInstance.transform.setToTranslation(cx, -4f, cz);
+        // Procedural terrain: a random heightfield with a flat clearing around the board and rolling hills
+        // beyond. Replaces the flat ground box. (Random per session; can be seeded per-world later.)
+        this.terrain = new TerrainGenerator(new Random().nextLong(), cx, cz, span * 0.6f + 120f, 320f);
+        this.groundModel = terrain.buildModel(4200f, 150);
+        groundInstance = new ModelInstance(groundModel); // terrain vertices are already in world space
 
         ring(mountains, mountainModel, cx, cz, span * 2.2f + 1400f, 14, 600f, 1100f, 700f, 1400f, 0f, false);
-        ring(hills, hillModel, cx, cz, span * 1.1f + 500f, 9, 500f, 900f, 180f, 340f, 0f, false);
         placeClouds(cx, cz, span * 1.6f + 900f, 9);
 
-        // A dense forest ringing the board at several depths.
+        // A dense forest ringing the board at several depths, each tree planted on the terrain surface.
         for (int i = 0; i < 46; i++) {
             float ang = i * 137.5f;
             float rad = ang * MathUtils.degreesToRadians;
@@ -136,12 +139,11 @@ public final class ToonRenderer implements Disposable {
             float z = cz + r * MathUtils.sin(rad);
             float scale = 0.85f + ((i * 37) % 100) / 100f * 0.95f;
             ModelInstance tree = new ModelInstance(treeModel);
-            tree.transform.setToTranslation(x, -2f, z).rotate(Vector3.Y, i * 57f).scale(scale, scale, scale);
+            tree.transform.setToTranslation(x, terrain.height(x, z), z).rotate(Vector3.Y, i * 57f).scale(scale, scale, scale);
             trees.add(tree);
         }
 
-        casters.addAll(trees); // the near trees are the shadow casters that matter around the board
-        casters.addAll(hills);
+        casters.addAll(trees); // near trees are the shadow casters that matter around the board
     }
 
     private static Material mat(Color c) {
