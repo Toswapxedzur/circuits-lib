@@ -66,6 +66,11 @@ public final class SnapScreen extends ScreenAdapter {
     private FreeCameraController flyCam;
     private SnapRenderer renderer;
     private ToonRenderer environment;
+    private com.badlogic.gdx.graphics.g3d.environment.DirectionalShadowLight sun;
+    private com.badlogic.gdx.graphics.g3d.Environment sharedEnv;
+    private com.badlogic.gdx.graphics.g3d.ModelBatch shadowBatch;
+    private Vector3 shadowCenter;
+    private Vector3 sunTravel;
     private SnapScene scene;
     private SnapEditor editor;
     private InputMultiplexer input;
@@ -119,8 +124,27 @@ public final class SnapScreen extends ScreenAdapter {
         Vector3 start = new Vector3(centerX, span * 0.85f, centerZ + span * 1.15f);
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
-        renderer = new SnapRenderer();
-        environment = new ToonRenderer(board);
+        // Shared lighting + real-time shadow map (Phase R1): a warm directional sun casting into a depth
+        // map, cool sky ambient, and horizon fog — sampled by DefaultShader on both the board and scenery.
+        sun = new com.badlogic.gdx.graphics.g3d.environment.DirectionalShadowLight(2048, 2048, 700f, 700f, 1f, 3000f);
+        sun.set(1.0f, 0.92f, 0.78f,
+                -ToonRenderer.SUN_TO_LIGHT.x, -ToonRenderer.SUN_TO_LIGHT.y, -ToonRenderer.SUN_TO_LIGHT.z);
+        sharedEnv = new com.badlogic.gdx.graphics.g3d.Environment();
+        sharedEnv.set(new com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute(
+                com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute.AmbientLight, 0.42f, 0.46f, 0.60f, 1f));
+        sharedEnv.add(sun);
+        sharedEnv.shadowMap = sun;
+        shadowBatch = new com.badlogic.gdx.graphics.g3d.ModelBatch(
+                new com.badlogic.gdx.graphics.g3d.utils.DepthShaderProvider());
+        shadowCenter = new Vector3(centerX, 0f, centerZ);
+        sunTravel = new Vector3(ToonRenderer.SUN_TO_LIGHT).scl(-1f);
+
+        renderer = new SnapRenderer(sharedEnv);
+        environment = new ToonRenderer(board, sharedEnv);
+        // Fog fades distant scenery toward the horizon colour.
+        com.badlogic.gdx.graphics.Color horizon = environment.skyColor();
+        sharedEnv.set(new com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute(
+                com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute.Fog, horizon.r, horizon.g, horizon.b, 1f));
         editor = new SnapEditor(board);
         refreshScene();
     }
@@ -285,13 +309,6 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     @Override public void render(float dt) {
-        if (environment != null) {
-            com.badlogic.gdx.graphics.Color sky = environment.skyColor();
-            Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
-        } else {
-            Gdx.gl.glClearColor(0.06f, 0.07f, 0.10f, 1f);
-        }
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         if (renderer != null && camera != null) {
             flyCam.update(dt);
             if (board.revision() != lastRevision) {
@@ -301,12 +318,37 @@ public final class SnapScreen extends ScreenAdapter {
             renderer.setHighlight(editor.hovered() != null ? editor.hovered().box() : null);
             renderer.setGhost(editor.ghostRender(), editor.ghostValid());
 
-            Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
-            if (environment != null) {
-                environment.render(camera); // toon meadow + trees behind the board
+            // Phase R1 shadow pass: render the casters from the sun's POV into the depth map, BEFORE the
+            // screen clear (the shadow FBO must be filled before DefaultShader samples it below).
+            if (sun != null && environment != null) {
+                sun.begin(shadowCenter, sunTravel);
+                shadowBatch.begin(sun.getCamera());
+                com.badlogic.gdx.graphics.g3d.ModelInstance boardCaster = renderer.shadowCaster();
+                if (boardCaster != null) {
+                    shadowBatch.render(boardCaster);
+                }
+                for (com.badlogic.gdx.graphics.g3d.ModelInstance caster : environment.shadowCasters()) {
+                    shadowBatch.render(caster);
+                }
+                shadowBatch.end();
+                sun.end();
             }
-            renderer.render(camera);
-            Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        }
+
+        if (environment != null) {
+            com.badlogic.gdx.graphics.Color sky = environment.skyColor();
+            Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
+        } else {
+            Gdx.gl.glClearColor(0.06f, 0.07f, 0.10f, 1f);
+        }
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+
+        if (renderer != null && camera != null) {
+            if (environment != null) {
+                environment.renderSky(camera); // gradient dome + sun glow (behind everything)
+                environment.render(camera);    // lit + shadowed ground / mountains / hills / trees
+            }
+            renderer.render(camera);           // board + ghost (shadowed via the shared environment)
             updateStatus();
         }
         uiStage.act(dt);
