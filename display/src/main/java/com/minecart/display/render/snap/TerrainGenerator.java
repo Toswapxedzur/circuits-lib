@@ -32,6 +32,11 @@ public final class TerrainGenerator {
     private final float clearRadius;  // flat around the board
     private final float clearBlend;   // ramp width from flat to full hills
 
+    // Optional pond: a smooth bowl carved below the surface so a flat water plane at pondSurface shows a
+    // natural, terrain-clipped shoreline. Heights here are in generator space (the caller offsets the model).
+    private boolean pond;
+    private float pondCx, pondCz, pondRadius, pondSurface, pondDepth;
+
     public TerrainGenerator(long seed, float centerX, float centerZ, float clearRadius, float clearBlend) {
         this.seed = seed;
         this.centerX = centerX;
@@ -40,15 +45,32 @@ public final class TerrainGenerator {
         this.clearBlend = clearBlend;
     }
 
+    /** Carves a pond bowl at (cx,cz): a basin reaching {@code depth} below {@code surface} (generator space). */
+    public void setPond(float cx, float cz, float radius, float surface, float depth) {
+        this.pond = true;
+        this.pondCx = cx;
+        this.pondCz = cz;
+        this.pondRadius = radius;
+        this.pondSurface = surface;
+        this.pondDepth = depth;
+    }
+
     /** Terrain surface height at a world position (0 in the flat clearing, rising into hills outside it). */
     public float height(float worldX, float worldZ) {
         float dx = worldX - centerX, dz = worldZ - centerZ;
         float dist = (float) Math.sqrt(dx * dx + dz * dz);
         float falloff = smoothstep(clearRadius, clearRadius + clearBlend, dist);
-        if (falloff <= 0f) {
-            return 0f;
+        float h = (falloff <= 0f) ? 0f : fbm(worldX * BASE_FREQ, worldZ * BASE_FREQ) * MAX_HEIGHT * falloff;
+        if (pond) {
+            float pdx = worldX - pondCx, pdz = worldZ - pondCz;
+            float pd = (float) Math.sqrt(pdx * pdx + pdz * pdz);
+            float t = smoothstep(pondRadius, pondRadius * 0.5f, pd); // 0 outside → 1 well inside the pond
+            if (t > 0f) {
+                float basin = pondSurface - pondDepth * t; // dip below the water plane toward the middle
+                h = h + (basin - h) * t;                   // blend the surrounding terrain into the bowl
+            }
         }
-        return fbm(worldX * BASE_FREQ, worldZ * BASE_FREQ) * MAX_HEIGHT * falloff;
+        return h;
     }
 
     /**

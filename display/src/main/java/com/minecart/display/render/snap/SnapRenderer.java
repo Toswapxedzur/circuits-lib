@@ -37,6 +37,8 @@ public final class SnapRenderer implements Disposable {
 
     /** World units covered by one full tile of the noise texture (texture is this many pixels square). */
     private static final float PIXELS_PER_TILE = 16f;
+    /** How far a seated box sinks into the one below it, to keep stacked faces from being coplanar (z-fight). */
+    private static final float SEAT_SINK = 0.5f;
     private static final long ATTRS = VertexAttributes.Usage.Position
             | VertexAttributes.Usage.Normal
             | VertexAttributes.Usage.TextureCoordinates;
@@ -124,8 +126,12 @@ public final class SnapRenderer implements Disposable {
                 continue;
             }
             MeshPartBuilder part = mb.part(cat.name(), GL20.GL_TRIANGLES, ATTRS, materials.get(cat));
+            // Sink everything that seats on something below (bumps on the base, bodies on bumps, top bumps on
+            // bodies) down by a hair so the stacked faces interpenetrate instead of being coplanar — coplanar
+            // faces z-fight at any depth precision. The base slab itself seats on nothing, so it stays put.
+            float sink = (cat == BoxSpec.Category.BASE) ? 0f : SEAT_SINK;
             for (BoxSpec b : ofCat) {
-                addBox(part, b.cx(), b.cy(), b.cz(), b.sizeX(), b.sizeY(), b.sizeZ());
+                addBox(part, b.cx(), b.cy() - sink / 2f, b.cz(), b.sizeX(), b.sizeY() + sink, b.sizeZ());
             }
         }
         sceneModel = mb.end();
