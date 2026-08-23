@@ -7,6 +7,7 @@ import com.badlogic.gdx.math.collision.Ray;
 import com.minecart.snap.AllSnapParts;
 import com.minecart.snap.Facing;
 import com.minecart.snap.SnapBoard;
+import com.minecart.snap.SnapSceneGeometry;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
