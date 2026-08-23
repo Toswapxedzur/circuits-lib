@@ -31,12 +31,31 @@ import com.jme3.texture.Texture2D;
 import com.jme3.texture.image.ColorSpace;
 import com.jme3.util.BufferUtils;
 import com.jme3.util.SkyFactory;
+import com.jme3.collision.CollisionResult;
+import com.jme3.collision.CollisionResults;
+import com.jme3.font.BitmapFont;
+import com.jme3.font.BitmapText;
+import com.jme3.input.KeyInput;
+import com.jme3.input.MouseInput;
+import com.jme3.input.controls.ActionListener;
+import com.jme3.input.controls.AnalogListener;
+import com.jme3.input.controls.KeyTrigger;
+import com.jme3.input.controls.MouseAxisTrigger;
+import com.jme3.input.controls.MouseButtonTrigger;
+import com.jme3.material.RenderState;
+import com.jme3.math.Ray;
 import com.minecart.snap.AllSnapParts;
 import com.minecart.snap.BoxSpec;
+import com.minecart.snap.Facing;
+import com.minecart.snap.Post;
 import com.minecart.snap.SnapBoard;
+import com.minecart.snap.SnapDirections;
+import com.minecart.snap.SnapPartType;
+import com.minecart.snap.SnapPlacement;
 import com.minecart.snap.SnapSceneGeometry;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Random;
@@ -66,6 +85,29 @@ public class Snap3DProof extends SimpleApplication {
 
     private int frame;
     private ScreenshotAppState shot;
+
+    // --- board + editor state ---
+    private SnapBoard board;
+    private Node boardNode;   // holds the committed board geometry (rebuilt on edit)
+    private Node ghostNode;   // holds the translucent placement preview (rebuilt each frame)
+    private Map<BoxSpec.Category, Material> boardMats;
+    private float boardOx, boardOz; // boardNode world X/Z translation (Y is BOARD_AT.y)
+
+    private final SnapPartType[] tools = new SnapPartType[3]; // filled after AllSnapParts.init()
+    private final String[] toolNames = {"Wire", "Resistor", "Battery"};
+    private int toolIndex;
+    private float dirAngle;        // internal continuous heading (deg)
+    private float displayedAngle;  // eased heading actually drawn
+    private float anchorLocalX, anchorLocalZ;
+    private int anchorTerminal;
+    private int anchorCol, anchorRow, anchorLayer;
+    private SnapPlacement ghost;
+    private boolean ghostValid;
+
+    private BitmapText hud;
+    private Material ghostValidMat, ghostInvalidMat, ghostActiveMat;
+    private List<int[]> directions;
+    private static final float EASE_RATE = 12f;
 
     public static void main(String[] args) {
         Snap3DProof app = new Snap3DProof();
@@ -100,6 +142,8 @@ public class Snap3DProof extends SimpleApplication {
         buildBoard();
         setupShadows(sun);
         setupFilters(sun);
+        setupCrosshairHud();
+        setupEditorInput();
 
         shot = new ScreenshotAppState(
                 "/Users/fengyue.john.zhu/Desktop/programme/java/CircuitsLib/build/", "jme_shot", 1L);
@@ -191,9 +235,17 @@ public class Snap3DProof extends SimpleApplication {
     /** The snap board, built from the shared engine-agnostic {@link SnapSceneGeometry}, on a grassy pier. */
     private void buildBoard() {
         AllSnapParts.init();
-        SnapBoard board = SnapBoard.createDemo();
+        tools[0] = AllSnapParts.SNAP_WIRE;
+        tools[1] = AllSnapParts.SNAP_RESISTOR;
+        tools[2] = AllSnapParts.SNAP_BATTERY;
+        board = SnapBoard.createDemo();
+        boardMats = boardMaterials();
+        directions = SnapDirections.forLength(tools[toolIndex].length());
+
         float halfX = board.width() * SnapSceneGeometry.BUMP_SPACING / 2f;
         float halfZ = board.height() * SnapSceneGeometry.BUMP_SPACING / 2f;
+        boardOx = BOARD_AT.x - halfX;
+        boardOz = BOARD_AT.z - halfZ;
 
         // Grassy pier the board rests on (its top meets the board's underside; it plunges into the lake).
         float padTop = BOARD_AT.y - SnapSceneGeometry.BASE_THICKNESS;
@@ -205,19 +257,266 @@ public class Snap3DProof extends SimpleApplication {
         pad.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
         rootNode.attachChild(pad);
 
-        Node boardNode = new Node("board");
-        Map<BoxSpec.Category, Material> mats = boardMaterials();
+        boardNode = new Node("board");
+        boardNode.setLocalTranslation(boardOx, BOARD_AT.y, boardOz);
+        boardNode.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
+        rootNode.attachChild(boardNode);
+        rebuildBoardGeometry();
+
+        ghostNode = new Node("ghost");
+        ghostNode.setLocalTranslation(boardOx, BOARD_AT.y, boardOz);
+        rootNode.attachChild(ghostNode);
+        setupGhostMaterials();
+    }
+
+    /** Rebuilds the committed board geometry from the current {@link SnapBoard} (call after every edit). */
+    private void rebuildBoardGeometry() {
+        boardNode.detachAllChildren();
         for (BoxSpec bx : SnapSceneGeometry.build(board)) {
-            Box shape = new Box(bx.sizeX() / 2f, bx.sizeY() / 2f, bx.sizeZ() / 2f);
-            Geometry g = new Geometry("boardbox", shape);
-            g.setMaterial(mats.getOrDefault(bx.category(), mats.get(BoxSpec.Category.UNKNOWN)));
+            Geometry g = new Geometry("boardbox", new Box(bx.sizeX() / 2f, bx.sizeY() / 2f, bx.sizeZ() / 2f));
+            g.setMaterial(boardMats.getOrDefault(bx.category(), boardMats.get(BoxSpec.Category.UNKNOWN)));
             g.setLocalTranslation(bx.cx(), bx.cy(), bx.cz());
             boardNode.attachChild(g);
         }
-        // BoxSpec coords are board-local (0..span); centre the board on BOARD_AT.
-        boardNode.setLocalTranslation(BOARD_AT.x - halfX, BOARD_AT.y, BOARD_AT.z - halfZ);
-        boardNode.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
-        rootNode.attachChild(boardNode);
+    }
+
+    private void setupGhostMaterials() {
+        ghostValidMat = translucent(new ColorRGBA(0.30f, 0.90f, 0.45f, 0.5f));
+        ghostInvalidMat = translucent(new ColorRGBA(0.95f, 0.30f, 0.30f, 0.5f));
+        ghostActiveMat = translucent(new ColorRGBA(0.20f, 0.90f, 1.0f, 0.75f));
+    }
+
+    private Material translucent(ColorRGBA c) {
+        Material m = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        m.setColor("Color", c);
+        m.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
+        return m;
+    }
+
+    // --- HUD + input ---
+
+    private void setupCrosshairHud() {
+        BitmapFont font = assetManager.loadFont("Interface/Fonts/Default.fnt");
+        BitmapText cross = new BitmapText(font);
+        cross.setText("+");
+        cross.setSize(font.getCharSet().getRenderedSize() * 1.6f);
+        cross.setLocalTranslation(cam.getWidth() / 2f - cross.getLineWidth() / 2f,
+                cam.getHeight() / 2f + cross.getLineHeight() / 2f, 0f);
+        guiNode.attachChild(cross);
+
+        hud = new BitmapText(font);
+        hud.setLocalTranslation(12f, cam.getHeight() - 8f, 0f);
+        guiNode.attachChild(hud);
+        updateHud();
+    }
+
+    private void updateHud() {
+        if (hud != null) {
+            hud.setText("Item: " + toolNames[toolIndex]
+                    + "    [1-3] item   scroll: direction   L/R arrows: terminal   LMB place   RMB remove"
+                    + "   WASD+mouse fly    layer " + anchorLayer);
+        }
+    }
+
+    private void setupEditorInput() {
+        flyCam.setMoveSpeed(90f);
+        // Free the mouse wheel from flyCam's FOV-zoom so it can drive placement direction.
+        inputManager.deleteMapping("FLYCAM_ZoomIn");
+        inputManager.deleteMapping("FLYCAM_ZoomOut");
+
+        inputManager.addMapping("tool1", new KeyTrigger(KeyInput.KEY_1));
+        inputManager.addMapping("tool2", new KeyTrigger(KeyInput.KEY_2));
+        inputManager.addMapping("tool3", new KeyTrigger(KeyInput.KEY_3));
+        inputManager.addMapping("termLeft", new KeyTrigger(KeyInput.KEY_LEFT));
+        inputManager.addMapping("termRight", new KeyTrigger(KeyInput.KEY_RIGHT));
+        inputManager.addMapping("place", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
+        inputManager.addMapping("remove", new MouseButtonTrigger(MouseInput.BUTTON_RIGHT));
+        inputManager.addMapping("dirUp", new MouseAxisTrigger(MouseInput.AXIS_WHEEL, false));
+        inputManager.addMapping("dirDown", new MouseAxisTrigger(MouseInput.AXIS_WHEEL, true));
+
+        ActionListener actions = (name, pressed, tpf) -> {
+            if (!pressed) {
+                return;
+            }
+            switch (name) {
+                case "tool1" -> selectTool(0);
+                case "tool2" -> selectTool(1);
+                case "tool3" -> selectTool(2);
+                case "termLeft" -> cycleTerminal(-1);
+                case "termRight" -> cycleTerminal(1);
+                case "place" -> placeAtCursor();
+                case "remove" -> removeAtCursor();
+                default -> { }
+            }
+        };
+        inputManager.addListener(actions, "tool1", "tool2", "tool3", "termLeft", "termRight", "place", "remove");
+
+        AnalogListener wheel = (name, value, tpf) -> {
+            if (name.equals("dirUp")) {
+                nudgeDirection(30f);
+            } else if (name.equals("dirDown")) {
+                nudgeDirection(-30f);
+            }
+        };
+        inputManager.addListener(wheel, "dirUp", "dirDown");
+    }
+
+    private void selectTool(int index) {
+        toolIndex = index;
+        directions = SnapDirections.forLength(tools[toolIndex].length());
+        anchorTerminal = 0;
+        updateHud();
+    }
+
+    private void cycleTerminal(int dir) {
+        int n = localTerminals().length;
+        anchorTerminal = ((anchorTerminal + dir) % n + n) % n;
+    }
+
+    private void nudgeDirection(float deltaDeg) {
+        dirAngle = ((dirAngle + deltaDeg) % 360f + 360f) % 360f;
+    }
+
+    /** Re-targets from the crosshair ray, recomputes the ghost, and eases + redraws it each frame. */
+    private void updateEditor(float dt) {
+        float s = SnapSceneGeometry.BUMP_SPACING;
+        Ray ray = new Ray(cam.getLocation(), cam.getDirection());
+        CollisionResults res = new CollisionResults();
+        boardNode.collideWith(ray, res);
+        if (res.size() > 0) {
+            CollisionResult hit = res.getClosestCollision();
+            Vector3f p = hit.getContactPoint();
+            anchorCol = clampInt(Math.round((p.x - boardOx) / s), 0, board.width());
+            anchorRow = clampInt(Math.round((p.z - boardOz) / s), 0, board.height());
+            anchorLayer = clampInt(Math.round((p.y - BOARD_AT.y) / SnapSceneGeometry.LEVEL_HEIGHT),
+                    0, board.layers() - 1);
+        } else {
+            float dy = ray.getDirection().y;
+            if (dy >= -1e-4f) {
+                ghost = null;
+                ghostNode.detachAllChildren();
+                return;
+            }
+            float t = (BOARD_AT.y - ray.getOrigin().y) / dy;
+            Vector3f p = ray.getOrigin().add(ray.getDirection().mult(t));
+            anchorCol = clampInt(Math.round((p.x - boardOx) / s), 0, board.width());
+            anchorRow = clampInt(Math.round((p.z - boardOz) / s), 0, board.height());
+            anchorLayer = 0;
+        }
+
+        int[] d = chooseDirection(anchorCol, anchorRow, anchorLayer);
+        int offCol = anchorTerminal == 0 ? 0 : d[0];
+        int offRow = anchorTerminal == 0 ? 0 : d[1];
+        ghost = new SnapPlacement(tools[toolIndex], anchorCol - offCol, anchorRow - offRow,
+                anchorLayer, d[0], d[1], false, Double.NaN);
+        ghostValid = board.canPlace(ghost);
+
+        float targetAngle = (float) Math.toDegrees(Math.atan2(d[1], d[0]));
+        float diff = ((targetAngle - displayedAngle + 540f) % 360f) - 180f;
+        float k = Math.min(1f, dt * EASE_RATE);
+        displayedAngle = (displayedAngle + diff * k + 360f) % 360f;
+        float[] anchored = localTerminals()[anchorTerminal];
+        anchorLocalX += (anchored[0] - anchorLocalX) * k;
+        anchorLocalZ += (anchored[1] - anchorLocalZ) * k;
+
+        rebuildGhost();
+        updateHud();
+    }
+
+    /** Rebuilds the translucent ghost geometry (body bar + terminal bumps) around the crosshair pivot. */
+    private void rebuildGhost() {
+        ghostNode.detachAllChildren();
+        if (ghost == null) {
+            return;
+        }
+        float s = SnapSceneGeometry.BUMP_SPACING;
+        float pivotX = anchorCol * s, pivotZ = anchorRow * s;
+        float rad = displayedAngle * FastMath.DEG_TO_RAD;
+        float cos = FastMath.cos(rad), sin = FastMath.sin(rad);
+
+        float[][] terms = localTerminals();
+        float[] tx = new float[terms.length], tz = new float[terms.length];
+        for (int i = 0; i < terms.length; i++) {
+            float lx = (terms[i][0] - anchorLocalX) * s, lz = (terms[i][1] - anchorLocalZ) * s;
+            tx[i] = pivotX + lx * cos - lz * sin;
+            tz[i] = pivotZ + lx * sin + lz * cos;
+        }
+
+        Material bodyMat = ghostValid ? ghostValidMat : ghostInvalidMat;
+        float bodyY = SnapSceneGeometry.bodyCenterY(anchorLayer);
+        float bodyLen = tools[toolIndex].length() * s + SnapSceneGeometry.COMPONENT_FOOTPRINT;
+        addGhostBox((tx[0] + tx[1]) / 2f, bodyY, (tz[0] + tz[1]) / 2f,
+                bodyLen, SnapSceneGeometry.COMPONENT_HEIGHT, SnapSceneGeometry.COMPONENT_FOOTPRINT,
+                displayedAngle, bodyMat);
+
+        float bumpY = SnapSceneGeometry.bumpBottomY(anchorLayer + 1) + SnapSceneGeometry.BUMP_HEIGHT / 2f;
+        float w = SnapSceneGeometry.BUMP_WIDTH, h = SnapSceneGeometry.BUMP_HEIGHT;
+        for (int i = 0; i < terms.length; i++) {
+            addGhostBox(tx[i], bumpY, tz[i], w, h, w, 0f, i == anchorTerminal ? ghostActiveMat : bodyMat);
+        }
+    }
+
+    private void addGhostBox(float cx, float cy, float cz, float sx, float sy, float sz, float yawDeg, Material mat) {
+        Geometry g = new Geometry("ghostbox", new Box(sx / 2f, sy / 2f, sz / 2f));
+        g.setMaterial(mat);
+        g.setQueueBucket(RenderQueue.Bucket.Transparent);
+        g.setLocalTranslation(cx, cy, cz);
+        if (yawDeg != 0f) {
+            g.setLocalRotation(new Quaternion().fromAngleAxis(-yawDeg * FastMath.DEG_TO_RAD, Vector3f.UNIT_Y));
+        }
+        ghostNode.attachChild(g);
+    }
+
+    private int[] chooseDirection(int col, int row, int layer) {
+        int[] best = directions.get(0);
+        double bestScore = Double.MAX_VALUE;
+        for (int[] d : directions) {
+            double ang = Math.toDegrees(Math.atan2(d[1], d[0]));
+            double score = angularDistance(ang, dirAngle)
+                    + (board.inBounds(new Post(col + d[0], row + d[1], layer)) ? 0 : 1000);
+            if (score < bestScore) {
+                bestScore = score;
+                best = d;
+            }
+        }
+        return best;
+    }
+
+    private static double angularDistance(double a, double b) {
+        double d = Math.abs(a - b) % 360.0;
+        return d > 180.0 ? 360.0 - d : d;
+    }
+
+    private float[][] localTerminals() {
+        return new float[][]{{0f, 0f}, {tools[toolIndex].length(), 0f}};
+    }
+
+    private static int clampInt(int v, int lo, int hi) {
+        return v < lo ? lo : (v > hi ? hi : v);
+    }
+
+    private void placeAtCursor() {
+        if (ghost != null && ghostValid && board.place(ghost)) {
+            rebuildBoardGeometry();
+        }
+    }
+
+    private void removeAtCursor() {
+        for (SnapPlacement p : board.snapshot()) {
+            Post o = p.originPost(), f = p.farPost();
+            boolean here = matchesCell(o) || matchesCell(f);
+            if (here) {
+                board.remove(o, f);
+                rebuildBoardGeometry();
+                return;
+            }
+        }
+    }
+
+    /** A terminal is "under the crosshair" if its column/row match and its layer is the pointed or lower level. */
+    private boolean matchesCell(Post t) {
+        return t.col() == anchorCol && t.row() == anchorRow
+                && (t.layer() == anchorLayer || t.layer() == anchorLayer - 1);
     }
 
     private Map<BoxSpec.Category, Material> boardMaterials() {
@@ -288,6 +587,7 @@ public class Snap3DProof extends SimpleApplication {
 
     @Override
     public void simpleUpdate(float tpf) {
+        updateEditor(tpf);
         frame++;
         if (frame == 150) {
             shot.takeScreenshot();
