@@ -18,6 +18,7 @@ import com.jme3.post.ssao.SSAOFilter;
 import com.jme3.renderer.queue.RenderQueue;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
+import com.jme3.scene.Spatial;
 import com.jme3.scene.shape.Box;
 import com.jme3.scene.shape.Cylinder;
 import com.jme3.shadow.DirectionalLightShadowRenderer;
@@ -112,6 +113,7 @@ public class Snap3DProof extends SimpleApplication {
     private Material ghostValidMat, ghostInvalidMat, ghostActiveMat;
     private List<int[]> directions;
     private EnvironmentCamera envCam; // bakes the IBL light probe from the scene, then detaches
+    private Node cloudLayer;          // drifting low-poly clouds
     private static final float EASE_RATE = 12f;
 
     public static void main(String[] args) {
@@ -133,8 +135,8 @@ public class Snap3DProof extends SimpleApplication {
         setDisplayStatView(false);
         setDisplayFps(false);
         flyCam.setMoveSpeed(120f);
-        cam.setLocation(new Vector3f(48f, 34f, 138f));
-        cam.lookAt(new Vector3f(0f, 15f, 30f), Vector3f.UNIT_Y); // the board, with lake + low sun behind it
+        cam.setLocation(new Vector3f(60f, 50f, 175f));
+        cam.lookAt(new Vector3f(0f, 62f, -110f), Vector3f.UNIT_Y); // toward the horizon: landscape + clouds above it
 
         rootNode.attachChild(SkyFactory.createSky(assetManager, gradientSky(), SkyFactory.EnvMapType.EquirectMap));
 
@@ -145,6 +147,7 @@ public class Snap3DProof extends SimpleApplication {
 
         buildTerrain();
         plantTrees();
+        buildClouds();
         buildBoard();
         setupShadows(sun);
         setupFilters(sun);
@@ -231,6 +234,94 @@ public class Snap3DProof extends SimpleApplication {
             tree.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
             rootNode.attachChild(tree);
         }
+    }
+
+    private static final long CLOUD_SEED = 1337L;
+    private static final float CLOUD_Y = 300f;
+    private static final float CLOUD_REGION = 1500f; // half-extent of the sky field around the board
+
+    /**
+     * Low-poly clouds by <b>noise-driven placement</b>: scan a grid over the sky, sample fBm value-noise as a
+     * coverage map, and where it exceeds a threshold spawn a faceted puff-cluster whose size/height scale with
+     * the noise "mass". Fractal noise (not random scatter) is what makes clouds clump and gap naturally.
+     * PBR-lit by the dawn sun; drifts on the wind (see simpleUpdate).
+     */
+    private void buildClouds() {
+        cloudLayer = new Node("clouds");
+        Material cloudMat = new Material(assetManager, "Common/MatDefs/Light/PBRLighting.j3md");
+        cloudMat.setColor("BaseColor", new ColorRGBA(1f, 0.97f, 0.94f, 1f));
+        cloudMat.setColor("Emissive", new ColorRGBA(0.10f, 0.10f, 0.12f, 1f)); // keep them bright in shadow
+        cloudMat.setFloat("Metallic", 0f);
+        cloudMat.setFloat("Roughness", 1f);
+
+        Random r = new Random(11);
+        float cell = 200f, freq = 0.0020f, threshold = 0.62f; // higher threshold -> distinct clouds with sky gaps
+        for (float gx = -CLOUD_REGION; gx <= CLOUD_REGION; gx += cell) {
+            for (float gz = -CLOUD_REGION; gz <= CLOUD_REGION; gz += cell) {
+                float wx = BOARD_AT.x + gx, wz = BOARD_AT.z + gz;
+                float cover = cloudFbm(wx * freq, wz * freq);
+                if (cover < threshold) {
+                    continue;
+                }
+                float mass = (cover - threshold) / (1f - threshold); // 0..1: how thick this cloud is
+                Node cloud = new Node("cloud");
+                int puffs = 2 + Math.round(mass * 5f);
+                for (int p = 0; p < puffs; p++) {
+                    float w = (55f + mass * 150f) * (0.6f + r.nextFloat() * 0.6f);
+                    float h = 16f + mass * 22f;
+                    float d = (50f + mass * 120f) * (0.6f + r.nextFloat() * 0.6f);
+                    Geometry puff = new Geometry("puff", new Box(w / 2f, h / 2f, d / 2f));
+                    puff.setMaterial(cloudMat);
+                    puff.setLocalTranslation((r.nextFloat() - 0.5f) * cell * 0.8f,
+                            (r.nextFloat() - 0.5f) * mass * 26f, (r.nextFloat() - 0.5f) * cell * 0.8f);
+                    cloud.attachChild(puff);
+                }
+                cloud.setLocalTranslation(wx + (r.nextFloat() - 0.5f) * cell * 0.4f,
+                        CLOUD_Y + mass * 80f + r.nextFloat() * 30f, wz + (r.nextFloat() - 0.5f) * cell * 0.4f);
+                cloud.setShadowMode(RenderQueue.ShadowMode.Off);
+                cloudLayer.attachChild(cloud);
+            }
+        }
+        rootNode.attachChild(cloudLayer);
+    }
+
+    // --- fBm value noise for cloud coverage (same technique as the terrain) ---
+
+    private float cloudFbm(float x, float z) {
+        float sum = 0f, amp = 0.5f, freq = 1f, norm = 0f;
+        for (int o = 0; o < 4; o++) {
+            sum += amp * cloudValueNoise(x * freq, z * freq);
+            norm += amp;
+            amp *= 0.5f;
+            freq *= 2f;
+        }
+        return sum / norm;
+    }
+
+    private float cloudValueNoise(float x, float z) {
+        int x0 = cloudFloor(x), z0 = cloudFloor(z);
+        float tx = cloudSmooth(x - x0), tz = cloudSmooth(z - z0);
+        float a = cloudHash(x0, z0), b = cloudHash(x0 + 1, z0);
+        float c = cloudHash(x0, z0 + 1), d = cloudHash(x0 + 1, z0 + 1);
+        float ab = a + (b - a) * tx, cd = c + (d - c) * tx;
+        return ab + (cd - ab) * tz;
+    }
+
+    private static float cloudHash(int x, int z) {
+        long h = x * 0x9E3779B97F4A7C15L + z * 0xC2B2AE3D27D4EB4FL + CLOUD_SEED;
+        h ^= (h >>> 29);
+        h *= 0xBF58476D1CE4E5B9L;
+        h ^= (h >>> 32);
+        return (h >>> 40) / (float) (1 << 24);
+    }
+
+    private static int cloudFloor(float v) {
+        int i = (int) v;
+        return v < i ? i - 1 : i;
+    }
+
+    private static float cloudSmooth(float t) {
+        return t * t * (3f - 2f * t);
     }
 
     /** The snap board, built from the shared engine-agnostic {@link SnapSceneGeometry}, on a grassy pier. */
@@ -620,6 +711,15 @@ public class Snap3DProof extends SimpleApplication {
     @Override
     public void simpleUpdate(float tpf) {
         updateEditor(tpf);
+        if (cloudLayer != null) { // drift clouds on the wind, wrapping around
+            for (Spatial c : cloudLayer.getChildren()) {
+                c.move(7f * tpf, 0f, 0f);
+                if (c.getLocalTranslation().x > BOARD_AT.x + CLOUD_REGION + 120f) {
+                    Vector3f t = c.getLocalTranslation();
+                    c.setLocalTranslation(BOARD_AT.x - CLOUD_REGION - 120f, t.y, t.z);
+                }
+            }
+        }
         frame++;
         if (frame == 4 && envCam != null) {
             // Bake the IBL probe now that the scene has rendered a few frames. The EnvironmentCamera state
