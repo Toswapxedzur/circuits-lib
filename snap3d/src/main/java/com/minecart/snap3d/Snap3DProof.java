@@ -33,6 +33,9 @@ import com.jme3.util.BufferUtils;
 import com.jme3.util.SkyFactory;
 import com.jme3.collision.CollisionResult;
 import com.jme3.collision.CollisionResults;
+import com.jme3.environment.EnvironmentCamera;
+import com.jme3.environment.LightProbeFactory;
+import com.jme3.light.LightProbe;
 import com.jme3.font.BitmapFont;
 import com.jme3.font.BitmapText;
 import com.jme3.input.KeyInput;
@@ -108,6 +111,7 @@ public class Snap3DProof extends SimpleApplication {
     private BitmapText hud;
     private Material ghostValidMat, ghostInvalidMat, ghostActiveMat;
     private List<int[]> directions;
+    private EnvironmentCamera envCam; // bakes the IBL light probe from the scene, then detaches
     private static final float EASE_RATE = 12f;
 
     public static void main(String[] args) {
@@ -134,9 +138,9 @@ public class Snap3DProof extends SimpleApplication {
 
         rootNode.attachChild(SkyFactory.createSky(assetManager, gradientSky(), SkyFactory.EnvMapType.EquirectMap));
 
-        DirectionalLight sun = new DirectionalLight(SUN_DIR, SUN_COLOR.mult(1.0f));
+        DirectionalLight sun = new DirectionalLight(SUN_DIR, SUN_COLOR.mult(3.2f)); // PBR wants real light energy
         rootNode.addLight(sun);
-        AmbientLight amb = new AmbientLight(AMBIENT);
+        AmbientLight amb = new AmbientLight(AMBIENT.mult(0.4f)); // most ambient now comes from the IBL probe
         rootNode.addLight(amb);
 
         buildTerrain();
@@ -146,6 +150,11 @@ public class Snap3DProof extends SimpleApplication {
         setupFilters(sun);
         setupCrosshairHud();
         setupEditorInput();
+
+        // IBL: capture the scene (sky + terrain) into a light probe so PBR materials get realistic ambient
+        // and environment reflections. Baked once a few frames in (see simpleUpdate), then detached.
+        envCam = new EnvironmentCamera(128, new Vector3f(BOARD_AT.x, BOARD_AT.y + 40f, BOARD_AT.z));
+        stateManager.attach(envCam);
     }
 
     /** A vertical dawn gradient as an equirectangular sky (ground -> horizon -> zenith by elevation). */
@@ -175,12 +184,7 @@ public class Snap3DProof extends SimpleApplication {
             HillHeightMap hm = new HillHeightMap(513, 1200, 20f, 55f, new Random().nextLong());
             hm.load();
             TerrainQuad terrain = new TerrainQuad("terrain", 65, 513, hm.getHeightMap());
-            Material mat = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
-            mat.setBoolean("UseMaterialColors", true);
-            mat.setColor("Diffuse", new ColorRGBA(0.30f, 0.46f, 0.26f, 1f));
-            mat.setColor("Ambient", new ColorRGBA(0.30f, 0.46f, 0.26f, 1f));
-            mat.setColor("Specular", ColorRGBA.Black);
-            terrain.setMaterial(mat);
+            terrain.setMaterial(colorMat(new ColorRGBA(0.30f, 0.46f, 0.26f, 1f)));
             terrain.setLocalScale(2.6f, 0.85f, 2.6f);
             terrain.setLocalTranslation(0f, -18f, 0f);
             terrain.setShadowMode(RenderQueue.ShadowMode.Receive);
@@ -535,23 +539,21 @@ public class Snap3DProof extends SimpleApplication {
         return m;
     }
 
-    /** A lit material whose diffuse is the noise texture tinted by {@code color} (the board's pixel look). */
+    /** A PBR material whose base colour is the noise texture tinted by {@code color} (the board's pixel look). */
     private Material texturedMat(ColorRGBA color) {
-        Material m = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
-        m.setTexture("DiffuseMap", noiseTex);
-        m.setBoolean("UseMaterialColors", true);
-        m.setColor("Diffuse", color);
-        m.setColor("Ambient", color);
-        m.setColor("Specular", ColorRGBA.Black);
+        Material m = new Material(assetManager, "Common/MatDefs/Light/PBRLighting.j3md");
+        m.setTexture("BaseColorMap", noiseTex);
+        m.setColor("BaseColor", color);
+        m.setFloat("Metallic", 0.0f);
+        m.setFloat("Roughness", 0.75f);
         return m;
     }
 
     private Material colorMat(ColorRGBA color) {
-        Material m = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
-        m.setBoolean("UseMaterialColors", true);
-        m.setColor("Diffuse", color);
-        m.setColor("Ambient", color);
-        m.setColor("Specular", ColorRGBA.Black);
+        Material m = new Material(assetManager, "Common/MatDefs/Light/PBRLighting.j3md");
+        m.setColor("BaseColor", color);
+        m.setFloat("Metallic", 0.0f);
+        m.setFloat("Roughness", 0.9f);
         return m;
     }
 
@@ -611,6 +613,14 @@ public class Snap3DProof extends SimpleApplication {
     public void simpleUpdate(float tpf) {
         updateEditor(tpf);
         frame++;
+        if (frame == 4 && envCam != null) {
+            // Bake the IBL probe now that the scene has rendered a few frames. The EnvironmentCamera state
+            // stays attached to finish the async bake; we just don't trigger it again.
+            LightProbe probe = LightProbeFactory.makeProbe(envCam, rootNode);
+            probe.getArea().setRadius(20000f);
+            rootNode.addLight(probe);
+            envCam = null;
+        }
         if (frame == 5) {
             // flyCam registers its mappings on the first update (via FlyCamAppState), so free the wheel from
             // its FOV-zoom now — after registration — so scrolling only changes placement direction.
