@@ -140,7 +140,7 @@ public class Snap3DProof extends SimpleApplication {
 
         DirectionalLight sun = new DirectionalLight(SUN_DIR, SUN_COLOR.mult(3.2f)); // PBR wants real light energy
         rootNode.addLight(sun);
-        AmbientLight amb = new AmbientLight(AMBIENT.mult(0.4f)); // most ambient now comes from the IBL probe
+        AmbientLight amb = new AmbientLight(AMBIENT.mult(0.26f)); // deeper shadows/contrast; IBL fills the rest
         rootNode.addLight(amb);
 
         buildTerrain();
@@ -589,15 +589,16 @@ public class Snap3DProof extends SimpleApplication {
         SSAOFilter ssao = new SSAOFilter(6f, 1.2f, 0.3f, 0.12f);
         fpp.addFilter(ssao);
 
-        FogFilter fog = new FogFilter(HORIZON, 0.16f, 1400f);
+        // Thin fog pushed to the horizon: atmospheric depth without washing the whole scene.
+        FogFilter fog = new FogFilter(HORIZON, 0.055f, 1700f);
         fpp.addFilter(fog);
 
-        // Bloom only on the bright highlights (high cutoff) and gently, so it glows instead of blowing out.
+        // Bloom only on the brightest highlights, so it glints instead of hazing the frame.
         BloomFilter bloom = new BloomFilter(BloomFilter.GlowMode.Scene);
-        bloom.setExposureCutOff(0.55f);
-        bloom.setBloomIntensity(0.75f);
+        bloom.setExposureCutOff(0.75f);
+        bloom.setBloomIntensity(0.55f);
         bloom.setExposurePower(1.3f);
-        bloom.setBlurScale(1.4f);
+        bloom.setBlurScale(1.3f);
         fpp.addFilter(bloom);
 
         // Filmic HDR -> LDR tonemapping (rolls off the bright sky/sun/glints instead of clipping them).
