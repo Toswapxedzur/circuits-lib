@@ -117,6 +117,7 @@ public class Snap3DProof extends SimpleApplication {
         settings.setResolution(1280, 720);
         settings.setVSync(true);
         settings.setSamples(0);
+        settings.setGammaCorrection(true); // render in linear space, output sRGB (correct colours + needed for PBR)
         app.setSettings(settings);
         app.setShowSettings(false);
         app.setPauseOnLostFocus(false);
@@ -564,6 +565,7 @@ public class Snap3DProof extends SimpleApplication {
 
     private void setupFilters(DirectionalLight sun) {
         FilterPostProcessor fpp = new FilterPostProcessor(assetManager);
+        fpp.setFrameBufferFormat(com.jme3.texture.Image.Format.RGBA16F); // HDR filter buffers for real bloom/tonemap
 
         com.jme3.water.WaterFilter water = new com.jme3.water.WaterFilter(rootNode, SUN_DIR);
         water.setWaterHeight(WATER_HEIGHT);
@@ -595,6 +597,11 @@ public class Snap3DProof extends SimpleApplication {
         bloom.setExposurePower(1.3f);
         bloom.setBlurScale(1.4f);
         fpp.addFilter(bloom);
+
+        // Filmic HDR -> LDR tonemapping (rolls off the bright sky/sun/glints instead of clipping them).
+        com.jme3.post.filters.ToneMapFilter toneMap = new com.jme3.post.filters.ToneMapFilter();
+        toneMap.setWhitePoint(new Vector3f(8f, 8f, 8f));
+        fpp.addFilter(toneMap);
 
         fpp.addFilter(new FXAAFilter());
         viewPort.addProcessor(fpp);
