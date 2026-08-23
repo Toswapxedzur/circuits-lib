@@ -26,6 +26,7 @@ import com.jme3.system.AppSettings;
 import com.jme3.terrain.geomipmap.TerrainQuad;
 import com.jme3.terrain.heightmap.HillHeightMap;
 import com.jme3.texture.Image;
+import com.jme3.texture.Texture;
 import com.jme3.texture.Texture2D;
 import com.jme3.texture.image.ColorSpace;
 import com.jme3.util.BufferUtils;
@@ -89,7 +90,9 @@ public class Snap3DProof extends SimpleApplication {
     private Node boardNode;   // holds the committed board geometry (rebuilt on edit)
     private Node ghostNode;   // holds the translucent placement preview (rebuilt each frame)
     private Map<BoxSpec.Category, Material> boardMats;
+    private Texture noiseTex; // the same 16px noise the libGDX board uses, for the pixelated surface look
     private float boardOx, boardOz; // boardNode world X/Z translation (Y is BOARD_AT.y)
+    private static final float PIXELS_PER_TILE = 16f;
 
     private final SnapPartType[] tools = new SnapPartType[3]; // filled after AllSnapParts.init()
     private final String[] toolNames = {"Wire", "Resistor", "Battery"};
@@ -231,6 +234,11 @@ public class Snap3DProof extends SimpleApplication {
         tools[0] = AllSnapParts.SNAP_WIRE;
         tools[1] = AllSnapParts.SNAP_RESISTOR;
         tools[2] = AllSnapParts.SNAP_BATTERY;
+        noiseTex = assetManager.loadTexture("textures/noise.png");
+        noiseTex.setMagFilter(Texture.MagFilter.Nearest);          // crisp Minecraft-style pixels
+        noiseTex.setMinFilter(Texture.MinFilter.NearestNoMipMaps);
+        noiseTex.setWrap(Texture.WrapMode.Repeat);
+
         board = SnapBoard.createDemo();
         boardMats = boardMaterials();
         directions = SnapDirections.forLength(tools[toolIndex].length());
@@ -266,7 +274,10 @@ public class Snap3DProof extends SimpleApplication {
     private void rebuildBoardGeometry() {
         boardNode.detachAllChildren();
         for (BoxSpec bx : SnapSceneGeometry.build(board)) {
-            Geometry g = new Geometry("boardbox", new Box(bx.sizeX() / 2f, bx.sizeY() / 2f, bx.sizeZ() / 2f));
+            Box shape = new Box(bx.sizeX() / 2f, bx.sizeY() / 2f, bx.sizeZ() / 2f);
+            // Tile the noise ~one texel per world unit (repeat wrap) so every surface reads as pixels.
+            shape.scaleTextureCoordinates(new Vector2f(bx.sizeX() / PIXELS_PER_TILE, bx.sizeZ() / PIXELS_PER_TILE));
+            Geometry g = new Geometry("boardbox", shape);
             g.setMaterial(boardMats.getOrDefault(bx.category(), boardMats.get(BoxSpec.Category.UNKNOWN)));
             g.setLocalTranslation(bx.cx(), bx.cy(), bx.cz());
             boardNode.attachChild(g);
@@ -514,12 +525,23 @@ public class Snap3DProof extends SimpleApplication {
 
     private Map<BoxSpec.Category, Material> boardMaterials() {
         Map<BoxSpec.Category, Material> m = new EnumMap<>(BoxSpec.Category.class);
-        m.put(BoxSpec.Category.BASE, colorMat(new ColorRGBA(0.16f, 0.18f, 0.22f, 1f)));
-        m.put(BoxSpec.Category.BUMP, colorMat(new ColorRGBA(0.62f, 0.64f, 0.68f, 1f)));
-        m.put(BoxSpec.Category.WIRE, colorMat(new ColorRGBA(0.85f, 0.86f, 0.90f, 1f)));
-        m.put(BoxSpec.Category.RESISTOR, colorMat(new ColorRGBA(0.86f, 0.52f, 0.20f, 1f)));
-        m.put(BoxSpec.Category.BATTERY, colorMat(new ColorRGBA(0.28f, 0.72f, 0.38f, 1f)));
-        m.put(BoxSpec.Category.UNKNOWN, colorMat(ColorRGBA.Magenta));
+        m.put(BoxSpec.Category.BASE, texturedMat(new ColorRGBA(0.16f, 0.18f, 0.22f, 1f)));
+        m.put(BoxSpec.Category.BUMP, texturedMat(new ColorRGBA(0.62f, 0.64f, 0.68f, 1f)));
+        m.put(BoxSpec.Category.WIRE, texturedMat(new ColorRGBA(0.85f, 0.86f, 0.90f, 1f)));
+        m.put(BoxSpec.Category.RESISTOR, texturedMat(new ColorRGBA(0.86f, 0.52f, 0.20f, 1f)));
+        m.put(BoxSpec.Category.BATTERY, texturedMat(new ColorRGBA(0.28f, 0.72f, 0.38f, 1f)));
+        m.put(BoxSpec.Category.UNKNOWN, texturedMat(ColorRGBA.Magenta));
+        return m;
+    }
+
+    /** A lit material whose diffuse is the noise texture tinted by {@code color} (the board's pixel look). */
+    private Material texturedMat(ColorRGBA color) {
+        Material m = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
+        m.setTexture("DiffuseMap", noiseTex);
+        m.setBoolean("UseMaterialColors", true);
+        m.setColor("Diffuse", color);
+        m.setColor("Ambient", color);
+        m.setColor("Specular", ColorRGBA.Black);
         return m;
     }
 
