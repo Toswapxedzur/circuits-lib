@@ -21,6 +21,9 @@ public class Main {
         config.setWindowedMode(1280, 720);
         config.useVsync(true);
         config.setForegroundFPS(60);
+        // Request a 24-bit depth buffer (libGDX defaults to 16-bit). With the 3D snap scene's far plane the
+        // 16-bit buffer is far too coarse and the board z-fights badly; 24 bits gives ~256x the precision.
+        config.setBackBufferConfig(8, 8, 8, 8, 24, 0, 0);
         new Lwjgl3Application(new DisplayApp(), config);
     }
 }

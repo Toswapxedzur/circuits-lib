@@ -27,6 +27,7 @@ import com.minecart.display.render.snap.SnapRenderer;
 import com.minecart.display.render.snap.SnapScene;
 import com.minecart.display.render.snap.SnapSceneGeometry;
 import com.minecart.display.render.snap.ToonRenderer;
+import com.minecart.display.render.snap.WaterRenderer;
 import com.minecart.foundation.World;
 import com.minecart.logic.ServerWorld;
 import com.minecart.server.integrated.IntegratedServer;
@@ -66,6 +67,7 @@ public final class SnapScreen extends ScreenAdapter {
     private FreeCameraController flyCam;
     private SnapRenderer renderer;
     private ToonRenderer environment;
+    private WaterRenderer water;
     private com.badlogic.gdx.graphics.g3d.environment.DirectionalShadowLight sun;
     private com.badlogic.gdx.graphics.g3d.Environment sharedEnv;
     private com.badlogic.gdx.graphics.g3d.ModelBatch shadowBatch;
@@ -127,11 +129,11 @@ public final class SnapScreen extends ScreenAdapter {
         // Shared lighting + real-time shadow map (Phase R1): a warm directional sun casting into a depth
         // map, cool sky ambient, and horizon fog — sampled by DefaultShader on both the board and scenery.
         sun = new com.badlogic.gdx.graphics.g3d.environment.DirectionalShadowLight(2048, 2048, 700f, 700f, 1f, 3000f);
-        sun.set(1.0f, 0.92f, 0.78f,
+        sun.set(1.0f, 0.64f, 0.40f,   // warm low dawn sun
                 -ToonRenderer.SUN_TO_LIGHT.x, -ToonRenderer.SUN_TO_LIGHT.y, -ToonRenderer.SUN_TO_LIGHT.z);
         sharedEnv = new com.badlogic.gdx.graphics.g3d.Environment();
         sharedEnv.set(new com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute(
-                com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute.AmbientLight, 0.42f, 0.46f, 0.60f, 1f));
+                com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute.AmbientLight, 0.34f, 0.38f, 0.52f, 1f));
         sharedEnv.add(sun);
         sharedEnv.shadowMap = sun;
         shadowBatch = new com.badlogic.gdx.graphics.g3d.ModelBatch(
@@ -141,6 +143,8 @@ public final class SnapScreen extends ScreenAdapter {
 
         renderer = new SnapRenderer(sharedEnv);
         environment = new ToonRenderer(board, sharedEnv);
+        water = new WaterRenderer(environment.waterY(), environment.pondCenterX(), environment.pondCenterZ(),
+                environment.pondRadius(), ToonRenderer.SUN_TO_LIGHT, environment.sunColor());
         // Fog fades distant scenery toward the horizon colour.
         com.badlogic.gdx.graphics.Color horizon = environment.skyColor();
         sharedEnv.set(new com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute(
@@ -333,6 +337,16 @@ public final class SnapScreen extends ScreenAdapter {
                 shadowBatch.end();
                 sun.end();
             }
+
+            // Planar-reflection pass: re-render sky + scenery from a camera mirrored across the pond into the
+            // water's reflection buffer, also before the screen clear (the water shader samples it below).
+            if (water != null && environment != null) {
+                water.update(dt);
+                com.badlogic.gdx.graphics.Camera rc = water.beginReflection(camera, environment.skyColor());
+                environment.renderSky(rc);
+                environment.render(rc);
+                water.endReflection();
+            }
         }
 
         if (environment != null) {
@@ -349,10 +363,27 @@ public final class SnapScreen extends ScreenAdapter {
                 environment.render(camera);    // lit + shadowed ground / mountains / hills / trees
             }
             renderer.render(camera);           // board + ghost (shadowed via the shared environment)
+            if (water != null) {
+                water.render(camera);          // reflective pond (terrain shoreline depth-clips it)
+            }
             updateStatus();
         }
         uiStage.act(dt);
         uiStage.draw();
+
+        // Dev tool: press F9 to dump the current frame to build/snap_shot.png (handy for tuning shaders).
+        if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.F9)) {
+            try {
+                com.badlogic.gdx.graphics.Pixmap p = com.badlogic.gdx.graphics.Pixmap.createFromFrameBuffer(
+                        0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+                com.badlogic.gdx.graphics.PixmapIO.writePNG(
+                        Gdx.files.absolute("/Users/fengyue.john.zhu/Desktop/programme/java/CircuitsLib/build/snap_shot.png"), p, -1, true);
+                p.dispose();
+                System.out.println("[DIAG] screenshot -> build/snap_shot.png");
+            } catch (Exception e) {
+                System.out.println("[DIAG] screenshot failed: " + e);
+            }
+        }
     }
 
     @Override public void resize(int width, int height) {
@@ -361,6 +392,9 @@ public final class SnapScreen extends ScreenAdapter {
             camera.viewportWidth = width;
             camera.viewportHeight = height;
             camera.update();
+        }
+        if (water != null) {
+            water.resize(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
         }
     }
 
@@ -491,6 +525,9 @@ public final class SnapScreen extends ScreenAdapter {
         }
         if (environment != null) {
             environment.dispose();
+        }
+        if (water != null) {
+            water.dispose();
         }
         if (!shuttingDown) {
             shuttingDown = true;

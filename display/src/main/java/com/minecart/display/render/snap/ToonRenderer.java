@@ -63,15 +63,20 @@ public final class ToonRenderer implements Disposable {
             "    ? mix(u_horizon, u_zenith, pow(clamp(y, 0.0, 1.0), 0.55))\n" +
             "    : mix(u_horizon, u_skyGround, clamp(-y * 2.0, 0.0, 1.0));\n" +
             "  float s = max(dot(normalize(v_dir), normalize(u_sunDir)), 0.0);\n" +
-            "  col += u_sunColor * pow(s, 220.0) * 2.0;\n" +
-            "  col += u_sunColor * pow(s, 7.0) * 0.35;\n" +
+            "  col += u_sunColor * pow(s, 350.0) * 4.0;\n" +   // bright sun disk
+            "  col += u_sunColor * pow(s, 6.0) * 0.55;\n" +    // warm inner halo
+            "  col += u_sunColor * pow(s, 2.0) * 0.22;\n" +    // broad hazy dawn scatter
+            "  float band = exp(-abs(y) * 6.0);\n" +           // warm glow hugging the horizon
+            "  col += u_sunColor * band * 0.14;\n" +
             "  gl_FragColor = vec4(col, 1.0);\n" +
             "}\n";
 
-    private static final Color SKY_ZENITH = new Color(0.14f, 0.13f, 0.32f, 1f);
-    private static final Color SKY_HORIZON = new Color(0.98f, 0.60f, 0.38f, 1f);
-    private static final Color SKY_GROUND = new Color(0.15f, 0.10f, 0.17f, 1f);
-    private static final Color SUN_COLOR = new Color(1.0f, 0.86f, 0.62f, 1f);
+    // Dawn (~5:30–6am) palette: soft periwinkle zenith fading to a warm cream/peach horizon, with a big,
+    // hazy low sun. Kept fairly bright/pastel — the sky at first light is luminous, not dark.
+    private static final Color SKY_ZENITH = new Color(0.34f, 0.40f, 0.60f, 1f);
+    private static final Color SKY_HORIZON = new Color(1.0f, 0.74f, 0.56f, 1f);
+    private static final Color SKY_GROUND = new Color(0.22f, 0.18f, 0.24f, 1f);
+    private static final Color SUN_COLOR = new Color(1.0f, 0.70f, 0.42f, 1f);
 
     private static final Color GROUND = new Color(0.36f, 0.50f, 0.30f, 1f);
     private static final Color MOUNTAIN = new Color(0.34f, 0.30f, 0.46f, 1f);
@@ -80,11 +85,25 @@ public final class ToonRenderer implements Disposable {
     private static final Color FOLIAGE = new Color(0.21f, 0.46f, 0.24f, 1f);
     private static final Color CLOUD = new Color(1.0f, 0.84f, 0.76f, 1f);
 
-    /** Sun direction TO the light (matches the shared Environment's DirectionalShadowLight, negated). */
-    public static final Vector3 SUN_TO_LIGHT = new Vector3(0.45f, 0.62f, 0.4f).nor();
+    /**
+     * Sun direction TO the light (matches the shared Environment's DirectionalShadowLight, negated).
+     * Dawn: the sun sits just above the horizon (~7.5° elevation) so it rakes across the scene, throwing
+     * long shadows and grazing light — the low angle is what makes a sunrise read as a sunrise.
+     */
+    public static final Vector3 SUN_TO_LIGHT = new Vector3(0.80f, 0.13f, 0.58f).nor();
 
     private final Environment environment;
     private final TerrainGenerator terrain;
+    // The terrain's flat clearing sits at the generator's y=0. Drop the whole terrain to just below the base
+    // slab's underside so the grass meets the board's lower edge instead of being coplanar with the base's
+    // TOP face (y=0) — that coplanarity is what makes the green ground z-fight up through the board surface.
+    private static final float GROUND_Y = -(SnapSceneGeometry.BASE_THICKNESS + 0.5f);
+
+    // Pond (world space): a basin carved into the terrain with a flat reflective water plane just below the
+    // clearing level, placed out in front of the board so its reflections are easy to see.
+    private final float waterY;
+    private final float pondCx, pondCz, pondRadius;
+
     private final ModelBatch modelBatch = new ModelBatch();
 
     private final ShaderProgram sky;
@@ -124,22 +143,35 @@ public final class ToonRenderer implements Disposable {
         // Procedural terrain: a random heightfield with a flat clearing around the board and rolling hills
         // beyond. Replaces the flat ground box. (Random per session; can be seeded per-world later.)
         this.terrain = new TerrainGenerator(new Random().nextLong(), cx, cz, span * 0.6f + 120f, 320f);
+        // Pond in front of the board (camera looks down -Z toward the board), just beyond the flat clearing.
+        this.pondCx = cx;
+        this.pondCz = cz - (span + 120f);
+        this.pondRadius = 150f;
+        float pondSurfaceGen = -1.5f;                 // generator-space water level (below the clearing's 0)
+        this.waterY = GROUND_Y + pondSurfaceGen;      // world-space water plane
+        terrain.setPond(pondCx, pondCz, pondRadius, pondSurfaceGen, 11f);
         this.groundModel = terrain.buildModel(4200f, 150);
         groundInstance = new ModelInstance(groundModel); // terrain vertices are already in world space
+        groundInstance.transform.setToTranslation(0f, GROUND_Y, 0f); // sit the clearing just under the board
 
         ring(mountains, mountainModel, cx, cz, span * 2.2f + 1400f, 14, 600f, 1100f, 700f, 1400f, 0f, false);
         placeClouds(cx, cz, span * 1.6f + 900f, 9);
 
         // A dense forest ringing the board at several depths, each tree planted on the terrain surface.
+        float pondClear = pondRadius * 1.35f; // keep the shoreline open so the pond + its reflection show
         for (int i = 0; i < 46; i++) {
             float ang = i * 137.5f;
             float rad = ang * MathUtils.degreesToRadians;
             float r = (115f + (i % 5) * 95f) + (i * 29 % 45);
             float x = cx + r * MathUtils.cos(rad);
             float z = cz + r * MathUtils.sin(rad);
+            float pdx = x - pondCx, pdz = z - pondCz;
+            if (pdx * pdx + pdz * pdz < pondClear * pondClear) {
+                continue; // no trees standing in the water
+            }
             float scale = 0.85f + ((i * 37) % 100) / 100f * 0.95f;
             ModelInstance tree = new ModelInstance(treeModel);
-            tree.transform.setToTranslation(x, terrain.height(x, z), z).rotate(Vector3.Y, i * 57f).scale(scale, scale, scale);
+            tree.transform.setToTranslation(x, GROUND_Y + terrain.height(x, z), z).rotate(Vector3.Y, i * 57f).scale(scale, scale, scale);
             trees.add(tree);
         }
 
@@ -204,6 +236,27 @@ public final class ToonRenderer implements Disposable {
 
     public Color skyColor() {
         return SKY_HORIZON;
+    }
+
+    public Color sunColor() {
+        return SUN_COLOR;
+    }
+
+    /** World-space Y of the pond's water plane. */
+    public float waterY() {
+        return waterY;
+    }
+
+    public float pondCenterX() {
+        return pondCx;
+    }
+
+    public float pondCenterZ() {
+        return pondCz;
+    }
+
+    public float pondRadius() {
+        return pondRadius;
     }
 
     /** Instances that should cast shadows in the depth pass (near trees + hills). */
