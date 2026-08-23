@@ -19,7 +19,7 @@ import com.jme3.post.ssao.SSAOFilter;
 import com.jme3.renderer.queue.RenderQueue;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
-import com.jme3.scene.Spatial;
+import com.jme3.scene.shape.Box;
 import com.jme3.scene.shape.Cylinder;
 import com.jme3.shadow.DirectionalLightShadowRenderer;
 import com.jme3.shadow.EdgeFilteringMode;
@@ -31,8 +31,14 @@ import com.jme3.texture.Texture2D;
 import com.jme3.texture.image.ColorSpace;
 import com.jme3.util.BufferUtils;
 import com.jme3.util.SkyFactory;
+import com.minecart.snap.AllSnapParts;
+import com.minecart.snap.BoxSpec;
+import com.minecart.snap.SnapBoard;
+import com.minecart.snap.SnapSceneGeometry;
 
 import java.nio.ByteBuffer;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -54,6 +60,9 @@ public class Snap3DProof extends SimpleApplication {
     private static final Vector3f SUN_DIR = new Vector3f(0.10f, -0.16f, 0.90f).normalizeLocal();
 
     private static final float WATER_HEIGHT = 10f;
+    // The snap board sits on a little grassy pier just above the water, near the camera, with the lake and
+    // backlit forest behind it — "build circuits in a beautiful world".
+    private static final Vector3f BOARD_AT = new Vector3f(0f, WATER_HEIGHT + 4f, 60f);
 
     private int frame;
     private ScreenshotAppState shot;
@@ -76,8 +85,8 @@ public class Snap3DProof extends SimpleApplication {
         setDisplayStatView(false);
         setDisplayFps(false);
         flyCam.setMoveSpeed(120f);
-        cam.setLocation(new Vector3f(0f, 45f, 360f));
-        cam.lookAt(new Vector3f(0f, 32f, -80f), Vector3f.UNIT_Y); // across the lake toward the low sun
+        cam.setLocation(new Vector3f(48f, 34f, 138f));
+        cam.lookAt(new Vector3f(0f, 15f, 30f), Vector3f.UNIT_Y); // the board, with lake + low sun behind it
 
         rootNode.attachChild(SkyFactory.createSky(assetManager, gradientSky(), SkyFactory.EnvMapType.EquirectMap));
 
@@ -88,6 +97,7 @@ public class Snap3DProof extends SimpleApplication {
 
         buildTerrain();
         plantTrees();
+        buildBoard();
         setupShadows(sun);
         setupFilters(sun);
 
@@ -176,6 +186,49 @@ public class Snap3DProof extends SimpleApplication {
             tree.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
             rootNode.attachChild(tree);
         }
+    }
+
+    /** The snap board, built from the shared engine-agnostic {@link SnapSceneGeometry}, on a grassy pier. */
+    private void buildBoard() {
+        AllSnapParts.init();
+        SnapBoard board = SnapBoard.createDemo();
+        float halfX = board.width() * SnapSceneGeometry.BUMP_SPACING / 2f;
+        float halfZ = board.height() * SnapSceneGeometry.BUMP_SPACING / 2f;
+
+        // Grassy pier the board rests on (its top meets the board's underside; it plunges into the lake).
+        float padTop = BOARD_AT.y - SnapSceneGeometry.BASE_THICKNESS;
+        float padThick = 12f;
+        Box padShape = new Box(halfX + 22f, padThick / 2f, halfZ + 22f);
+        Geometry pad = new Geometry("pad", padShape);
+        pad.setMaterial(colorMat(new ColorRGBA(0.26f, 0.44f, 0.24f, 1f)));
+        pad.setLocalTranslation(BOARD_AT.x, padTop - padThick / 2f, BOARD_AT.z);
+        pad.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
+        rootNode.attachChild(pad);
+
+        Node boardNode = new Node("board");
+        Map<BoxSpec.Category, Material> mats = boardMaterials();
+        for (BoxSpec bx : SnapSceneGeometry.build(board)) {
+            Box shape = new Box(bx.sizeX() / 2f, bx.sizeY() / 2f, bx.sizeZ() / 2f);
+            Geometry g = new Geometry("boardbox", shape);
+            g.setMaterial(mats.getOrDefault(bx.category(), mats.get(BoxSpec.Category.UNKNOWN)));
+            g.setLocalTranslation(bx.cx(), bx.cy(), bx.cz());
+            boardNode.attachChild(g);
+        }
+        // BoxSpec coords are board-local (0..span); centre the board on BOARD_AT.
+        boardNode.setLocalTranslation(BOARD_AT.x - halfX, BOARD_AT.y, BOARD_AT.z - halfZ);
+        boardNode.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
+        rootNode.attachChild(boardNode);
+    }
+
+    private Map<BoxSpec.Category, Material> boardMaterials() {
+        Map<BoxSpec.Category, Material> m = new EnumMap<>(BoxSpec.Category.class);
+        m.put(BoxSpec.Category.BASE, colorMat(new ColorRGBA(0.16f, 0.18f, 0.22f, 1f)));
+        m.put(BoxSpec.Category.BUMP, colorMat(new ColorRGBA(0.62f, 0.64f, 0.68f, 1f)));
+        m.put(BoxSpec.Category.WIRE, colorMat(new ColorRGBA(0.85f, 0.86f, 0.90f, 1f)));
+        m.put(BoxSpec.Category.RESISTOR, colorMat(new ColorRGBA(0.86f, 0.52f, 0.20f, 1f)));
+        m.put(BoxSpec.Category.BATTERY, colorMat(new ColorRGBA(0.28f, 0.72f, 0.38f, 1f)));
+        m.put(BoxSpec.Category.UNKNOWN, colorMat(ColorRGBA.Magenta));
+        return m;
     }
 
     private Material colorMat(ColorRGBA color) {

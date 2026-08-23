@@ -21,6 +21,7 @@ import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 import com.minecart.snap.SnapBoard;
+import com.minecart.snap.SnapSceneGeometry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,9 +1,5 @@
-package com.minecart.display.render.snap;
+package com.minecart.snap;
 
-import com.minecart.snap.AllSnapParts;
-import com.minecart.snap.Facing;
-import com.minecart.snap.SnapBoard;
-import com.minecart.snap.SnapPlacement;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

@@ -1,16 +1,11 @@
-package com.minecart.display.render.snap;
-
-import com.minecart.snap.Facing;
-import com.minecart.snap.Post;
-import com.minecart.snap.SnapBoard;
-import com.minecart.snap.SnapPlacement;
+package com.minecart.snap;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Pure mapping from a {@link SnapBoard} to a list of {@link BoxSpec}s in 3D world units — no libGDX, so it
- * is unit-testable without a GL context.
+ * Pure mapping from a {@link SnapBoard} to a list of {@link BoxSpec}s in 3D world units — no renderer
+ * dependency, so it is unit-testable and shared by every renderer (libGDX + jMonkeyEngine).
  *
  * <h2>Units — real Snap-Circuit dimensions (all in "pixels")</h2>
  * The base is a grid of <b>bumps</b> (posts) spaced {@link #BUMP_SPACING}=16 apart, each a
