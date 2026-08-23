@@ -1,5 +1,7 @@
 package com.minecart.display.render.snap;
 
+import com.minecart.snap.BoxSpec;
+
 /**
  * A box to draw with an optional Y-axis rotation (degrees). Used for the placement ghost, whose body bar
  * rotates smoothly to the snapped direction (its terminal bumps stay axis-aligned). {@code yawDeg} is the

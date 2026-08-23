@@ -25,7 +25,8 @@ import com.minecart.display.input.FreeCameraController;
 import com.minecart.display.render.snap.SnapEditor;
 import com.minecart.display.render.snap.SnapRenderer;
 import com.minecart.display.render.snap.SnapScene;
-import com.minecart.display.render.snap.SnapSceneGeometry;
+import com.minecart.snap.SnapSceneGeometry;
+import com.minecart.display.render.snap.PostProcessor;
 import com.minecart.display.render.snap.ToonRenderer;
 import com.minecart.display.render.snap.WaterRenderer;
 import com.minecart.foundation.World;
@@ -68,6 +69,7 @@ public final class SnapScreen extends ScreenAdapter {
     private SnapRenderer renderer;
     private ToonRenderer environment;
     private WaterRenderer water;
+    private PostProcessor post;
     private com.badlogic.gdx.graphics.g3d.environment.DirectionalShadowLight sun;
     private com.badlogic.gdx.graphics.g3d.Environment sharedEnv;
     private com.badlogic.gdx.graphics.g3d.ModelBatch shadowBatch;
@@ -145,6 +147,7 @@ public final class SnapScreen extends ScreenAdapter {
         environment = new ToonRenderer(board, sharedEnv);
         water = new WaterRenderer(environment.waterY(), environment.pondCenterX(), environment.pondCenterZ(),
                 environment.pondRadius(), ToonRenderer.SUN_TO_LIGHT, environment.sunColor());
+        post = new PostProcessor();
         // Fog fades distant scenery toward the horizon colour.
         com.badlogic.gdx.graphics.Color horizon = environment.skyColor();
         sharedEnv.set(new com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute(
@@ -349,13 +352,18 @@ public final class SnapScreen extends ScreenAdapter {
             }
         }
 
-        if (environment != null) {
-            com.badlogic.gdx.graphics.Color sky = environment.skyColor();
-            Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
+        com.badlogic.gdx.graphics.Color sky = (environment != null) ? environment.skyColor() : null;
+        float cr = sky != null ? sky.r : 0.06f, cg = sky != null ? sky.g : 0.07f, cb = sky != null ? sky.b : 0.10f;
+
+        // The 3D scene renders into the post-processor's off-screen buffer; renderToScreen() then composites
+        // it back with bloom + vignette. The UI is drawn afterward so it stays crisp (un-bloomed).
+        boolean usePost = post != null && renderer != null && camera != null;
+        if (usePost) {
+            post.begin(cr, cg, cb);
         } else {
-            Gdx.gl.glClearColor(0.06f, 0.07f, 0.10f, 1f);
+            Gdx.gl.glClearColor(cr, cg, cb, 1f);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         }
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 
         if (renderer != null && camera != null) {
             if (environment != null) {
@@ -368,6 +376,12 @@ public final class SnapScreen extends ScreenAdapter {
             }
             updateStatus();
         }
+
+        if (usePost) {
+            post.end();
+            post.renderToScreen();
+        }
+
         uiStage.act(dt);
         uiStage.draw();
 
@@ -395,6 +409,9 @@ public final class SnapScreen extends ScreenAdapter {
         }
         if (water != null) {
             water.resize(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+        }
+        if (post != null) {
+            post.resize(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
         }
     }
 
@@ -528,6 +545,9 @@ public final class SnapScreen extends ScreenAdapter {
         }
         if (water != null) {
             water.dispose();
+        }
+        if (post != null) {
+            post.dispose();
         }
         if (!shuttingDown) {
             shuttingDown = true;

@@ -1,5 +1,8 @@
 package com.minecart.display.render.snap;
 
+import com.minecart.snap.BoxSpec;
+import com.minecart.snap.SnapSceneGeometry;
+
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.math.collision.BoundingBox;
 import com.minecart.snap.SnapBoard;

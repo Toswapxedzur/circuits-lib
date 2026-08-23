@@ -8,6 +8,8 @@ import com.badlogic.gdx.math.Plane;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.math.collision.Ray;
 import com.minecart.snap.AllSnapParts;
+import com.minecart.snap.BoxSpec;
+import com.minecart.snap.SnapSceneGeometry;
 import com.minecart.snap.Post;
 import com.minecart.snap.SnapBoard;
 import com.minecart.snap.SnapDirections;

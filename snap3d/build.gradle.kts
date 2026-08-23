@@ -15,6 +15,8 @@ application {
 val jme = "3.7.0-stable"
 
 dependencies {
+    implementation(project(":core")) // SnapBoard + SnapSceneGeometry/BoxSpec (engine-agnostic board geometry)
+
     implementation("org.jmonkeyengine:jme3-core:$jme")
     implementation("org.jmonkeyengine:jme3-desktop:$jme")
     implementation("org.jmonkeyengine:jme3-effects:$jme")
