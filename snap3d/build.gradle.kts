@@ -2,6 +2,14 @@ plugins {
     application
 }
 
+// jME 3.7 bundles LWJGL 3.3.3, whose GLFW input callbacks break on JDK 24+ ("Unsupported JNI version" →
+// no keyboard/mouse). Pin this module to a Java 21 toolchain so `run` launches jME on a supported JVM.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 application {
     mainClass = "com.minecart.snap3d.Snap3DProof"
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
