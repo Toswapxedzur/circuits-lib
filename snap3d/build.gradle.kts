@@ -29,6 +29,7 @@ dependencies {
     implementation("org.jmonkeyengine:jme3-desktop:$jme")
     implementation("org.jmonkeyengine:jme3-effects:$jme")
     implementation("org.jmonkeyengine:jme3-terrain:$jme")
+    implementation("org.jmonkeyengine:jme3-plugins:$jme") // glTF/GLB model loading (CC0 nature packs)
     runtimeOnly("org.jmonkeyengine:jme3-lwjgl3:$jme")
 
     runtimeOnly("ch.qos.logback:logback-classic:1.5.18")

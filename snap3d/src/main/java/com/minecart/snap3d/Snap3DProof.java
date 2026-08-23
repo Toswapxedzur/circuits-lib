@@ -1,6 +1,8 @@
 package com.minecart.snap3d;
 
 import com.jme3.app.SimpleApplication;
+import com.jme3.bounding.BoundingBox;
+import com.jme3.bounding.BoundingVolume;
 import com.jme3.light.AmbientLight;
 import com.jme3.light.DirectionalLight;
 import com.jme3.material.Material;
@@ -58,7 +60,9 @@ import com.minecart.snap.SnapPartType;
 import com.minecart.snap.SnapPlacement;
 import com.minecart.snap.SnapSceneGeometry;
 
+import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.EnumMap;
 import java.util.Map;
@@ -114,6 +118,8 @@ public class Snap3DProof extends SimpleApplication {
     private List<int[]> directions;
     private EnvironmentCamera envCam; // bakes the IBL light probe from the scene, then detaches
     private Node cloudLayer;          // drifting low-poly clouds
+    private final List<Spatial> treeModels = new ArrayList<>(); // CC0 GLB trees dropped into resources/models
+    private final List<Spatial> propModels = new ArrayList<>(); // rocks / bushes / grass etc.
     private static final float EASE_RATE = 12f;
 
     public static void main(String[] args) {
@@ -146,6 +152,7 @@ public class Snap3DProof extends SimpleApplication {
         rootNode.addLight(amb);
 
         buildTerrain();
+        loadNatureModels();
         plantTrees();
         buildClouds();
         buildBoard();
@@ -197,43 +204,112 @@ public class Snap3DProof extends SimpleApplication {
         }
     }
 
+    /**
+     * Loads any CC0 GLB/glTF/j3o models the user has dropped into {@code snap3d/src/main/resources/models/}
+     * (e.g. Quaternius' Ultimate Stylized Nature Pack), sorting them into trees vs. ground props by filename.
+     * If none are present the scene falls back to procedural cone trees, so it always renders.
+     */
+    private void loadNatureModels() {
+        File dir = new File("src/main/resources/models");
+        File[] files = dir.isDirectory() ? dir.listFiles() : null;
+        if (files == null) {
+            return;
+        }
+        for (File f : files) {
+            String n = f.getName().toLowerCase();
+            if (!(n.endsWith(".glb") || n.endsWith(".gltf") || n.endsWith(".j3o"))) {
+                continue;
+            }
+            try {
+                Spatial m = assetManager.loadModel("models/" + f.getName());
+                m.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
+                boolean prop = n.contains("rock") || n.contains("stone") || n.contains("bush") || n.contains("grass")
+                        || n.contains("log") || n.contains("mushroom") || n.contains("flower") || n.contains("plant")
+                        || n.contains("fern") || n.contains("stump");
+                (prop ? propModels : treeModels).add(m);
+                System.out.println("[JME] loaded model " + f.getName());
+            } catch (Exception e) {
+                System.out.println("[JME] failed to load " + f.getName() + ": " + e);
+            }
+        }
+        System.out.println("[JME] nature models: trees=" + treeModels.size() + " props=" + propModels.size());
+    }
+
     private void plantTrees() {
         TerrainQuad terrain = (TerrainQuad) rootNode.getChild("terrain");
         if (terrain == null) {
             return;
         }
         Random r = new Random(7);
-        Material trunkMat = colorMat(new ColorRGBA(0.42f, 0.28f, 0.16f, 1f));
-        Material leafMat = colorMat(new ColorRGBA(0.16f, 0.42f, 0.22f, 1f));
-        Quaternion zUpToYUp = new Quaternion().fromAngleAxis(-FastMath.HALF_PI, Vector3f.UNIT_X);
-        for (int i = 0; i < 120; i++) {
+        for (int i = 0; i < 120; i++) { // trees
             float x = (r.nextFloat() - 0.5f) * 900f;
             float z = (r.nextFloat() - 0.5f) * 900f;
             float y = terrain.getHeight(new Vector2f(x, z)) - 18f; // match terrain translation
             if (y < WATER_HEIGHT + 3f || y > 60f) {
                 continue; // keep trees on dry land, off the peaks
             }
-            float scale = 0.8f + r.nextFloat() * 1.3f;
-            Node tree = new Node("tree");
-            Cylinder trunkShape = new Cylinder(2, 8, 0.6f, 10f, true);
-            Geometry trunk = new Geometry("trunk", trunkShape);
-            trunk.setMaterial(trunkMat);
-            trunk.setLocalRotation(zUpToYUp);
-            trunk.setLocalTranslation(0f, 5f, 0f);
-            tree.attachChild(trunk);
-            for (int c = 0; c < 3; c++) {
-                Cylinder coneShape = new Cylinder(2, 12, 5f - c * 1.2f, 0.01f, 6f, true, false);
-                Geometry cone = new Geometry("foliage", coneShape);
-                cone.setMaterial(leafMat);
-                cone.setLocalRotation(zUpToYUp);
-                cone.setLocalTranslation(0f, 9f + c * 4f, 0f);
-                tree.attachChild(cone);
+            Spatial tree;
+            if (treeModels.isEmpty()) {
+                tree = proceduralTree(r);
+                tree.setLocalScale(0.8f + r.nextFloat() * 1.3f);
+            } else {
+                tree = treeModels.get(r.nextInt(treeModels.size())).clone();
+                fitHeight(tree, 22f + r.nextFloat() * 14f);
             }
-            tree.setLocalScale(scale);
             tree.setLocalTranslation(x, y, z);
+            tree.rotate(0f, r.nextFloat() * FastMath.TWO_PI, 0f);
             tree.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
             rootNode.attachChild(tree);
         }
+        for (int i = 0; i < 90 && !propModels.isEmpty(); i++) { // rocks / bushes, if provided
+            float x = (r.nextFloat() - 0.5f) * 900f;
+            float z = (r.nextFloat() - 0.5f) * 900f;
+            float y = terrain.getHeight(new Vector2f(x, z)) - 18f;
+            if (y < WATER_HEIGHT + 2f || y > 70f) {
+                continue;
+            }
+            Spatial prop = propModels.get(r.nextInt(propModels.size())).clone();
+            fitHeight(prop, 5f + r.nextFloat() * 9f);
+            prop.setLocalTranslation(x, y, z);
+            prop.rotate(0f, r.nextFloat() * FastMath.TWO_PI, 0f);
+            prop.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
+            rootNode.attachChild(prop);
+        }
+    }
+
+    /** A procedural cone conifer (fallback when no GLB tree models are provided). */
+    private Node proceduralTree(Random r) {
+        Material trunkMat = colorMat(new ColorRGBA(0.42f, 0.28f, 0.16f, 1f));
+        Material leafMat = colorMat(new ColorRGBA(0.16f, 0.42f, 0.22f, 1f));
+        Quaternion zUpToYUp = new Quaternion().fromAngleAxis(-FastMath.HALF_PI, Vector3f.UNIT_X);
+        Node tree = new Node("tree");
+        Geometry trunk = new Geometry("trunk", new Cylinder(2, 8, 0.6f, 10f, true));
+        trunk.setMaterial(trunkMat);
+        trunk.setLocalRotation(zUpToYUp);
+        trunk.setLocalTranslation(0f, 5f, 0f);
+        tree.attachChild(trunk);
+        for (int c = 0; c < 3; c++) {
+            Geometry cone = new Geometry("foliage", new Cylinder(2, 12, 5f - c * 1.2f, 0.01f, 6f, true, false));
+            cone.setMaterial(leafMat);
+            cone.setLocalRotation(zUpToYUp);
+            cone.setLocalTranslation(0f, 9f + c * 4f, 0f);
+            tree.attachChild(cone);
+        }
+        return tree;
+    }
+
+    /** Uniformly scales a loaded model so its bounding-box height is about {@code targetHeight} world units. */
+    private void fitHeight(Spatial s, float targetHeight) {
+        s.updateGeometricState();
+        BoundingVolume bv = s.getWorldBound();
+        float h = 1f;
+        if (bv instanceof BoundingBox) {
+            h = ((BoundingBox) bv).getYExtent() * 2f;
+        }
+        if (h < 1e-3f) {
+            h = 1f;
+        }
+        s.setLocalScale(targetHeight / h);
     }
 
     private static final long CLOUD_SEED = 1337L;
