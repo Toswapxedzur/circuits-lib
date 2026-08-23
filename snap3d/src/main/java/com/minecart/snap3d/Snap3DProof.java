@@ -1,7 +1,6 @@
 package com.minecart.snap3d;
 
 import com.jme3.app.SimpleApplication;
-import com.jme3.app.state.ScreenshotAppState;
 import com.jme3.light.AmbientLight;
 import com.jme3.light.DirectionalLight;
 import com.jme3.material.Material;
@@ -84,7 +83,6 @@ public class Snap3DProof extends SimpleApplication {
     private static final Vector3f BOARD_AT = new Vector3f(0f, WATER_HEIGHT + 4f, 60f);
 
     private int frame;
-    private ScreenshotAppState shot;
 
     // --- board + editor state ---
     private SnapBoard board;
@@ -144,11 +142,6 @@ public class Snap3DProof extends SimpleApplication {
         setupFilters(sun);
         setupCrosshairHud();
         setupEditorInput();
-
-        shot = new ScreenshotAppState(
-                "/Users/fengyue.john.zhu/Desktop/programme/java/CircuitsLib/build/", "jme_shot", 1L);
-        stateManager.attach(shot);
-        System.out.println("[JME] diorama initialized OK");
     }
 
     /** A vertical dawn gradient as an equirectangular sky (ground -> horizon -> zenith by elevation). */
@@ -319,10 +312,10 @@ public class Snap3DProof extends SimpleApplication {
     }
 
     private void setupEditorInput() {
-        flyCam.setMoveSpeed(90f);
-        // Free the mouse wheel from flyCam's FOV-zoom so it can drive placement direction.
-        inputManager.deleteMapping("FLYCAM_ZoomIn");
-        inputManager.deleteMapping("FLYCAM_ZoomOut");
+        flyCam.setEnabled(true);
+        flyCam.setDragToRotate(false); // FPS style: mouse looks, WASD moves (window must be focused)
+        flyCam.setMoveSpeed(220f);
+        flyCam.setRotationSpeed(2.2f);
 
         inputManager.addMapping("tool1", new KeyTrigger(KeyInput.KEY_1));
         inputManager.addMapping("tool2", new KeyTrigger(KeyInput.KEY_2));
@@ -589,9 +582,15 @@ public class Snap3DProof extends SimpleApplication {
     public void simpleUpdate(float tpf) {
         updateEditor(tpf);
         frame++;
-        if (frame == 150) {
-            shot.takeScreenshot();
-            System.out.println("[JME] screenshot requested -> build/jme_shot*.png");
+        if (frame == 5) {
+            // flyCam registers its mappings on the first update (via FlyCamAppState), so free the wheel from
+            // its FOV-zoom now — after registration — so scrolling only changes placement direction.
+            if (inputManager.hasMapping("FLYCAM_ZoomIn")) {
+                inputManager.deleteMapping("FLYCAM_ZoomIn");
+            }
+            if (inputManager.hasMapping("FLYCAM_ZoomOut")) {
+                inputManager.deleteMapping("FLYCAM_ZoomOut");
+            }
         }
     }
 }
