@@ -27,8 +27,6 @@ import com.jme3.scene.shape.Sphere;
 import com.jme3.shadow.DirectionalLightShadowRenderer;
 import com.jme3.shadow.EdgeFilteringMode;
 import com.jme3.system.AppSettings;
-import com.jme3.terrain.geomipmap.TerrainQuad;
-import com.jme3.terrain.heightmap.HillHeightMap;
 import com.jme3.texture.Image;
 import com.jme3.texture.Texture;
 import com.jme3.texture.Texture2D;
@@ -119,6 +117,7 @@ public class Snap3DProof extends SimpleApplication {
     private List<int[]> directions;
     private EnvironmentCamera envCam; // bakes the IBL light probe from the scene, then detaches
     private Node cloudLayer;          // drifting low-poly clouds
+    private TerrainMeshBuilder terrainGen; // ridged-multifractal terrain (also gives surface height for props)
     private final List<Spatial> treeModels = new ArrayList<>(); // CC0 GLB trees dropped into resources/models
     private final List<Spatial> propModels = new ArrayList<>(); // rocks / bushes / grass etc.
     private static final float EASE_RATE = 12f;
@@ -201,19 +200,10 @@ public class Snap3DProof extends SimpleApplication {
     }
 
     private void buildTerrain() {
-        try {
-            HillHeightMap.NORMALIZE_RANGE = 100f;
-            HillHeightMap hm = new HillHeightMap(513, 1200, 20f, 55f, new Random().nextLong());
-            hm.load();
-            TerrainQuad terrain = new TerrainQuad("terrain", 65, 513, hm.getHeightMap());
-            terrain.setMaterial(colorMat(new ColorRGBA(0.30f, 0.46f, 0.26f, 1f)));
-            terrain.setLocalScale(2.6f, 0.85f, 2.6f);
-            terrain.setLocalTranslation(0f, -18f, 0f);
-            terrain.setShadowMode(RenderQueue.ShadowMode.Receive);
-            rootNode.attachChild(terrain);
-        } catch (Exception e) {
-            System.out.println("[JME] terrain build failed: " + e);
-        }
+        // Ridged-multifractal + domain-warp terrain, with a flat shallow clearing around the board's pier.
+        terrainGen = new TerrainMeshBuilder(new Random().nextLong(), BOARD_AT.x, BOARD_AT.z, 320f, 260f);
+        Geometry terrain = terrainGen.build(assetManager, 3600f, 300);
+        rootNode.attachChild(terrain);
     }
 
     /**
@@ -248,17 +238,16 @@ public class Snap3DProof extends SimpleApplication {
     }
 
     private void plantTrees() {
-        TerrainQuad terrain = (TerrainQuad) rootNode.getChild("terrain");
-        if (terrain == null) {
+        if (terrainGen == null) {
             return;
         }
         Random r = new Random(7);
-        for (int i = 0; i < 120; i++) { // trees
-            float x = (r.nextFloat() - 0.5f) * 900f;
-            float z = (r.nextFloat() - 0.5f) * 900f;
-            float y = terrain.getHeight(new Vector2f(x, z)) - 18f; // match terrain translation
-            if (y < WATER_HEIGHT + 3f || y > 60f) {
-                continue; // keep trees on dry land, off the peaks
+        for (int i = 0; i < 260; i++) { // trees — cover the wider terrain, foothills only (not peaks/snow)
+            float x = (r.nextFloat() - 0.5f) * 3000f;
+            float z = (r.nextFloat() - 0.5f) * 3000f;
+            float y = terrainGen.height(x, z);
+            if (y < WATER_HEIGHT + 4f || y > 190f) {
+                continue; // dry land, below the rocky/snow line
             }
             Spatial tree;
             if (treeModels.isEmpty()) {
@@ -268,21 +257,21 @@ public class Snap3DProof extends SimpleApplication {
                 tree = treeModels.get(r.nextInt(treeModels.size())).clone();
                 fitHeight(tree, 22f + r.nextFloat() * 14f);
             }
-            tree.setLocalTranslation(x, y, z);
+            tree.setLocalTranslation(x, y - 1f, z);
             tree.rotate(0f, r.nextFloat() * FastMath.TWO_PI, 0f);
             tree.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
             rootNode.attachChild(tree);
         }
-        for (int i = 0; i < 90 && !propModels.isEmpty(); i++) { // rocks / bushes, if provided
-            float x = (r.nextFloat() - 0.5f) * 900f;
-            float z = (r.nextFloat() - 0.5f) * 900f;
-            float y = terrain.getHeight(new Vector2f(x, z)) - 18f;
-            if (y < WATER_HEIGHT + 2f || y > 70f) {
+        for (int i = 0; i < 160 && !propModels.isEmpty(); i++) { // rocks / bushes higher up too
+            float x = (r.nextFloat() - 0.5f) * 3000f;
+            float z = (r.nextFloat() - 0.5f) * 3000f;
+            float y = terrainGen.height(x, z);
+            if (y < WATER_HEIGHT + 2f || y > 300f) {
                 continue;
             }
             Spatial prop = propModels.get(r.nextInt(propModels.size())).clone();
             fitHeight(prop, 5f + r.nextFloat() * 9f);
-            prop.setLocalTranslation(x, y, z);
+            prop.setLocalTranslation(x, y - 1f, z);
             prop.rotate(0f, r.nextFloat() * FastMath.TWO_PI, 0f);
             prop.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
             rootNode.attachChild(prop);
