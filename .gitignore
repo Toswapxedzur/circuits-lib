@@ -53,5 +53,6 @@ run/
 run-data/
 .DS_Store
 
-# Third-party Minecraft resource pack (friend-provided, not for redistribution)
+
+# Third-party Minecraft resource pack (friend-provided, unused after jME retirement; not for redistribution)
 /assets/
