@@ -1,0 +1,8 @@
+# Downloaded CC0 nature assets (Quaternius) — reproducible via fetch-assets.sh, not committed (101MB)
+*.gltf
+*.glb
+*.bin
+*.png
+*.jpg
+*.jpeg
+!.gitignore

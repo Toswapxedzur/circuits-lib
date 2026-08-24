@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Fetch the Quaternius Ultimate Stylized Nature Pack (glTF, CC0) into this folder.
+# Source: https://quaternius.com/packs/ultimatestylizednature.html  (License: CC0)
+set -e; cd "$(dirname "$0")"
+while IFS=$'	' read -r id name; do
+  [ -z "$id" ] && continue
+  [ -s "$name" ] && continue
+  echo "fetching $name"
+  curl -sL "https://drive.google.com/uc?export=download&id=${id}" -o "$name"
+done <<'MANIFEST'
+1CzLliZji_8zxWRI_QQXmTgGaycWGYhLb	BirchTree_1.bin
+1K3kgivCdB10eg57AM0CwSZi6TvCwsvNh	BirchTree_1.gltf
+1qEsSF4KkXsaVVDonE-1HjHN-qjtztnu-	BirchTree_2.bin
+1-IFr4_vcuyPDfpDA7v09xIuBvAWgVCN_	BirchTree_2.gltf
+16XqK_LDVe--xuyu3LtxOerCcnIrJiXMq	BirchTree_3.bin
+1_quJzC_FGAbkYGcV0A8AJbcTtISwkOWU	BirchTree_3.gltf
+1SnbEu_qP67t8AfzJL8WNmIo6vBs1RdoN	BirchTree_4.bin
+1Ego0MUkRMq1Ygoqv0wcC3UXhSShhDpED	BirchTree_4.gltf
+1Ut5yJ3emg_DEjR2q21Gzat0d1VC2-YT_	BirchTree_5.bin
+1_UdbvgKuhURdKP5R5Ppnsw7p3BQWAWeH	BirchTree_5.gltf
+1puC8NuyemENIPB40TOsKdqzp0EmUJe1g	BirchTree_Bark.jpg
+1qg4n9gasJ-c_jQED-IBqx28Qu53CURcR	BirchTree_Bark_Normal.png
+1RPfkjEuuEwFno9gh3U0zQndzcB8DOr_S	BirchTree_Leaves.png
+1C6RKJ03BVkXCmpQ9ZFyqgnWf4mnMP797	Bush.bin
+1NCX0AlP3LYjjSNBhSw8yFldPt4X9izd9	Bush.gltf
+1kXiNw7s2Mq_urE29uUYNur_K6abiQR6n	Bush_Flowers.bin
+1TT2ZMI0WR9oCeRxwQQqrKlYFPgfbBqLO	Bush_Flowers.gltf
+1LLfPoe7ZUYqOu_Td2bsRjrz8ALbLbRd0	Bush_Large.bin
+1E0Pa78JSmBhddkwnWy4uMiN-Jl-ySpTH	Bush_Large.gltf
+1Uqx2arbqdrJNg0gs4dRQRW82dbGDyXu-	Bush_Large_Flowers.bin
+1ZfIqi_ZVGWQoiv7aqL6toE2AxB1zaIyA	Bush_Large_Flowers.gltf
+19xOyTuSATvkHhQd8zC6PW-y6RX761yGA	Bush_Leaves.png
+1uEjO3yk2Ayt74KgMyIhAL1s3Rx3anUOK	Bush_Small.bin
+1f5B7pMpARbklJ5LfMycLT11dYFYRiqkl	Bush_Small.gltf
+10l4tvONQVD0va6bTldG5rtiNJsHLrNkc	Bush_Small_Flowers.bin
+1bz_biPIWQJCtaxvn3fzptLnlmVs0855h	Bush_Small_Flowers.gltf
+16hwrQQ_gThFwyPBlDuzDC4rH3YY_uhtX	DeadTree_1.bin
+1hwIwnP7pCXc7b30fdbdia-QvfTpoa8NA	DeadTree_1.gltf
+1Yj6S64_KrT649J0A9fjwyEWgx7ijVQSx	DeadTree_10.bin
+1uOrM2no2hJv0BxImDCsR4HC0GlPG1u4Q	DeadTree_10.gltf
+14SKD3Kn2qUc0tL-Mmbi02nUnbOxqENPM	DeadTree_2.bin
+1mLXQ8KhnJ9HAzPuvjElF_hjBdpCVsBsp	DeadTree_2.gltf
+1agcRM5mq5fWTZtLRYzjmpEj_Cs5MlCud	DeadTree_3.bin
+1A5uSu7lxcLOTScWVeHK7A6y_nN9qOz7N	DeadTree_3.gltf
+1lyDvjpYIYIRPQLykXFwiN17RfHkdBjU5	DeadTree_4.bin
+1PQCaoIFXIIw5XTyBOW4wZs0eBGKdl7gz	DeadTree_4.gltf
+1WHwtugzZFQaVJqg46zigEfHULRQQ89lV	DeadTree_5.bin
+1MFBYyMPtWzy0vj2LkWgAoZggURPpAfBa	DeadTree_5.gltf
+1UN1GEG4XVYM8_JAlYCiAlkIG1OFkLphL	DeadTree_6.bin
+1If5UBrOL1aG6l5d4z3buoMhrou7Y1Sdq	DeadTree_6.gltf
+1zHQb2oGdsKKx8v7PiLIyUpPKKL-gjQoh	DeadTree_7.bin
+1FeWnejzOXIwTrGdEjKLsZj4ssSOGzqgt	DeadTree_7.gltf
+1WWE-5b_BjAIGsdwygUGkA14493hoq8v2	DeadTree_8.bin
+1IfH5aGlY-OPRtylIDnk2Fa_9Yb9AdZYC	DeadTree_8.gltf
+1GkmkjyYEGvqAyex7Lb5fczBisi-uDxIX	DeadTree_9.bin
+1TztEYHQZjHjJ_7JptB88ETc-sxxP9rkF	DeadTree_9.gltf
+1ItqlWpuf0ZUEFxqhCaXL7u7zlwfWLDHm	Flower_1.bin
+1rDi4y-n02aRHQlaqv6vgC_gcwnpyvVvj	Flower_1.gltf
+1LCRJiCFp9P-NAL-ZRgxNYvsoborAquo1	Flower_1_Clump.bin
+1irnfEuKcX8Fy0Vka3WdduByxSUMw-RgM	Flower_1_Clump.gltf
+1DPNrBMVHDN7BOE_pCDmfcVT-8Y77vmhc	Flower_2.bin
+1VRmLzAK3jS8K_-F9O8oPREXEDdBquira	Flower_2.gltf
+1RAmAJVLxGHW04UWxMV5ixjHh7eoowSEY	Flower_2_Clump.bin
+1nayIU0xl16drx63Cil1WCVGcH6yGnZXq	Flower_2_Clump.gltf
+1-O7Ljl2PU_Jw5PU1TFy9UssfNci_A07z	Flower_3_Clump.bin
+1wN9dUs7XZb3pwNUSFUPwuuuKlqGHXBU_	Flower_3_Clump.gltf
+13NB-NzfBy-1xQEZ718oFXSXiNiYyvT-z	Flower_4_Clump.bin
+1agTpDJHmXhBbs9vF4JN1JvMNch8ehvTL	Flower_4_Clump.gltf
+1Mk_yBOLZ7KrNt_ckT4Ae5cHv_7m2wrB4	Flower_5_Clump.bin
+17SFY2rpylCNHLIt5yldnEpgmASa7s3YI	Flower_5_Clump.gltf
+1__uvRQhRXZcOQ_lsvkrZfDr9Alr8ru6U	Flowers.png
+1NjDwDFwQDQ9W4rOl9Wo-eaP12W-tO_Ve	Grass.png
+1pwwPjqep2grgx4j1n2fKYDF9cvR8AkM1	Grass_Large.bin
+1uWtHfb1Ull5Keue9i_DStF_L3KZMSnP3	Grass_Large.gltf
+1YVUdz8vDXiZKmMkU-xh4Tyn2OwSh6dEJ	Grass_Large_Extruded.bin
+1x2ZX14Vlos-AKIGK5S6R3wUyDpeSbEyH	Grass_Large_Extruded.gltf
+11pYo59kelR-MG2Cp7ouON7aoW0BtbZso	Grass_Small.bin
+1eRyYyuXkBtFG8T9Qt6qQ-lk3Mfqwze3k	Grass_Small.gltf
+1XTr5zs7bi9yFLJUxztnIL8XY90seUfud	Leaves_BW.png
+1Z2YE3ixij3rjunD6VMaFvjW0xr8Ktlgu	MapleTree_1.bin
+1q64DhJrFsIAK5-ldyaA6yXPCs1etSY4t	MapleTree_1.gltf
+1on-eMIZA5v7C3Q8cjYcrgH4CkKTeCdq_	MapleTree_2.bin
+1givDumRTELycXVatFcJWD6bVC2aiBcWJ	MapleTree_2.gltf
+1mv1Avmwkdd5X580gOMXezqXI8XwAmXe3	MapleTree_3.bin
+1DkxTpDUYqXSNBTuOaYceiscawEGSf4zm	MapleTree_3.gltf
+1rZDMaIwGKq-5xPPUyIFnb7Kgp-RoDR6n	MapleTree_4.bin
+15Q5JvfP7mQDjHKBd2D6T-bR4u_h72jgB	MapleTree_4.gltf
+1DWjV1XrS_s8sMlaXkmDuM8MweObm4mBF	MapleTree_5.bin
+1wgU6BbZp6Sl87gHqL9l2mlgrYBXOk0Fo	MapleTree_5.gltf
+1ooEfm7ZxVwm1bal3qnY7E9ydqZ28k18P	MapleTree_Bark.jpg
+19eBAksn5OX78sgvBfN7k41BHwyPDYtJS	MapleTree_Bark_Normal.png
+1GX7-YPXDd9S3-VQre1S4kASWQoHmasA1	MapleTree_Leaves.png
+1_l-aJE7iCGwxCtWTHxQu6B6QgR_XsKHh	MapleTree_Leaves_BW.png
+190KWIyJT7qkxtZ3LHlkoqluz6b1HWyAa	NormalTree_Bark.jpg
+1oj3DAnAo6zExOUSk5ZtTImpbREhpDkbx	NormalTree_Bark_Normal.png
+1V4IePGK9IFayrRXTZo2SqiEMEB10c1MG	NormalTree_Leaves.png
+1XKKtyHkv9hZOfevToddGV1Denc11ACW0	PalmTree_Leaves.png
+1Eu5gJMLBxwZELGYyfaeMlxuYWmB2aWMU	PalmTree_Trunk.jpg
+1iKEc1JrumAg9YXzIS8x3WDcwY-LiU26_	PalmTree_Trunk_Normal.png
+1D-Z4lyMQZSHoLpQYANNNiq4C8c_m4HPl	PineTree_Bark.jpg
+1IlWVDHJ1FYYZ5RqYT2udz4V2HYaOR4wm	PineTree_Bark_Normal.png
+10iiCzOtzshoLo-0LNQ6XrRfHaiIIKWIn	PineTree_Leaves.png
+1HTHi0x3Ii16e1S3zXO2aDM_hMrSnnCYO	Rocks.jpg
+MANIFEST
