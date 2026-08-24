@@ -819,13 +819,6 @@ public class Snap3DProof extends SimpleApplication {
         toneMap.setWhitePoint(new Vector3f(8f, 8f, 8f));
         fpp.addFilter(toneMap);
 
-        // Gentle depth of field: the board/near stays sharp, distant scenery softens (cinematic).
-        com.jme3.post.filters.DepthOfFieldFilter dof = new com.jme3.post.filters.DepthOfFieldFilter();
-        dof.setFocusDistance(110f);
-        dof.setFocusRange(220f);
-        dof.setBlurScale(0.9f);
-        fpp.addFilter(dof);
-
         fpp.addFilter(new FXAAFilter());
         viewPort.addProcessor(fpp);
     }
