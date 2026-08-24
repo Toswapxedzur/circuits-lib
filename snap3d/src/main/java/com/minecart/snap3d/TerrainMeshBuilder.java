@@ -27,39 +27,56 @@ import java.nio.IntBuffer;
  */
 public final class TerrainMeshBuilder {
 
-    private static final float BASE_AMP = 90f;    // rolling foothills amplitude (world units)
-    private static final float MTN_AMP = 360f;    // added mountain height where the mask allows
-    private static final float BASE_FREQ = 0.0016f;
-    private static final float MTN_FREQ = 0.0022f;
-    private static final float MASK_FREQ = 0.0009f;
+    private static final float BASE_FREQ = 0.0018f;
+    private static final float MTN_FREQ = 0.0026f;
     private static final float WARP_FREQ = 0.0014f;
-    private static final float WARP_AMP = 140f;    // how far the domain is warped (world units)
+    private static final float WARP_AMP = 150f;    // how far the domain is warped (world units)
 
     private final long seed;
-    private final float clearX, clearZ, clearRadius, clearBlend;
+    private final ScenePreset preset;
 
-    public TerrainMeshBuilder(long seed, float clearX, float clearZ, float clearRadius, float clearBlend) {
+    public TerrainMeshBuilder(long seed, ScenePreset preset) {
         this.seed = seed;
-        this.clearX = clearX;
-        this.clearZ = clearZ;
-        this.clearRadius = clearRadius;
-        this.clearBlend = clearBlend;
+        this.preset = preset;
     }
 
-    /** World-space terrain height at (x,z): lowlands dip below the water plane, mountains tower where masked. */
+    /**
+     * World-space height for the preset's concentric layout (island → lake → plains → encircling mountains),
+     * with the ring radii domain-warped (so they aren't perfect circles) and ridged/rolling detail added per
+     * zone: jagged crests in the mountains, gentle rolling on the plains.
+     */
     public float height(float x, float z) {
-        // Domain warp: perturb the sample position by a low-freq fBm so features wind instead of blobbing.
+        float dx = x - preset.centerX(), dz = z - preset.centerZ();
+        float r = (float) Math.sqrt(dx * dx + dz * dz);
+        float rw = r + 130f * fbm(x * 0.0008f + 3.1f, z * 0.0008f - 2.7f, 3); // wobble the rings
         float wx = x + WARP_AMP * fbm(x * WARP_FREQ + 11.3f, z * WARP_FREQ + 7.1f, 4);
         float wz = z + WARP_AMP * fbm(x * WARP_FREQ - 5.2f, z * WARP_FREQ + 3.9f, 4);
 
-        float base = fbm(wx * BASE_FREQ, wz * BASE_FREQ, 5) * BASE_AMP;         // rolling, signed
-        float ridge = ridged(wx * MTN_FREQ, wz * MTN_FREQ, 6);                  // 0..~1 jagged
-        float mask = smoothstep(0.45f, 0.8f, fbm(wx * MASK_FREQ, wz * MASK_FREQ, 3) * 0.5f + 0.5f);
-        float full = base + ridge * MTN_AMP * mask;
+        float w = preset.waterLine();
+        float islandR = preset.islandR(), lakeOuter = preset.lakeOuter();
+        float plainsOuter = preset.plainsOuter(), mountOuter = preset.mountOuter();
+        float lakeMid = (islandR + lakeOuter) * 0.5f;
 
-        float d = (float) Math.sqrt((x - clearX) * (x - clearX) + (z - clearZ) * (z - clearZ));
-        float clear = smoothstep(clearRadius, clearRadius + clearBlend, d); // 0 near the board, 1 far away
-        return lerpf(-8f, full, clear); // flat shallow water around the board's pier; full terrain beyond
+        float base;
+        if (rw < islandR) {
+            base = lerpf(preset.islandHeight(), w - 3f, smoothstep(islandR * 0.35f, islandR, rw)); // island dome -> shore
+        } else if (rw < lakeMid) {
+            base = lerpf(w - 3f, -preset.lakeDepth(), smoothstep(islandR, lakeMid, rw));            // into the lake
+        } else if (rw < lakeOuter) {
+            base = lerpf(-preset.lakeDepth(), w - 2f, smoothstep(lakeMid, lakeOuter, rw));          // rise to far shore
+        } else if (rw < plainsOuter) {
+            base = lerpf(w - 2f, preset.plainsHeight(), smoothstep(lakeOuter, plainsOuter, rw));    // gentle plains
+        } else if (rw < mountOuter) {
+            base = lerpf(preset.plainsHeight(), preset.mountHeight(), smoothstep(plainsOuter, mountOuter, rw)); // mountains
+        } else {
+            base = preset.mountHeight();
+        }
+
+        float plainsZone = smoothstep(lakeOuter, lakeOuter + 220f, r) * (1f - smoothstep(plainsOuter - 60f, plainsOuter + 260f, r));
+        float mountZone = smoothstep(plainsOuter, plainsOuter + 380f, r);
+        float rolling = fbm(wx * BASE_FREQ, wz * BASE_FREQ, 5) * 24f;                                // gentle plains
+        float ridge = ridged(wx * MTN_FREQ, wz * MTN_FREQ, 6) * preset.mountHeight() * 0.55f;        // jagged crests
+        return base + rolling * plainsZone + ridge * mountZone;
     }
 
     /** Builds the terrain mesh: {@code res × res} grid of world size {@code size}, centred on the origin. */
@@ -131,16 +148,16 @@ public final class TerrainMeshBuilder {
         ColorRGBA base;
         if (h < 18f) {
             base = lerp(sand, grass, smoothstep(2f, 18f, h));           // shoreline
-        } else if (h < 150f) {
+        } else if (h < 170f) {
             base = grass.clone();
         } else {
-            base = lerp(grass, rock, smoothstep(150f, 240f, h));        // grass -> rock with altitude
+            base = lerp(grass, rock, smoothstep(170f, 320f, h));        // grass -> rock with altitude
         }
         // Steep faces are bare rock regardless of altitude.
         base = lerp(base, rock, smoothstep(0.45f, 0.75f, slope));
         // Snow caps on high, not-too-steep ground.
-        if (h > 260f) {
-            base = lerp(base, snow, smoothstep(260f, 340f, h) * (1f - smoothstep(0.55f, 0.8f, slope)));
+        if (h > 340f) {
+            base = lerp(base, snow, smoothstep(340f, 460f, h) * (1f - smoothstep(0.6f, 0.85f, slope)));
         }
         out.set(base);
     }

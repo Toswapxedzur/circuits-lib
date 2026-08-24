@@ -18,9 +18,12 @@ import com.jme3.post.filters.FogFilter;
 import com.jme3.post.filters.LightScatteringFilter;
 import com.jme3.post.ssao.SSAOFilter;
 import com.jme3.renderer.queue.RenderQueue;
+import com.jme3.scene.BatchNode;
 import com.jme3.scene.Geometry;
+import com.jme3.scene.Mesh;
 import com.jme3.scene.Node;
 import com.jme3.scene.Spatial;
+import com.jme3.scene.VertexBuffer;
 import com.jme3.scene.shape.Box;
 import com.jme3.scene.shape.Cylinder;
 import com.jme3.scene.shape.Sphere;
@@ -83,7 +86,7 @@ public class Snap3DProof extends SimpleApplication {
     private static final ColorRGBA GROUNDSKY = new ColorRGBA(0.22f, 0.18f, 0.24f, 1f);
     // Light travels toward +Z and slightly down, so the sun sits low on the -Z horizon — in front of a
     // camera that looks that way, giving backlit hills + god rays streaming toward the viewer.
-    private static final Vector3f SUN_DIR = new Vector3f(0.10f, -0.16f, 0.90f).normalizeLocal();
+    private static final Vector3f SUN_DIR = new Vector3f(0.15f, -0.40f, 0.90f).normalizeLocal(); // ~24° so it clears the mountain ring
 
     private static final float WATER_HEIGHT = 10f;
     // The snap board sits on a little grassy pier just above the water, near the camera, with the lake and
@@ -200,9 +203,9 @@ public class Snap3DProof extends SimpleApplication {
     }
 
     private void buildTerrain() {
-        // Ridged-multifractal + domain-warp terrain, with a flat shallow clearing around the board's pier.
-        terrainGen = new TerrainMeshBuilder(new Random().nextLong(), BOARD_AT.x, BOARD_AT.z, 320f, 260f);
-        Geometry terrain = terrainGen.build(assetManager, 3600f, 300);
+        // Scene preset LAKE_RING: island in a lake, gentle plains, encircling dramatic mountains.
+        terrainGen = new TerrainMeshBuilder(new Random().nextLong(), ScenePreset.LAKE_RING);
+        Geometry terrain = terrainGen.build(assetManager, 4600f, 320);
         rootNode.attachChild(terrain);
     }
 
@@ -241,41 +244,83 @@ public class Snap3DProof extends SimpleApplication {
         if (terrainGen == null) {
             return;
         }
+        ScenePreset p = ScenePreset.LAKE_RING;
         Random r = new Random(7);
-        for (int i = 0; i < 260; i++) { // trees — cover the wider terrain, foothills only (not peaks/snow)
-            float x = (r.nextFloat() - 0.5f) * 3000f;
-            float z = (r.nextFloat() - 0.5f) * 3000f;
+        float reach = p.mountOuter() * 0.98f; // scatter across the plains/island, up to the mountain feet
+
+        // Trees — dense, batched into few draw calls so thousands stay fast. Foothills only (below the snow).
+        BatchNode trees = new BatchNode("trees");
+        int placed = 0, attempts = 0, maxAttempts = p.treeCount() * 6;
+        while (placed < p.treeCount() && attempts++ < maxAttempts) {
+            float x = p.centerX() + (r.nextFloat() - 0.5f) * 2f * reach;
+            float z = p.centerZ() + (r.nextFloat() - 0.5f) * 2f * reach;
             float y = terrainGen.height(x, z);
-            if (y < WATER_HEIGHT + 4f || y > 190f) {
-                continue; // dry land, below the rocky/snow line
+            if (y < p.waterLine() + 4f || y > p.treeMaxAltitude()) {
+                continue;
             }
-            Spatial tree;
+            Spatial tree = treeModels.isEmpty() ? proceduralTree(r)
+                    : treeModels.get(r.nextInt(treeModels.size())).clone();
             if (treeModels.isEmpty()) {
-                tree = proceduralTree(r);
                 tree.setLocalScale(0.8f + r.nextFloat() * 1.3f);
             } else {
-                tree = treeModels.get(r.nextInt(treeModels.size())).clone();
-                fitHeight(tree, 22f + r.nextFloat() * 14f);
+                fitHeight(tree, 20f + r.nextFloat() * 16f);
             }
             tree.setLocalTranslation(x, y - 1f, z);
             tree.rotate(0f, r.nextFloat() * FastMath.TWO_PI, 0f);
-            tree.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
-            rootNode.attachChild(tree);
+            trees.attachChild(tree);
+            placed++;
         }
-        for (int i = 0; i < 160 && !propModels.isEmpty(); i++) { // rocks / bushes higher up too
-            float x = (r.nextFloat() - 0.5f) * 3000f;
-            float z = (r.nextFloat() - 0.5f) * 3000f;
-            float y = terrainGen.height(x, z);
-            if (y < WATER_HEIGHT + 2f || y > 300f) {
-                continue;
+        unifyForBatch(trees);
+        try {
+            trees.batch();
+        } catch (Exception e) {
+            System.out.println("[JME] tree batch failed, rendering unbatched: " + e.getMessage());
+        }
+        trees.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
+        rootNode.attachChild(trees);
+
+        // Rocks / bushes / grass / flowers — even denser ground cover, also batched.
+        if (!propModels.isEmpty()) {
+            BatchNode props = new BatchNode("props");
+            placed = 0; attempts = 0; maxAttempts = p.propCount() * 6;
+            while (placed < p.propCount() && attempts++ < maxAttempts) {
+                float x = p.centerX() + (r.nextFloat() - 0.5f) * 2f * reach;
+                float z = p.centerZ() + (r.nextFloat() - 0.5f) * 2f * reach;
+                float y = terrainGen.height(x, z);
+                if (y < p.waterLine() + 2f || y > p.treeMaxAltitude() + 120f) {
+                    continue;
+                }
+                Spatial prop = propModels.get(r.nextInt(propModels.size())).clone();
+                fitHeight(prop, 4f + r.nextFloat() * 9f);
+                prop.setLocalTranslation(x, y - 1f, z);
+                prop.rotate(0f, r.nextFloat() * FastMath.TWO_PI, 0f);
+                props.attachChild(prop);
+                placed++;
             }
-            Spatial prop = propModels.get(r.nextInt(propModels.size())).clone();
-            fitHeight(prop, 5f + r.nextFloat() * 9f);
-            prop.setLocalTranslation(x, y - 1f, z);
-            prop.rotate(0f, r.nextFloat() * FastMath.TWO_PI, 0f);
-            prop.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
-            rootNode.attachChild(prop);
+            unifyForBatch(props);
+            try {
+                props.batch();
+            } catch (Exception e) {
+                System.out.println("[JME] prop batch failed, rendering unbatched: " + e.getMessage());
+            }
+            props.setShadowMode(RenderQueue.ShadowMode.CastAndReceive);
+            rootNode.attachChild(props);
         }
+    }
+
+    /** Strips optional vertex buffers so a mix of glTF meshes share a uniform layout and {@link BatchNode} can merge them. */
+    private void unifyForBatch(Node node) {
+        node.depthFirstTraversal(sp -> {
+            if (sp instanceof Geometry) {
+                Mesh m = ((Geometry) sp).getMesh();
+                m.clearBuffer(VertexBuffer.Type.TexCoord2);
+                m.clearBuffer(VertexBuffer.Type.TexCoord3);
+                m.clearBuffer(VertexBuffer.Type.TexCoord4);
+                m.clearBuffer(VertexBuffer.Type.Tangent);
+                m.clearBuffer(VertexBuffer.Type.Color);
+                m.clearBuffer(VertexBuffer.Type.Binormal);
+            }
+        });
     }
 
     /** A procedural cone conifer (fallback when no GLB tree models are provided). */
@@ -314,7 +359,7 @@ public class Snap3DProof extends SimpleApplication {
     }
 
     private static final long CLOUD_SEED = 1337L;
-    private static final float CLOUD_Y = 300f;
+    private static final float CLOUD_Y = 640f; // above the plains, among the mountain peaks
     private static final float CLOUD_REGION = 1500f; // half-extent of the sky field around the board
 
     /**
