@@ -23,6 +23,7 @@ import com.jme3.scene.Node;
 import com.jme3.scene.Spatial;
 import com.jme3.scene.shape.Box;
 import com.jme3.scene.shape.Cylinder;
+import com.jme3.scene.shape.Sphere;
 import com.jme3.shadow.DirectionalLightShadowRenderer;
 import com.jme3.shadow.EdgeFilteringMode;
 import com.jme3.system.AppSettings;
@@ -142,7 +143,8 @@ public class Snap3DProof extends SimpleApplication {
         setDisplayFps(false);
         flyCam.setMoveSpeed(120f);
         cam.setLocation(new Vector3f(60f, 50f, 175f));
-        cam.lookAt(new Vector3f(0f, 62f, -110f), Vector3f.UNIT_Y); // toward the horizon: landscape + clouds above it
+        cam.lookAt(new Vector3f(0f, 62f, -110f), Vector3f.UNIT_Y); // toward the horizon: landscape + clouds above
+        cam.setFrustumFar(9000f); // was ~1000 -> that near far-plane was the "sphere of view" clipping the world it
 
         rootNode.attachChild(SkyFactory.createSky(assetManager, gradientSky(), SkyFactory.EnvMapType.EquirectMap));
 
@@ -150,6 +152,16 @@ public class Snap3DProof extends SimpleApplication {
         rootNode.addLight(sun);
         AmbientLight amb = new AmbientLight(AMBIENT.mult(0.26f)); // deeper shadows/contrast; IBL fills the rest
         rootNode.addLight(amb);
+
+        // A visible sun disc in the sky (there was none before), bright HDR so bloom/tonemap make it glow and
+        // the god rays emanate from it. Placed along the sun direction, well within the new far plane.
+        Geometry sunDisc = new Geometry("sunDisc", new Sphere(24, 24, 150f));
+        Material sunMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        sunMat.setColor("Color", new ColorRGBA(3.2f, 2.3f, 1.4f, 1f));
+        sunDisc.setMaterial(sunMat);
+        sunDisc.setLocalTranslation(SUN_DIR.mult(-2200f));
+        sunDisc.setShadowMode(RenderQueue.ShadowMode.Off);
+        rootNode.attachChild(sunDisc);
 
         buildTerrain();
         loadNatureModels();
@@ -749,15 +761,15 @@ public class Snap3DProof extends SimpleApplication {
         water.setSunScale(1.8f);
         fpp.addFilter(water);
 
-        LightScatteringFilter godRays = new LightScatteringFilter(SUN_DIR.mult(-3000f));
+        LightScatteringFilter godRays = new LightScatteringFilter(SUN_DIR.mult(-2200f)); // aligned with the sun disc
         godRays.setLightDensity(0.45f);
         fpp.addFilter(godRays);
 
         SSAOFilter ssao = new SSAOFilter(6f, 1.2f, 0.3f, 0.12f);
         fpp.addFilter(ssao);
 
-        // Thin fog pushed to the horizon: atmospheric depth without washing the whole scene.
-        FogFilter fog = new FogFilter(HORIZON, 0.055f, 1700f);
+        // Very thin fog, pushed far out: atmospheric depth at the horizon without a foggy "sphere" around you.
+        FogFilter fog = new FogFilter(HORIZON, 0.03f, 2800f);
         fpp.addFilter(fog);
 
         // Bloom only on the brightest highlights, so it glints instead of hazing the frame.
