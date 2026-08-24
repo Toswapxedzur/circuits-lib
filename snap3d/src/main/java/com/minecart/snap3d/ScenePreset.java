@@ -17,11 +17,11 @@ public record ScenePreset(
         // vegetation
         int treeCount, int propCount, float treeMaxAltitude) {
 
-    /** Island in a lake, gentle plains, encircling dramatic mountains. */
+    /** Island in a lake, gentle plains, encircling towering mountains — vast and epic. */
     public static final ScenePreset LAKE_RING = new ScenePreset(
             "Lake Ring",
             0f, 60f, 10f,
-            260f, 820f, 1400f, 2100f,
-            38f, 70f, 50f, 720f,
-            1500, 1000, 260f);
+            450f, 1700f, 4200f, 9500f,
+            42f, 150f, 95f, 1500f,
+            6000, 5000, 320f);
 }

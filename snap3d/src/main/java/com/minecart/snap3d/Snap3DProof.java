@@ -118,9 +118,13 @@ public class Snap3DProof extends SimpleApplication {
     private BitmapText hud;
     private Material ghostValidMat, ghostInvalidMat, ghostActiveMat;
     private List<int[]> directions;
+    // Movement: horizontal WASD (pitch-independent), Space/Shift vertical, Tab toggles fast.
+    private boolean mFwd, mBack, mLeft, mRight, mUp, mDown, mFast;
+    private static final float MOVE_SPEED = 95f, FAST_SPEED = 340f;
     private EnvironmentCamera envCam; // bakes the IBL light probe from the scene, then detaches
     private Node cloudLayer;          // drifting low-poly clouds
-    private TerrainMeshBuilder terrainGen; // ridged-multifractal terrain (also gives surface height for props)
+    private TerrainMeshBuilder terrainGen; // ridged-multifractal heightfield source
+    private VoxelTerrainBuilder voxelTerrain; // blocky LOD terrain built from it
     private final List<Spatial> treeModels = new ArrayList<>(); // CC0 GLB trees dropped into resources/models
     private final List<Spatial> propModels = new ArrayList<>(); // rocks / bushes / grass etc.
     private static final float EASE_RATE = 12f;
@@ -141,12 +145,21 @@ public class Snap3DProof extends SimpleApplication {
 
     @Override
     public void simpleInitApp() {
+        // Make the resource pack's block textures loadable as "minecraft/textures/block/*.png".
+        // Register the generated-overlay dir FIRST (higher priority) so our synthesized textures
+        // (e.g. grass_block_top, absent from the read-only pack) win; everything else falls through.
+        for (String dir : new String[]{"../assets-gen", "assets-gen", "../assets", "assets"}) {
+            File d = new File(dir);
+            if (d.isDirectory()) {
+                assetManager.registerLocator(d.getAbsolutePath(), com.jme3.asset.plugins.FileLocator.class);
+            }
+        }
         setDisplayStatView(false);
         setDisplayFps(false);
         flyCam.setMoveSpeed(120f);
         cam.setLocation(new Vector3f(60f, 50f, 175f));
         cam.lookAt(new Vector3f(0f, 62f, -110f), Vector3f.UNIT_Y); // toward the horizon: landscape + clouds above
-        cam.setFrustumFar(9000f); // was ~1000 -> that near far-plane was the "sphere of view" clipping the world it
+        cam.setFrustumFar(24000f); // vast world — see the far mountain ring + horizon it
 
         rootNode.attachChild(SkyFactory.createSky(assetManager, gradientSky(), SkyFactory.EnvMapType.EquirectMap));
 
@@ -157,17 +170,17 @@ public class Snap3DProof extends SimpleApplication {
 
         // A visible sun disc in the sky (there was none before), bright HDR so bloom/tonemap make it glow and
         // the god rays emanate from it. Placed along the sun direction, well within the new far plane.
-        Geometry sunDisc = new Geometry("sunDisc", new Sphere(24, 24, 150f));
+        Geometry sunDisc = new Geometry("sunDisc", new Sphere(24, 24, 650f));
         Material sunMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         sunMat.setColor("Color", new ColorRGBA(3.2f, 2.3f, 1.4f, 1f));
         sunDisc.setMaterial(sunMat);
-        sunDisc.setLocalTranslation(SUN_DIR.mult(-2200f));
+        sunDisc.setLocalTranslation(SUN_DIR.mult(-9000f));
         sunDisc.setShadowMode(RenderQueue.ShadowMode.Off);
         rootNode.attachChild(sunDisc);
 
         buildTerrain();
-        loadNatureModels();
-        plantTrees();
+        rootNode.attachChild(voxelTerrain.buildTrees(ScenePreset.LAKE_RING.treeCount(), 7L)); // blocky trees
+        buildBlockyWater();
         buildClouds();
         buildBoard();
         setupShadows(sun);
@@ -202,11 +215,27 @@ public class Snap3DProof extends SimpleApplication {
         return new Texture2D(img);
     }
 
+    /** A flat, semi-transparent blocky (Minecraft-style) water plane at the water line — no smooth reflection. */
+    private void buildBlockyWater() {
+        float ext = 13000f;
+        com.jme3.scene.shape.Quad q = new com.jme3.scene.shape.Quad(ext * 2f, ext * 2f);
+        Geometry water = new Geometry("water", q);
+        Material m = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        m.setColor("Color", new ColorRGBA(0.16f, 0.38f, 0.60f, 0.78f));
+        m.getAdditionalRenderState().setBlendMode(com.jme3.material.RenderState.BlendMode.Alpha);
+        m.getAdditionalRenderState().setFaceCullMode(com.jme3.material.RenderState.FaceCullMode.Off);
+        water.setMaterial(m);
+        water.setQueueBucket(RenderQueue.Bucket.Transparent);
+        water.rotate(-FastMath.HALF_PI, 0f, 0f);                 // XY quad -> horizontal
+        water.setLocalTranslation(-ext, WATER_HEIGHT, ext);
+        rootNode.attachChild(water);
+    }
+
     private void buildTerrain() {
-        // Scene preset LAKE_RING: island in a lake, gentle plains, encircling dramatic mountains.
+        // Scene preset LAKE_RING; the ridged-multifractal heightfield is voxelised into blocky LOD terrain.
         terrainGen = new TerrainMeshBuilder(new Random().nextLong(), ScenePreset.LAKE_RING);
-        Geometry terrain = terrainGen.build(assetManager, 4600f, 320);
-        rootNode.attachChild(terrain);
+        voxelTerrain = new VoxelTerrainBuilder(assetManager, terrainGen, ScenePreset.LAKE_RING);
+        rootNode.attachChild(voxelTerrain.build());
     }
 
     /**
@@ -254,7 +283,7 @@ public class Snap3DProof extends SimpleApplication {
         while (placed < p.treeCount() && attempts++ < maxAttempts) {
             float x = p.centerX() + (r.nextFloat() - 0.5f) * 2f * reach;
             float z = p.centerZ() + (r.nextFloat() - 0.5f) * 2f * reach;
-            float y = terrainGen.height(x, z);
+            float y = voxelTerrain.surfaceY(x, z);
             if (y < p.waterLine() + 4f || y > p.treeMaxAltitude()) {
                 continue;
             }
@@ -286,7 +315,7 @@ public class Snap3DProof extends SimpleApplication {
             while (placed < p.propCount() && attempts++ < maxAttempts) {
                 float x = p.centerX() + (r.nextFloat() - 0.5f) * 2f * reach;
                 float z = p.centerZ() + (r.nextFloat() - 0.5f) * 2f * reach;
-                float y = terrainGen.height(x, z);
+                float y = voxelTerrain.surfaceY(x, z);
                 if (y < p.waterLine() + 2f || y > p.treeMaxAltitude() + 120f) {
                     continue;
                 }
@@ -359,8 +388,8 @@ public class Snap3DProof extends SimpleApplication {
     }
 
     private static final long CLOUD_SEED = 1337L;
-    private static final float CLOUD_Y = 640f; // above the plains, among the mountain peaks
-    private static final float CLOUD_REGION = 1500f; // half-extent of the sky field around the board
+    private static final float CLOUD_Y = 1250f; // among the mountain peaks
+    private static final float CLOUD_REGION = 7000f; // half-extent of the sky field (vast world)
 
     /**
      * Low-poly clouds by <b>noise-driven placement</b>: scan a grid over the sky, sample fBm value-noise as a
@@ -536,13 +565,14 @@ public class Snap3DProof extends SimpleApplication {
         if (hud != null) {
             hud.setText("Item: " + toolNames[toolIndex]
                     + "    [1-3] item   scroll: direction   L/R arrows: terminal   LMB place   RMB remove"
-                    + "   WASD+mouse fly    layer " + anchorLayer);
+                    + "    WASD move  Space/Shift up/down  mouse look  Tab fast" + (mFast ? " (ON)" : "")
+                    + "    layer " + anchorLayer);
         }
     }
 
     private void setupEditorInput() {
         flyCam.setEnabled(true);
-        flyCam.setDragToRotate(false); // FPS style: mouse looks, WASD moves (window must be focused)
+        flyCam.setDragToRotate(true); // drag to look (no cursor capture / no drift); WASD+Space/Shift move
         flyCam.setMoveSpeed(220f);
         flyCam.setRotationSpeed(2.2f);
 
@@ -581,6 +611,56 @@ public class Snap3DProof extends SimpleApplication {
             }
         };
         inputManager.addListener(wheel, "dirUp", "dirDown");
+
+        // Custom movement (replaces flyCam's look-direction movement — see the frame-5 mapping cleanup).
+        inputManager.addMapping("MOVE_W", new KeyTrigger(KeyInput.KEY_W));
+        inputManager.addMapping("MOVE_S", new KeyTrigger(KeyInput.KEY_S));
+        inputManager.addMapping("MOVE_A", new KeyTrigger(KeyInput.KEY_A));
+        inputManager.addMapping("MOVE_D", new KeyTrigger(KeyInput.KEY_D));
+        inputManager.addMapping("MOVE_UP", new KeyTrigger(KeyInput.KEY_SPACE));
+        inputManager.addMapping("MOVE_DOWN", new KeyTrigger(KeyInput.KEY_LSHIFT));
+        inputManager.addMapping("MOVE_FAST", new KeyTrigger(KeyInput.KEY_TAB));
+        ActionListener moveL = (name, pressed, tpf) -> {
+            switch (name) {
+                case "MOVE_W" -> mFwd = pressed;
+                case "MOVE_S" -> mBack = pressed;
+                case "MOVE_A" -> mLeft = pressed;
+                case "MOVE_D" -> mRight = pressed;
+                case "MOVE_UP" -> mUp = pressed;
+                case "MOVE_DOWN" -> mDown = pressed;
+                case "MOVE_FAST" -> { if (pressed) { mFast = !mFast; } } // toggle fast mode
+                default -> { }
+            }
+        };
+        inputManager.addListener(moveL, "MOVE_W", "MOVE_S", "MOVE_A", "MOVE_D", "MOVE_UP", "MOVE_DOWN", "MOVE_FAST");
+    }
+
+    /** Pitch-independent movement: WASD on the horizontal plane, Space/Shift vertical, Tab toggles fast. */
+    private void applyMovement(float tpf) {
+        float speed = (mFast ? FAST_SPEED : MOVE_SPEED) * tpf;
+        Vector3f fwd = cam.getDirection().clone();
+        fwd.y = 0f;
+        if (fwd.lengthSquared() > 1e-5f) {
+            fwd.normalizeLocal();
+        }
+        Vector3f leftV = cam.getLeft().clone();
+        leftV.y = 0f;
+        if (leftV.lengthSquared() > 1e-5f) {
+            leftV.normalizeLocal();
+        }
+        Vector3f move = new Vector3f();
+        if (mFwd) move.addLocal(fwd);
+        if (mBack) move.subtractLocal(fwd);
+        if (mLeft) move.addLocal(leftV);
+        if (mRight) move.subtractLocal(leftV);
+        if (move.lengthSquared() > 1e-5f) {
+            move.normalizeLocal().multLocal(speed); // normalize so diagonals aren't faster
+        }
+        if (mUp) move.y += speed;
+        if (mDown) move.y -= speed;
+        if (move.lengthSquared() > 0f) {
+            cam.setLocation(cam.getLocation().add(move));
+        }
     }
 
     private void selectTool(int index) {
@@ -782,28 +862,17 @@ public class Snap3DProof extends SimpleApplication {
         FilterPostProcessor fpp = new FilterPostProcessor(assetManager);
         fpp.setFrameBufferFormat(com.jme3.texture.Image.Format.RGBA16F); // HDR filter buffers for real bloom/tonemap
 
-        com.jme3.water.WaterFilter water = new com.jme3.water.WaterFilter(rootNode, SUN_DIR);
-        water.setWaterHeight(WATER_HEIGHT);
-        water.setWaterColor(new ColorRGBA(0.12f, 0.28f, 0.32f, 1f));
-        water.setDeepWaterColor(new ColorRGBA(0.03f, 0.10f, 0.14f, 1f));
-        water.setWaterTransparency(0.10f);
-        water.setWaveScale(0.006f);
-        water.setMaxAmplitude(1.4f);
-        water.setSpeed(0.7f);
-        water.setFoamIntensity(0.5f);
-        water.setLightColor(SUN_COLOR);
-        water.setSunScale(1.8f);
-        fpp.addFilter(water);
-
-        LightScatteringFilter godRays = new LightScatteringFilter(SUN_DIR.mult(-2200f)); // aligned with the sun disc
+        // (Water is now a blocky Minecraft-style plane — see buildBlockyWater(); no smooth reflective filter.)
+        LightScatteringFilter godRays = new LightScatteringFilter(SUN_DIR.mult(-9000f)); // aligned with the sun disc
         godRays.setLightDensity(0.45f);
         fpp.addFilter(godRays);
 
         SSAOFilter ssao = new SSAOFilter(6f, 1.2f, 0.3f, 0.12f);
         fpp.addFilter(ssao);
 
-        // Very thin fog, pushed far out: atmospheric depth at the horizon without a foggy "sphere" around you.
-        FogFilter fog = new FogFilter(HORIZON, 0.03f, 2800f);
+        // Very thin fog, pushed far out for the vast world: atmospheric haze only at the distant mountain ring,
+        // near/mid terrain stays crisp.
+        FogFilter fog = new FogFilter(HORIZON, 0.028f, 7000f);
         fpp.addFilter(fog);
 
         // Bloom only on the brightest highlights, so it glints instead of hazing the frame.
@@ -845,14 +914,17 @@ public class Snap3DProof extends SimpleApplication {
             envCam = null;
         }
         if (frame == 5) {
-            // flyCam registers its mappings on the first update (via FlyCamAppState), so free the wheel from
-            // its FOV-zoom now — after registration — so scrolling only changes placement direction.
-            if (inputManager.hasMapping("FLYCAM_ZoomIn")) {
-                inputManager.deleteMapping("FLYCAM_ZoomIn");
-            }
-            if (inputManager.hasMapping("FLYCAM_ZoomOut")) {
-                inputManager.deleteMapping("FLYCAM_ZoomOut");
+            // flyCam registers its mappings on the first update (via FlyCamAppState). Free the wheel from its
+            // FOV-zoom (scroll = placement direction), and remove its look-direction movement so our own
+            // horizontal WASD + Space/Shift vertical take over. flyCam still handles mouse look.
+            for (String mp : new String[]{"FLYCAM_ZoomIn", "FLYCAM_ZoomOut",
+                    "FLYCAM_Forward", "FLYCAM_Backward", "FLYCAM_StrafeLeft", "FLYCAM_StrafeRight",
+                    "FLYCAM_Rise", "FLYCAM_Lower"}) {
+                if (inputManager.hasMapping(mp)) {
+                    inputManager.deleteMapping(mp);
+                }
             }
         }
+        applyMovement(tpf);
     }
 }
