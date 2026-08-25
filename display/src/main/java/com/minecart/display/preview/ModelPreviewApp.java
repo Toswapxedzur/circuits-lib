@@ -18,20 +18,19 @@ import com.badlogic.gdx.graphics.g3d.utils.CameraInputController;
 import com.badlogic.gdx.math.Vector3;
 
 /**
- * Standalone libGDX model viewer for iterating on part 3D models. Shows several shading variants side by side
- * (each labelled with its parameters) so a good look can be picked at a glance, under bright, even "studio"
- * lighting — this is a viewer, not the game scene, so the game's no-sun / component-light-only rule does not
- * apply. Drag to orbit, scroll to zoom. Run with {@code ./gradlew :display:preview}.
+ * Model viewer for the plastic part series — renders the finished capacitor in each chosen body colour
+ * ({@link PlasticColors}) in a row, under bright even "studio" lighting. Drag to orbit, scroll to zoom.
+ * Run with {@code ./gradlew :display:preview}.
  */
 public final class ModelPreviewApp extends ApplicationAdapter {
 
     private static final Color BG = new Color(0.11f, 0.12f, 0.15f, 1f);
-    private static final float SPACING = 56f;
 
-    // Chosen look: top-lit, shift 3.5 (light from above-front, body a little darker at the bottom).
-    private static final PreviewPart.Shading[] VARIANTS = {
-            new PreviewPart.Shading("top-lit x3.5", new Vector3(0.5f, 0.7f, 0.4f), 3.5f),
-    };
+    /** Fixed series lighting (top-lit, subtle), same for every part. */
+    private static final PreviewPart.Shading SHADING =
+            new PreviewPart.Shading("top-lit", new Vector3(0.5f, 0.7f, 0.4f), 3.5f);
+
+    private static final float SPACING = 42f;
 
     private PerspectiveCamera cam;
     private CameraInputController camController;
@@ -49,31 +48,30 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     public void create() {
         modelBatch = new ModelBatch();
 
-        parts = new PreviewPart[VARIANTS.length];
-        offsets = new float[VARIANTS.length];
-        float mid = (VARIANTS.length - 1) / 2f;
-        for (int i = 0; i < VARIANTS.length; i++) {
-            parts[i] = new PreviewPart(VARIANTS[i]);
+        int n = PlasticColors.SET.length;
+        parts = new PreviewPart[n];
+        offsets = new float[n];
+        float mid = (n - 1) / 2f;
+        for (int i = 0; i < n; i++) {
+            parts[i] = new PreviewPart(SHADING, PlasticColors.palette(PlasticColors.SET[i]));
             offsets[i] = (i - mid) * SPACING;
             parts[i].instance().transform.setToTranslation(offsets[i], 0f, 0f);
         }
 
-        // Frame the whole row: back the camera off proportionally to how wide the row is.
-        float rowHalfWidth = (VARIANTS.length - 1) * SPACING / 2f + 20f;
+        float reach = mid * SPACING + 30f;
         Vector3 target = PreviewPart.center();
         cam = new PerspectiveCamera(55f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        cam.position.set(target).add(0f, rowHalfWidth * 0.35f, rowHalfWidth * 1.7f);
+        cam.position.set(target).add(0f, reach * 0.5f, reach * 1.55f);
         cam.near = 0.5f;
-        cam.far = 4000f;
+        cam.far = 6000f;
         cam.lookAt(target);
         cam.update();
 
         camController = new CameraInputController(cam);
         camController.target.set(target);
-        camController.translateUnits = rowHalfWidth * 2f;
+        camController.translateUnits = reach * 3f;
         Gdx.input.setInputProcessor(camController);
 
-        // Bright, even studio lighting; the model's own baked gradient supplies the "shading" we're judging.
         environment = new Environment();
         environment.set(ColorAttribute.createAmbientLight(0.93f, 0.93f, 0.96f, 1f));
         environment.add(new DirectionalLight().set(0.14f, 0.14f, 0.15f, -0.45f, -0.5f, -0.55f));
@@ -99,16 +97,18 @@ public final class ModelPreviewApp extends ApplicationAdapter {
 
         ui.begin();
         font.setColor(0.88f, 0.9f, 0.93f, 1f);
-        font.draw(ui, "Capacitor — shading variants   (drag: orbit   scroll: zoom)", 16f, Gdx.graphics.getHeight() - 14f);
+        font.draw(ui, "Plastic series — capacitor x " + PlasticColors.SET.length + " colours"
+                + "    drag: orbit   scroll: zoom", 16f, Gdx.graphics.getHeight() - 12f);
         for (int i = 0; i < parts.length; i++) {
             tmp.set(offsets[i], -4f, 0f);
             cam.project(tmp);
             if (tmp.z > 1f) {
-                continue; // behind the camera
+                continue;
             }
-            layout.setText(font, VARIANTS[i].label());
-            font.setColor(0.72f, 0.76f, 0.8f, 1f);
-            font.draw(ui, VARIANTS[i].label(), tmp.x - layout.width / 2f, tmp.y);
+            String name = PlasticColors.SET[i].name();
+            layout.setText(font, name);
+            font.setColor(0.74f, 0.78f, 0.82f, 1f);
+            font.draw(ui, name, tmp.x - layout.width / 2f, tmp.y);
         }
         ui.end();
     }
@@ -132,9 +132,9 @@ public final class ModelPreviewApp extends ApplicationAdapter {
 
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
-        config.setTitle("Model Preview — Capacitor");
-        config.setWindowedMode(1280, 760);
-        config.setBackBufferConfig(8, 8, 8, 8, 16, 0, 4); // 4x MSAA for clean low-poly edges
+        config.setTitle("Model Preview — Plastic Series");
+        config.setWindowedMode(1500, 820);
+        config.setBackBufferConfig(8, 8, 8, 8, 16, 0, 4); // 4x MSAA
         config.setForegroundFPS(60);
         new Lwjgl3Application(new ModelPreviewApp(), config);
     }

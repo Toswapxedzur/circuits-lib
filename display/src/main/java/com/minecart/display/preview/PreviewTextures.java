@@ -43,6 +43,48 @@ final class PreviewTextures {
         };
     }
 
+    /**
+     * A 7-shade plastic ramp for ANY base colour, in the lime-wool style: darker, slightly-more-saturated low
+     * shades rising to a brighter, slightly pastel highlight, hue preserved (built in HSV so it never washes
+     * toward a wrong colour). Index 3 == the base colour, low overall contrast. This is how every plastic body
+     * colour is generated so the whole series matches.
+     */
+    static Color[] ramp(Color base) {
+        float[] hsv = base.toHsv(new float[3]); // h 0..360, s,v 0..1
+        Color[] out = new Color[7];
+        for (int i = 0; i < 7; i++) {
+            float t = i / 6f;
+            float v = clamp01(hsv[2] * (0.75f + 0.5f * t));  // 0.75x (dark) .. 1.0x (base) .. 1.25x (highlight)
+            float s = clamp01(hsv[1] * (1.20f - 0.40f * t)); // more saturated dark, pastel highlight
+            Color c = new Color();
+            c.fromHsv(hsv[0], s, v);
+            c.a = 1f;
+            out[i] = c;
+        }
+        return out;
+    }
+
+    /**
+     * A colour-map variant of a base hue at position {@code t} in [-1,+1]. Not just a brightness slide — hue,
+     * saturation and value move together so the variants are genuinely different colours scattered across the
+     * map, not a vertical stack of one hue: darker (t<0) = richer + cooler hue, brighter (t>0) = paler + warmer.
+     */
+    static Color variant(Color base, float t) {
+        float[] hsv = base.toHsv(new float[3]);
+        float v = clamp01(hsv[2] * (1f + 0.20f * t));   // brighter with t
+        float s = clamp01(hsv[1] * (1f - 0.25f * t));   // deeper is more saturated
+        float h = (hsv[0] - 16f * t) % 360f;            // deeper shifts cooler, brighter warmer
+        if (h < 0f) h += 360f;
+        Color c = new Color();
+        c.fromHsv(h, s, v);
+        c.a = 1f;
+        return c;
+    }
+
+    private static float clamp01(float v) {
+        return Math.max(0f, Math.min(1f, v));
+    }
+
     /** {@code n} grayscale shades in [{@code lo},{@code hi}] — a neutral tile a material tints via diffuse. */
     static Color[] grays(int n, float lo, float hi) {
         Color[] c = new Color[n];

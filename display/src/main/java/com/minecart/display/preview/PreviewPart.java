@@ -60,7 +60,11 @@ final class PreviewPart implements Disposable {
     private static final long ATTRS = VertexAttributes.Usage.Position | VertexAttributes.Usage.Normal
             | VertexAttributes.Usage.TextureCoordinates;
 
-    PreviewPart(Shading shading) {
+    PreviewPart(Shading shading, Color[] bodyPalette) {
+        this(shading, bodyPalette, false);
+    }
+
+    PreviewPart(Shading shading, Color[] bodyPalette, boolean bodyOnly) {
         this.lightDir = shading.lightDir().cpy().nor();
         this.shift = shading.shift();
         this.shadeRadius = Math.max(1f,
@@ -76,12 +80,20 @@ final class PreviewPart implements Disposable {
         float studX = span / 2f;                              // ±8: the two terminal posts
         float bandLo = 1f, bandHi = 3f;
 
-        Color[] lime = PreviewTextures.limeWool();
+        Color[] lime = bodyPalette;                              // the plastic body colour (recolourable)
         Color[] bandGray = PreviewTextures.grays(6, 0.85f, 1.0f); // whiter -> white plastic
         Color[] steel = PreviewTextures.steelBlue();              // 5-shade steel-blue metal
 
         ModelBuilder mb = new ModelBuilder();
         mb.begin();
+
+        if (bodyOnly) {
+            // A single solid plastic bar in the body colour — a clean swatch for colour picking (no band/studs).
+            box(mb, 0f, bodyH / 2f, 0f, length, bodyH, body, lime, Color.WHITE, false, 2, 0.3f, false, 101L, SHADE_CENTER, shadeRadius);
+            model = mb.end();
+            instance = new ModelInstance(model);
+            return;
+        }
 
         // Body: green rims [0,1] and [3,4]; white band [1,3]. All the full body footprint.
         // Body + band: shaded against the whole-part gradient (global centre, part-extent radius); random grain.

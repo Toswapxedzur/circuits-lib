@@ -95,3 +95,27 @@ Follow these for every part:
 - Band: `grays(6, 0.85, 1.0)` × diffuse `(0.97, 0.97, 0.96)`, random grain `grainMax` 1.
 - Studs: `steelBlue()` (5 shades), white diffuse + metallic specular, **ordered** dither, local-frame shading,
   shared seed → identical studs.
+
+## Plastic colour set
+
+The capacitor is the **archetype for the whole plastic series** — other parts reuse its body/band/stud
+material and are just recoloured. Any base colour becomes a 7-shade body ramp via
+`PreviewTextures.ramp(base)` (HSV: darker+richer lows → base at index 3 → brighter pastel highlight, hue
+preserved). Colours were picked from an HSV matrix (hue sweep × a pale→vivid→dark saturation/value set) in the
+preview app. Note: brightness variants of a hue should also move **saturation and hue**, not brightness alone
+(`PreviewTextures.variant()` — deeper = richer + cooler, brighter = paler + warmer), so a family scatters
+across the colour map instead of stacking as one hue.
+
+The chosen set lives in `PlasticColors.SET` (source of truth), one colour per hue — mostly "standard"
+(S 0.92, V 0.80), with yellow/blue/violet at "vivid":
+
+| name | H | S | V | | name | H | S | V |
+|---|---|---|---|---|---|---|---|---|
+| red | 0 | .92 | .80 | | azure | 210 | .92 | .80 |
+| orange | 30 | .92 | .80 | | blue | 235 | .85 | .93 |
+| yellow | 45 | 1.0 | .93 | | violet | 265 | .85 | .93 |
+| lime | 85 | .92 | .80 | | purple | 295 | .92 | .80 |
+| teal | 160 | .92 | .80 | | pink | 330 | .92 | .80 |
+| cyan | 185 | .92 | .80 | | | | | |
+
+Yellow was pulled warmer (toward red) and saturation-boosted so it reads golden, not lemon.
