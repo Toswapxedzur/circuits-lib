@@ -61,7 +61,7 @@ final class PreviewPart implements Disposable {
             | VertexAttributes.Usage.TextureCoordinates;
 
     /** Which part in the plastic series this instance is. */
-    enum PartType { CAPACITOR, SWITCH }
+    enum PartType { CAPACITOR, SWITCH, PRESS_SWITCH }
 
     PreviewPart(Shading shading, Color[] bodyPalette) {
         this(shading, bodyPalette, PartType.CAPACITOR);
@@ -124,6 +124,27 @@ final class PreviewPart implements Disposable {
             box(mb, -(2f + E) / 2f, (floorY + (fenceTop + 1f)) / 2f, 0f, (2f + E), (fenceTop + 1f - floorY), (2f + 2f * E), knob, Color.WHITE, false, 2, 0.3f, false, 260L, SHADE_CENTER, shadeRadius);
 
             addStuds(mb, studX, studCY, studW, studH, steel, studR);
+        } else if (type == PartType.PRESS_SWITCH) {
+            // Momentary press switch: a leaf-spring lever bridging two contacts. Base = lime + full white band
+            // + studs. On top: two metal contact bulges, and a two-plate steel spring shown in its NORMAL
+            // (un-pressed) state — plate 1 nearly flat from the anchor bulge to a joint hovering ~0.7 above the
+            // contact bulge, plate 2 the ~30° press tab. Pressing flattens plate 2 (30°->15°, tip drops ~0.5)
+            // and flexes plate 1 down so the joint touches the contact bulge.
+            float bandLo = 1f, bandHi = 3f;
+            box(mb, 0f, bandLo / 2f, 0f, length, bandLo, body, plastic, Color.WHITE, false, 2, 0.3f, false, 101L, SHADE_CENTER, shadeRadius);
+            box(mb, 0f, (bandHi + bodyH) / 2f, 0f, length, bodyH - bandHi, body, plastic, Color.WHITE, false, 2, 0.3f, false, 202L, SHADE_CENTER, shadeRadius);
+            box(mb, 0f, (bandLo + bandHi) / 2f, 0f, length, bandHi - bandLo, body, bandGray, BAND_WHITE, false, 1, 0.3f, false, 303L, SHADE_CENTER, shadeRadius);
+            addStuds(mb, studX, studCY, studW, studH, steel, studR);
+            // Two metal contact bulges (2 x 5 footprint, 1 tall), centres 9 apart: anchor A (-4), contact B (+5).
+            box(mb, -4f, topY + 0.5f, 0f, 2f, 1f, 5f, steel, Color.WHITE, true, 1, 1.6f, true, 310L, new Vector3(-4f, topY + 0.5f, 0f), studR);
+            box(mb, 5f, topY + 0.5f, 0f, 2f, 1f, 5f, steel, Color.WHITE, true, 1, 1.6f, true, 310L, new Vector3(5f, topY + 0.5f, 0f), studR);
+            // Steel leaf spring, flat 0-thickness steel-textured plates (NORMAL state). INTEGER lengths -> exactly
+            // 1 texel = 1 unit (pixel-perfect). The angle BETWEEN the plates is the 30° interior crook (a real
+            // inward hook): plate 1 rises off bulge A (-4,5) at 17.34° and extends PAST bulge B to joint J(6.5,
+            // 8.28), length 11; plate 2 (length 2) folds back inward at the 30° crook, hooking down onto bulge B
+            // (tip ~5.15, 6.81). Pressing flattens the crook 30°->15°.
+            plate(mb, 1.25f, topY + 2.639f, 11f, 3f, 17.34f, 701L);    // plate 1  (A -> J, past bulge B)
+            plate(mb, 5.823f, topY + 3.543f, 2f, 3f, 227.34f, 702L);   // plate 2  (hooks back inward, 30° crook)
         } else {
             // Capacitor: green rims [0,1] and [3,4] with a white label band [1,3], all the full body footprint.
             float bandLo = 1f, bandHi = 3f;
@@ -135,6 +156,32 @@ final class PreviewPart implements Disposable {
 
         model = mb.end();
         instance = new ModelInstance(model);
+    }
+
+    /**
+     * A flat, 0-thickness steel plate: a double-sided quad in the X–Y plane (length at {@code angleDeg},
+     * {@code width} along Z), textured with the same steel lit-palette dither as the studs (via {@code litFace}
+     * over the quad's world corners), so the angled spring plates match the rest of the metal.
+     */
+    private void plate(ModelBuilder mb, float cx, float cy, float len, float width, float angleDeg, long seed) {
+        float a = (float) Math.toRadians(angleDeg);
+        float dx = (float) Math.cos(a) * len / 2f, dy = (float) Math.sin(a) * len / 2f, hw = width / 2f;
+        Vector3 c00 = new Vector3(cx - dx, cy - dy, -hw);
+        Vector3 c10 = new Vector3(cx + dx, cy + dy, -hw);
+        Vector3 c11 = new Vector3(cx + dx, cy + dy, hw);
+        Vector3 c01 = new Vector3(cx - dx, cy - dy, hw);
+        int pw = Math.max(1, Math.round(len)), ph = Math.max(1, Math.round(width));
+        Texture tex = PreviewTextures.litFace(PreviewTextures.steelBlue(), c00, c10, c11, c01, pw, ph,
+                SHADE_CENTER, lightDir, shadeRadius, shift, 1, 1.6f, true, 0x9E37_0000L + seed * 2654435761L);
+        textures.add(tex);
+        Material mat = new Material(
+                TextureAttribute.createDiffuse(tex),
+                ColorAttribute.createDiffuse(Color.WHITE),
+                IntAttribute.createCullFace(GL20.GL_NONE)); // double-sided: 0 thickness, seen from both faces
+        MeshPartBuilder p = mb.part("plate" + (partCounter++), GL20.GL_TRIANGLES, ATTRS, mat);
+        nrm.set(c10).sub(c00).crs(new Vector3(c01).sub(c00)).nor();
+        p.setUVRange(0f, 0f, 1f, 1f);
+        p.rect(c00, c10, c11, c01, nrm);
     }
 
     /** The two identical metallic snap studs on the terminals. */

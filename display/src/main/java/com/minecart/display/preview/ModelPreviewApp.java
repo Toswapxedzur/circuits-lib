@@ -38,6 +38,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     private static final Spec[] SPECS = {
             new Spec("capacitor", PreviewPart.PartType.CAPACITOR),
             new Spec("switch", PreviewPart.PartType.SWITCH),
+            new Spec("press switch", PreviewPart.PartType.PRESS_SWITCH),
     };
 
     private PerspectiveCamera cam;

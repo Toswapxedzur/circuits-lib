@@ -136,14 +136,32 @@ a 1px-deep well whose **sides are steel** (a 1px-thick metal fence that stands 1
 **floor is a flat 4×2 black plate**, and a **2×2 black stem** rising from that floor to 1px above the fence,
 pushed to one end (the slide position). Floor + stem are one black piece.
 
+**The press switch (momentary).** A snap-circuit leaf-spring: lime body + band + studs, two metal contact
+**bulges** (2×5×1) with centres **9 apart**, and a **steel leaf spring** shown in its normal state. The spring
+is two **flat, 0-thickness, steel-textured plates** (`plate(...)` — a double-sided quad textured with the same
+`steelBlue` `litFace` dither as the studs, so it matches the metal): **plate 1** rises straight off the anchor
+bulge at an angle (integer length) and extends **past** the contact bulge to the joint; **plate 2** (length 2)
+folds back **inward** at the **30° interior crook** (a real hook) and hooks down onto the contact bulge's top.
+Pressing flattens the crook 30°→15°. The "angle between the plates" is the *interior* crook, not a gentle
+deviation — the plates are NOT nearly collinear.
+
 **Rules that matter when modeling (learned the hard way):**
+- **PIXEL PERFECT is a hard requirement — nothing overrides it.** Every surface is **exactly 1 texel = 1 world
+  unit** (no mixels), on an integer grid. For the angled spring plates this means their **length must be an
+  integer** (then `litFace` makes an integer-texel texture at 1:1). The **angle itself never causes mixels** —
+  only a non-integer length does. So an angled plate is fine; a length-4.72 plate is not. Never make a plate
+  horizontal "for pixel-perfection" — give it an integer length instead.
 - **Use common sense on proportions before building.** Work out the pixel steps and make sure they line up —
-  well depth, fence height, and the knob stack must be consistent (all 1px steps here). Don't mechanically
-  translate numbers that don't physically fit together.
+  well depth, fence height, the knob stack, the plate lengths and the angles must be consistent and reachable.
+  Don't mechanically translate numbers that don't physically fit; sanity-check the profile first.
 - **Prevent z-fighting: never leave two faces coplanar.** There is no boolean geometry, so stacked/adjacent
-  boxes are made to **interpenetrate by a small epsilon (~0.15)** — walls sink into the body, the floor and
-  stem overlap into the walls. Coincident faces flicker; a hair of overlap does not.
+  boxes are made to **interpenetrate** — sink one into the other. Prefer a **whole-pixel** overlap (keeps
+  pixel-perfection); a sub-pixel epsilon works too but isn't pixel-aligned. Coincident faces flicker; overlap
+  does not.
 - **Recessed features (holes) are cut by strips.** A layer with a rectangular hole is built as four border
   boxes around the hole (`layerWithHole`), since geometry can't be subtracted. A shallow well only needs the
   top layer cut — everything below (e.g. the band) stays a full box.
+- **Angled / non-axis-aligned parts** are flat double-sided quads via `plate(...)`, textured with `litFace`
+  over the quad's world corners (so shading + dither match the axis-aligned parts). Don't fake them with a
+  rotated box + flat colour.
 - **Repeated sub-parts must be identical** (the two studs share a seed + local-frame shading).
