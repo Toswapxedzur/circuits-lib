@@ -9,6 +9,17 @@ application {
     }
 }
 
+// Standalone 3D model viewer for iterating on part models: ./gradlew :display:preview
+tasks.register<JavaExec>("preview") {
+    group = "application"
+    description = "Launch the part model preview viewer"
+    mainClass = "com.minecart.display.preview.ModelPreviewApp"
+    classpath = sourceSets["main"].runtimeClasspath
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 val gdxVersion = "1.14.0"
 
 dependencies {
