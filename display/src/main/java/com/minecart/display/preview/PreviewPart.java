@@ -60,11 +60,14 @@ final class PreviewPart implements Disposable {
     private static final long ATTRS = VertexAttributes.Usage.Position | VertexAttributes.Usage.Normal
             | VertexAttributes.Usage.TextureCoordinates;
 
+    /** Which part in the plastic series this instance is. */
+    enum PartType { CAPACITOR, SWITCH }
+
     PreviewPart(Shading shading, Color[] bodyPalette) {
-        this(shading, bodyPalette, false);
+        this(shading, bodyPalette, PartType.CAPACITOR);
     }
 
-    PreviewPart(Shading shading, Color[] bodyPalette, boolean bodyOnly) {
+    PreviewPart(Shading shading, Color[] bodyPalette, PartType type) {
         this.lightDir = shading.lightDir().cpy().nor();
         this.shift = shading.shift();
         this.shadeRadius = Math.max(1f,
@@ -78,42 +81,78 @@ final class PreviewPart implements Disposable {
         float studW = SnapSceneGeometry.BUMP_WIDTH;           // 3
         float studH = SnapSceneGeometry.BUMP_HEIGHT;          // 1
         float studX = span / 2f;                              // ±8: the two terminal posts
-        float bandLo = 1f, bandHi = 3f;
 
-        Color[] lime = bodyPalette;                              // the plastic body colour (recolourable)
+        Color[] plastic = bodyPalette;                            // the plastic body colour (recolourable)
         Color[] bandGray = PreviewTextures.grays(6, 0.85f, 1.0f); // whiter -> white plastic
         Color[] steel = PreviewTextures.steelBlue();              // 5-shade steel-blue metal
 
         ModelBuilder mb = new ModelBuilder();
         mb.begin();
 
-        if (bodyOnly) {
-            // A single solid plastic bar in the body colour — a clean swatch for colour picking (no band/studs).
-            box(mb, 0f, bodyH / 2f, 0f, length, bodyH, body, lime, Color.WHITE, false, 2, 0.3f, false, 101L, SHADE_CENTER, shadeRadius);
-            model = mb.end();
-            instance = new ModelInstance(model);
-            return;
-        }
-
-        // Body: green rims [0,1] and [3,4]; white band [1,3]. All the full body footprint.
-        // Body + band: shaded against the whole-part gradient (global centre, part-extent radius); random grain.
-        box(mb, 0f, bandLo / 2f, 0f, length, bandLo, body, lime, Color.WHITE, false, 2, 0.3f, false, 101L, SHADE_CENTER, shadeRadius);
-        box(mb, 0f, (bandHi + bodyH) / 2f, 0f, length, bodyH - bandHi, body, lime, Color.WHITE, false, 2, 0.3f, false, 202L, SHADE_CENTER, shadeRadius);
-        box(mb, 0f, (bandLo + bandHi) / 2f, 0f, length, bandHi - bandLo, body, bandGray, BAND_WHITE, false, 1, 0.3f, false, 303L, SHADE_CENTER, shadeRadius);
-
-        // Metallic snap studs: treated separately — each is shaded in its OWN local frame (centre = the stud,
-        // radius = the stud's extent) so it's still lit, but the two studs come out with an IDENTICAL texture
-        // (same relative geometry + same seed) regardless of the light direction.
+        // Metallic snap studs (shared by every part): each shaded in its OWN local frame + shared seed so the
+        // two studs come out IDENTICAL regardless of the light direction; ordered (Bayer) dither, no clusters.
         float studR = Math.max(1f, Math.abs(lightDir.x) * (studW / 2f)
                 + Math.abs(lightDir.y) * (studH / 2f) + Math.abs(lightDir.z) * (studW / 2f));
         float studCY = topY + studH / 2f;
-        // Ordered (Bayer) dither: the lit gradient interleaves shades in a fine pattern -> no clusters, no
-        // bright-next-to-dark. (grainMax/zeroWeight are ignored on the ordered path.)
-        box(mb, -studX, studCY, 0f, studW, studH, studW, steel, Color.WHITE, true, 1, 1.6f, true, 404L, new Vector3(-studX, studCY, 0f), studR);
-        box(mb, +studX, studCY, 0f, studW, studH, studW, steel, Color.WHITE, true, 1, 1.6f, true, 404L, new Vector3(+studX, studCY, 0f), studR);
+
+        if (type == PartType.SWITCH) {
+            // Snap-circuit slide switch. Body keeps the full white band (all below the shallow well). The centre
+            // top is a 1px-deep well whose SIDES are steel (a metal fence, 1px proud of the top) and whose FLOOR
+            // is a flat 4x2 black plate; a 2x2 black stem rises from it (poking 1px above the fence), pushed to
+            // one end. Every junction interpenetrates by E so no faces are coplanar -> no z-fighting.
+            float E = 0.15f;
+            float ground = topY;          // 4
+            float floorY = 3f;            // well floor, 1px below the top
+            float fenceTop = topY + 1f;   // 5, fence 1px proud
+            Color[] knob = PreviewTextures.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black slider
+
+            box(mb, 0f, 0.5f, 0f, length, 1f, body, plastic, Color.WHITE, false, 2, 0.3f, false, 101L, SHADE_CENTER, shadeRadius);   // green y0..1
+            box(mb, 0f, 2.0f, 0f, length, 2f, body, bandGray, BAND_WHITE, false, 1, 0.3f, false, 102L, SHADE_CENTER, shadeRadius);   // white band y1..3 (full)
+            layerWithHole(mb, 3.5f, 1f, plastic, Color.WHITE, 120L, length, body, 3f, 2f);   // green y3..4 with a 6x4 hole for the fence
+
+            // Steel fence = the well's metal side walls: 1px thick ring, inner faces at ±2 / ±1 (well interior
+            // 4x2), extended outward into the green and down into the band so nothing is coplanar.
+            float wCy = (floorY - E + fenceTop) / 2f, wH = fenceTop - (floorY - E);
+            box(mb, -(2f + (3f + E)) / 2f, wCy, 0f, (1f + E), wH, (4f + 2f * E), steel, Color.WHITE, true, 1, 1.6f, true, 210L, SHADE_CENTER, shadeRadius); // left
+            box(mb, (2f + (3f + E)) / 2f, wCy, 0f, (1f + E), wH, (4f + 2f * E), steel, Color.WHITE, true, 1, 1.6f, true, 220L, SHADE_CENTER, shadeRadius);  // right
+            box(mb, 0f, wCy, -(1f + (2f + E)) / 2f, 4f, wH, (1f + E), steel, Color.WHITE, true, 1, 1.6f, true, 230L, SHADE_CENTER, shadeRadius);            // front
+            box(mb, 0f, wCy, (1f + (2f + E)) / 2f, 4f, wH, (1f + E), steel, Color.WHITE, true, 1, 1.6f, true, 240L, SHADE_CENTER, shadeRadius);             // back
+
+            // Black slider: flat 4x2 floor plate (fills the well bottom, overlaps the walls + band) ...
+            box(mb, 0f, (floorY - E + floorY + 0.4f) / 2f, 0f, (4f + 2f * E), (0.4f + E), (2f + 2f * E), knob, Color.WHITE, false, 2, 0.3f, false, 250L, SHADE_CENTER, shadeRadius);
+            // ... and a 2x2 stem rising from the floor to 1px above the fence (y=6), pushed to the -X end.
+            box(mb, -(2f + E) / 2f, (floorY + (fenceTop + 1f)) / 2f, 0f, (2f + E), (fenceTop + 1f - floorY), (2f + 2f * E), knob, Color.WHITE, false, 2, 0.3f, false, 260L, SHADE_CENTER, shadeRadius);
+
+            addStuds(mb, studX, studCY, studW, studH, steel, studR);
+        } else {
+            // Capacitor: green rims [0,1] and [3,4] with a white label band [1,3], all the full body footprint.
+            float bandLo = 1f, bandHi = 3f;
+            box(mb, 0f, bandLo / 2f, 0f, length, bandLo, body, plastic, Color.WHITE, false, 2, 0.3f, false, 101L, SHADE_CENTER, shadeRadius);
+            box(mb, 0f, (bandHi + bodyH) / 2f, 0f, length, bodyH - bandHi, body, plastic, Color.WHITE, false, 2, 0.3f, false, 202L, SHADE_CENTER, shadeRadius);
+            box(mb, 0f, (bandLo + bandHi) / 2f, 0f, length, bandHi - bandLo, body, bandGray, BAND_WHITE, false, 1, 0.3f, false, 303L, SHADE_CENTER, shadeRadius);
+            addStuds(mb, studX, studCY, studW, studH, steel, studR);
+        }
 
         model = mb.end();
         instance = new ModelInstance(model);
+    }
+
+    /** The two identical metallic snap studs on the terminals. */
+    private void addStuds(ModelBuilder mb, float studX, float studCY, float studW, float studH, Color[] steel, float studR) {
+        box(mb, -studX, studCY, 0f, studW, studH, studW, steel, Color.WHITE, true, 1, 1.6f, true, 404L, new Vector3(-studX, studCY, 0f), studR);
+        box(mb, +studX, studCY, 0f, studW, studH, studW, steel, Color.WHITE, true, 1, 1.6f, true, 404L, new Vector3(+studX, studCY, 0f), studR);
+    }
+
+    /** One height slice of the body with a central rectangular hole (the recessed well) — built as 4 strips. */
+    private void layerWithHole(ModelBuilder mb, float yc, float h, Color[] pal, Color diffuse, long seedBase,
+                               float length, float body, float holeHX, float holeHZ) {
+        float lh = length / 2f, bh = body / 2f;
+        float sideW = lh - holeHX;                 // strips left/right of the hole (full depth)
+        box(mb, -(holeHX + lh) / 2f, yc, 0f, sideW, h, body, pal, diffuse, false, 2, 0.3f, false, seedBase + 1, SHADE_CENTER, shadeRadius);
+        box(mb, +(holeHX + lh) / 2f, yc, 0f, sideW, h, body, pal, diffuse, false, 2, 0.3f, false, seedBase + 2, SHADE_CENTER, shadeRadius);
+        float endD = bh - holeHZ;                  // strips front/back of the hole (hole width)
+        box(mb, 0f, yc, -(holeHZ + bh) / 2f, holeHX * 2f, h, endD, pal, diffuse, false, 2, 0.3f, false, seedBase + 3, SHADE_CENTER, shadeRadius);
+        box(mb, 0f, yc, +(holeHZ + bh) / 2f, holeHX * 2f, h, endD, pal, diffuse, false, 2, 0.3f, false, seedBase + 4, SHADE_CENTER, shadeRadius);
     }
 
     ModelInstance instance() {
