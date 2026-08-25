@@ -30,7 +30,15 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     private static final PreviewPart.Shading SHADING =
             new PreviewPart.Shading("top-lit", new Vector3(0.5f, 0.7f, 0.4f), 3.5f);
 
-    private static final float SPACING = 42f;
+    private static final float SPACING = 46f;
+
+    /** What to show: the parts of the series, rendered in lime for now. */
+    private record Spec(String name, PreviewPart.PartType type) {}
+
+    private static final Spec[] SPECS = {
+            new Spec("capacitor", PreviewPart.PartType.CAPACITOR),
+            new Spec("switch", PreviewPart.PartType.SWITCH),
+    };
 
     private PerspectiveCamera cam;
     private CameraInputController camController;
@@ -48,12 +56,14 @@ public final class ModelPreviewApp extends ApplicationAdapter {
     public void create() {
         modelBatch = new ModelBatch();
 
-        int n = PlasticColors.SET.length;
+        // Lime is the base colour for reviewing new part designs.
+        Color[] lime = PlasticColors.palette(PlasticColors.SET[3]);
+        int n = SPECS.length;
         parts = new PreviewPart[n];
         offsets = new float[n];
         float mid = (n - 1) / 2f;
         for (int i = 0; i < n; i++) {
-            parts[i] = new PreviewPart(SHADING, PlasticColors.palette(PlasticColors.SET[i]));
+            parts[i] = new PreviewPart(SHADING, lime, SPECS[i].type());
             offsets[i] = (i - mid) * SPACING;
             parts[i].instance().transform.setToTranslation(offsets[i], 0f, 0f);
         }
@@ -61,7 +71,7 @@ public final class ModelPreviewApp extends ApplicationAdapter {
         float reach = mid * SPACING + 30f;
         Vector3 target = PreviewPart.center();
         cam = new PerspectiveCamera(55f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        cam.position.set(target).add(0f, reach * 0.5f, reach * 1.55f);
+        cam.position.set(target).add(0f, reach * 1.05f, reach * 1.15f);
         cam.near = 0.5f;
         cam.far = 6000f;
         cam.lookAt(target);
@@ -97,15 +107,14 @@ public final class ModelPreviewApp extends ApplicationAdapter {
 
         ui.begin();
         font.setColor(0.88f, 0.9f, 0.93f, 1f);
-        font.draw(ui, "Plastic series — capacitor x " + PlasticColors.SET.length + " colours"
-                + "    drag: orbit   scroll: zoom", 16f, Gdx.graphics.getHeight() - 12f);
+        font.draw(ui, "Plastic series (lime)    drag: orbit   scroll: zoom", 16f, Gdx.graphics.getHeight() - 12f);
         for (int i = 0; i < parts.length; i++) {
             tmp.set(offsets[i], -4f, 0f);
             cam.project(tmp);
             if (tmp.z > 1f) {
                 continue;
             }
-            String name = PlasticColors.SET[i].name();
+            String name = SPECS[i].name();
             layout.setText(font, name);
             font.setColor(0.74f, 0.78f, 0.82f, 1f);
             font.draw(ui, name, tmp.x - layout.width / 2f, tmp.y);

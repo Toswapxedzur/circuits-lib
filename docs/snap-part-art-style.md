@@ -119,3 +119,31 @@ The chosen set lives in `PlasticColors.SET` (source of truth), one colour per hu
 | cyan | 185 | .92 | .80 | | | | | |
 
 Yellow was pulled warmer (toward red) and saturation-boosted so it reads golden, not lemon.
+
+## Building parts — modeling style
+
+Parts are `PreviewPart` instances distinguished by a `PartType` (the capacitor is the archetype; the switch
+is the second). Every part:
+- is assembled from `box(...)` calls — axis-aligned boxes with per-face 1:1 lit-palette textures (the shading
+  system above), so a new part is just a arrangement of boxes plus which palette each uses;
+- **shares the series DNA**: the recolourable plastic body, the white band, and the metallic snap studs (via
+  `addStuds`, always identical to each other). Reuse these; don't reinvent the material per part;
+- gives each part a distinct silhouette. The capacitor's identity is its wrapping white band; the switch adds
+  a raised, metal-framed mechanism. Keep parts distinguishable at a glance.
+
+**The switch (slide switch).** Lime body + full white band + studs, with a centre **slide-switch mechanism**:
+a 1px-deep well whose **sides are steel** (a 1px-thick metal fence that stands 1px proud of the top), whose
+**floor is a flat 4×2 black plate**, and a **2×2 black stem** rising from that floor to 1px above the fence,
+pushed to one end (the slide position). Floor + stem are one black piece.
+
+**Rules that matter when modeling (learned the hard way):**
+- **Use common sense on proportions before building.** Work out the pixel steps and make sure they line up —
+  well depth, fence height, and the knob stack must be consistent (all 1px steps here). Don't mechanically
+  translate numbers that don't physically fit together.
+- **Prevent z-fighting: never leave two faces coplanar.** There is no boolean geometry, so stacked/adjacent
+  boxes are made to **interpenetrate by a small epsilon (~0.15)** — walls sink into the body, the floor and
+  stem overlap into the walls. Coincident faces flicker; a hair of overlap does not.
+- **Recessed features (holes) are cut by strips.** A layer with a rectangular hole is built as four border
+  boxes around the hole (`layerWithHole`), since geometry can't be subtracted. A shallow well only needs the
+  top layer cut — everything below (e.g. the band) stays a full box.
+- **Repeated sub-parts must be identical** (the two studs share a seed + local-frame shading).
