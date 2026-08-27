@@ -66,11 +66,15 @@ final class PaletteDither {
         return out;
     }
 
-    /** In-plane pixel size (== world size): ±X→(sz,sy), ±Y→(sx,sz), ±Z→(sx,sy). */
+    /**
+     * Sprite size in texels (== world units): pw along the face's U edge (a→b), ph along V (a→d) — matching
+     * {@link #objCorners} and PartMesh's CORNER_UV. ±X→(sy,sz), ±Y→(sx,sz), ±Z→(sx,sy). Getting ±X wrong
+     * (transposed) stretched the small end-cap faces.
+     */
     static int[] size(PartMesh.Box b, int f) {
         int sx = Math.round(b.sx()), sy = Math.round(b.sy()), sz = Math.round(b.sz());
         return switch (f) {
-            case 0, 1 -> new int[]{sz, sy};
+            case 0, 1 -> new int[]{sy, sz};
             case 2, 3 -> new int[]{sx, sz};
             default -> new int[]{sx, sy};
         };

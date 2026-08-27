@@ -22,6 +22,7 @@ import java.util.List;
 public final class EngineDemoApp extends ApplicationAdapter {
 
     private static final int COLS = Parts.PLASTIC_HSV.length; // 11 body colours
+    private static final int GREEN = 3;                       // lime — the switch's own colour
     private static final float COL_SP = 40f;                  // X spacing between colours
     private static final float ROW_SP = 34f;                  // Z spacing between the capacitor and switch rows
 
@@ -51,11 +52,11 @@ public final class EngineDemoApp extends ApplicationAdapter {
         Matrix4 world = new Matrix4();
         for (int c = 0; c < COLS; c++) {
             float x = (c - midCol) * COL_SP;
-            world.setToTranslation(x, 0f, -ROW_SP / 2f); // front row: capacitor
+            world.setToTranslation(x, 0f, -ROW_SP / 2f); // front row: capacitor — one per body colour
             engine.add(new ComponentInstance(parts.capacitors[c], world));
 
-            world.setToTranslation(x, 0f, ROW_SP / 2f);  // back row: slide switch
-            ComponentInstance sw = new ComponentInstance(parts.switches[c], world);
+            world.setToTranslation(x, 0f, ROW_SP / 2f);  // back row: slide switch — always green (its own colour)
+            ComponentInstance sw = new ComponentInstance(parts.switches[GREEN], world);
             sw.anim.channel("slide", 0f, 1f, 6f); // slider slides ±1 in the 4-wide well, eases at 6 units/s
             switches.add(sw);
             engine.add(sw);
