@@ -41,6 +41,7 @@ final class Parts {
     private static final Color[] STEEL = PaletteDither.steelBlue();                 // metal
     private static final Color[] KNOB = PaletteDither.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black
     private static final Color[] CAP_BODY = PaletteDither.ramp(new Color(0.07f, 0.07f, 0.08f, 1f)); // black cap body
+    private static final Color[] CAP_BASE = PaletteDither.rampHsv(160f, 0.92f, 0.80f); // teal snap base plastic
     private static final Color BAND_WHITE = new Color(0.97f, 0.97f, 0.96f, 1f);     // band diffuse tint
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
@@ -93,24 +94,29 @@ final class Parts {
     }
 
     /**
-     * Capacitor: a big black rectangular box (footprint {@code w}×{@code w}, height {@code h}) with noise +
-     * shading, standing on a black <b>basement</b> slab (y0..1), raised by two <b>metallic</b> 0-thickness legs
-     * (each 1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X → broad faces point
-     * inward), 3 apart. One object-space shade frame (body centre) so the gradient spans the whole unit.
+     * Capacitor (Snap-Circuits form): a teal plastic <b>snap base</b> spanning the two terminals, with the
+     * standard metal <b>snap studs</b> at ±8 (how it connects to the grid). On top, a big black box (footprint
+     * {@code w}×{@code w}, height {@code h}) with noise + shading, raised by two <b>metallic</b> 0-thickness
+     * legs (1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X → broad faces point
+     * inward), 3 apart. Base 25×9×2, like every other part in the series.
      */
     private ComponentModel buildCapacitor(float w, float h, float legH, long seed) {
-        float baseTop = 1f;                    // basement occupies y0..1 (sits on the board)
-        float bodyBottom = baseTop + legH;     // legs bridge basement-top → body-bottom
-        float cy = bodyBottom + h / 2f;        // body centre Y
+        float baseH = 2f;                      // teal snap base occupies y0..2 (sits on the board)
+        float cy = baseH + legH + h / 2f;      // body centre Y (legs bridge base-top → body-bottom)
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
+        float baseR = Math.max(1f, Math.abs(0.5f / L) * 12.5f + Math.abs(0.7f / L) * (baseH / 2f)
+                + Math.abs(0.4f / L) * 4.5f);
         PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
         PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r);
+        PaletteDither.Paint teal = new PaletteDither.Paint(CAP_BASE, Color.WHITE, 2, 0.3f, false, seed + 4, 0f, baseH / 2f, 0f, baseR);
         return ComponentModel.of("capacitor")
-                .box(0f, 0.5f, 0f, w, 1f, w, black)                          // basement slab y0..1
-                .box(-1.5f, baseTop + legH / 2f, 0f, 0f, legH, 1f, metal)    // left leg  (0-thick in X, faces +X)
-                .box(1.5f, baseTop + legH / 2f, 0f, 0f, legH, 1f, metal)     // right leg (faces -X) — 3 apart
-                .box(0f, cy, 0f, w, h, w, black)                            // black body on top
+                .box(0f, baseH / 2f, 0f, 25f, baseH, 9f, teal)                       // teal snap base
+                .box(-8f, baseH + 0.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, baseH + 0.5f, 0f)) // snap stud
+                .box(8f, baseH + 0.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, baseH + 0.5f, 0f))
+                .box(-1.5f, baseH + legH / 2f, 0f, 0f, legH, 1f, metal)              // left leg  (faces +X)
+                .box(1.5f, baseH + legH / 2f, 0f, 0f, legH, 1f, metal)               // right leg (faces -X)
+                .box(0f, cy, 0f, w, h, w, black)                                    // black body on top
                 .build();
     }
 
