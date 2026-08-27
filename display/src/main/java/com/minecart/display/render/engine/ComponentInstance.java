@@ -58,7 +58,7 @@ final class ComponentInstance {
         for (PartMesh.Box b : model.staticBoxes) {
             // Translate geometry to world, but KEEP the object-space centre so the baked shading gradient is
             // identical for every instance (and instances share one sprite).
-            out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.color(),
+            out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.paint(),
                     b.ocx(), b.ocy(), b.ocz()));
         }
     }

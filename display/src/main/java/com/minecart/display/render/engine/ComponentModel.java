@@ -1,6 +1,5 @@
 package com.minecart.display.render.engine;
 
-import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Matrix4;
 
 import java.util.ArrayList;
@@ -43,8 +42,15 @@ final class ComponentModel {
             this.id = id;
         }
 
-        Builder box(float cx, float cy, float cz, float sx, float sy, float sz, Color color) {
-            statics.add(PartMesh.Box.local(cx, cy, cz, sx, sy, sz, color));
+        Builder box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint) {
+            statics.add(PartMesh.Box.local(cx, cy, cz, sx, sy, sz, paint));
+            return this;
+        }
+
+        /** A box whose object-space shading centre differs from where it sits (e.g. a movable part's rest pose). */
+        Builder boxAt(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
+                      float ocx, float ocy, float ocz) {
+            statics.add(new PartMesh.Box(cx, cy, cz, sx, sy, sz, paint, ocx, ocy, ocz));
             return this;
         }
 

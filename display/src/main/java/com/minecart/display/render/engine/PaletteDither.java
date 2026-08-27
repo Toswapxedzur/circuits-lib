@@ -9,68 +9,64 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Procedural sprite drawing + face→sprite naming — a faithful port of the preview's {@code PreviewTextures}
- * look into the atlas pipeline. Each face sprite bakes the conserved palette dither AND the <b>object-space
- * top-lit gradient</b> ({@link #litFace}) exactly as {@code ModelPreviewApp} did, then folds in that viewer's
- * (near-flat) studio lighting per face. The gradient is measured in the part's OWN space, so it is identical
- * for every instance — bakeable to a fixed PNG and instanced without any runtime lighting (WYSIWYG).
- *
- * <p>Runs offline in {@link SeedPartTextures}; {@link #faceName} keys a sprite by the face's object-space rect
- * + colour, so the seed (what to draw) and the mesh baker (what to look up) can't drift, and identical faces
- * across instances share one sprite.
+ * Sprite drawing + face→sprite naming — a <b>pixel-exact</b> port of {@code PreviewTextures.litFace} as used by
+ * {@code PreviewPart}/{@code ModelPreviewApp}. Each face is drawn with that part's EXACT paint ({@link Paint}:
+ * palette, grain, seed, object-space shade centre/radius) and the SAME corner order + seed formula
+ * ({@code 0x9E37_0000 + (seedBase + faceId + 1) * 2654435761}), then multiplied by the viewer's studio light
+ * (ambient + weak directional) folded per face — so a baked sprite equals what the preview rendered, texel for
+ * texel. The shading is object-space (identical for every instance), so it bakes to a fixed PNG and instances.
  */
 final class PaletteDither {
 
     private PaletteDither() {}
 
-    // ---- Series shading, copied from ModelPreviewApp.SHADING + PreviewPart's object-space frame ----
+    // Series light + gradient (ModelPreviewApp.SHADING + PreviewPart's object-space frame).
     private static final Vector3 LIGHT = new Vector3(0.5f, 0.7f, 0.4f).nor();
     private static final float SHIFT = 3.5f;
-    private static final Vector3 SHADE_CENTER = new Vector3(0f, 2f, 0f);
-    private static final float HALF_X = 12.5f, HALF_Y = 3f, HALF_Z = 4.5f;
-    private static final float RADIUS = Math.max(1f,
-            Math.abs(LIGHT.x) * HALF_X + Math.abs(LIGHT.y) * HALF_Y + Math.abs(LIGHT.z) * HALF_Z);
-    // ModelPreviewApp's Environment (ambient + one weak directional), baked per face as a constant multiplier.
+    // ModelPreviewApp's Environment, baked per face as a constant multiplier (× the material diffuse tint).
     private static final Vector3 AMBIENT = new Vector3(0.93f, 0.93f, 0.96f);
     private static final Vector3 DIR_COLOR = new Vector3(0.14f, 0.14f, 0.15f);
     private static final Vector3 DIR_TO_LIGHT = new Vector3(0.45f, 0.5f, 0.55f).nor(); // -(-0.45,-0.5,-0.55)
 
-    // Known material colours (from Parts) → their preview palette + dither profile.
-    private static final Color WHITE = new Color(0.85f, 0.86f, 0.83f, 1f);
-    private static final Color STEEL = new Color(0.55f, 0.61f, 0.69f, 1f);
-
     private static final int[] BAYER4 = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
+    private static final int[][] NRM = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
-    // Per-face outward normal, and the object corners (a,b,c,d) in the SAME order PartMesh emits them.
-    private static final int[][] N = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-    // Reorder (a,b,c,d) → (p00,p10,p11,p01) so litFace's gradient aligns with the baked FACE_UV in PartMesh.
-    private static final int[][] PERM = {
-            {1, 2, 3, 0}, {1, 2, 3, 0}, {3, 2, 1, 0}, {0, 1, 2, 3}, {3, 2, 1, 0}, {3, 2, 1, 0}};
+    /** How one box's faces are painted — mirrors a PreviewPart {@code box(...)} call's texture args. */
+    record Paint(Color[] palette, Color diffuse, int grainMax, float zeroWeight, boolean ordered,
+                 long seedBase, float scx, float scy, float scz, float radius) {}
 
     /** A distinct sprite job: one box face. */
     record Face(PartMesh.Box box, int faceId) {}
 
-    /** Stable atlas name for a face: object-space rect (×2 to clear half-integers) + colour + normal. */
+    /** Stable atlas name: everything that determines the face's litFace output (so identical faces dedupe). */
     static String faceName(PartMesh.Box b, int f) {
+        Paint p = b.paint();
         int[] wh = size(b, f);
-        return "f" + hex(b.color())
-                + "_" + r2(b.ocx()) + "_" + r2(b.ocy()) + "_" + r2(b.ocz())
-                + "_" + Math.round(b.sx()) + "x" + Math.round(b.sy()) + "x" + Math.round(b.sz())
-                + "_" + f + "_" + wh[0] + "x" + wh[1];
+        Vector3[] q = objCorners(b, f);
+        long h = 1125899906842597L;
+        h = h * 31 + p.seedBase(); h = h * 31 + f;
+        h = h * 31 + p.grainMax(); h = h * 31 + Float.floatToIntBits(p.zeroWeight());
+        h = h * 31 + (p.ordered() ? 1 : 0);
+        for (Color c : p.palette()) h = h * 31 + Color.rgba8888(c);
+        h = h * 31 + Color.rgba8888(p.diffuse());
+        for (Vector3 v : q) {
+            h = h * 31 + Math.round((v.x - p.scx()) * 2f);
+            h = h * 31 + Math.round((v.y - p.scy()) * 2f);
+            h = h * 31 + Math.round((v.z - p.scz()) * 2f);
+        }
+        return "sp" + Long.toHexString(h & 0x7fffffffffffffffL) + "_" + wh[0] + "x" + wh[1];
     }
 
     /** Every sprite these boxes can request (all 6 faces each; occlusion only ever drops from this set). */
     static Set<Face> faces(List<PartMesh.Box> boxes) {
         Set<Face> out = new LinkedHashSet<>();
         for (PartMesh.Box b : boxes) {
-            for (int f = 0; f < 6; f++) {
-                out.add(new Face(b, f));
-            }
+            for (int f = 0; f < 6; f++) out.add(new Face(b, f));
         }
         return out;
     }
 
-    /** In-plane pixel size (== world size) of a face: ±X→(sz,sy), ±Y→(sx,sz), ±Z→(sx,sy). */
+    /** In-plane pixel size (== world size): ±X→(sz,sy), ±Y→(sx,sz), ±Z→(sx,sy). */
     static int[] size(PartMesh.Box b, int f) {
         int sx = Math.round(b.sx()), sy = Math.round(b.sy()), sz = Math.round(b.sz());
         return switch (f) {
@@ -80,19 +76,19 @@ final class PaletteDither {
         };
     }
 
-    /** Draws one face sprite: object-space lit-palette dither (PreviewTextures.litFace) × the face's studio mul. */
+    /** Draws one face sprite exactly as PreviewPart did: litFace over the object corners × the studio light. */
     static Pixmap drawFace(PartMesh.Box b, int f) {
+        Paint p = b.paint();
         int[] wh = size(b, f);
-        Vector3[] q = objCorners(b, f);
-        int[] perm = PERM[f];
-        Profile pr = profile(b.color());
-        Vector3 mul = faceMul(N[f]);
-        long seed = faceName(b, f).hashCode() * 2654435761L;
-        return litFace(pr.palette, q[perm[0]], q[perm[1]], q[perm[2]], q[perm[3]], wh[0], wh[1],
-                pr.grainMax, pr.zeroWeight, pr.ordered, mul, seed);
+        Vector3[] q = objCorners(b, f); // p00,p10,p11,p01 — same order PreviewPart passes to litFace
+        long seed = 0x9E370000L + (p.seedBase() + f + 1) * 2654435761L;
+        Vector3 mul = faceMul(NRM[f], p.diffuse());
+        return litFace(p.palette(), q[0], q[1], q[2], q[3], wh[0], wh[1],
+                p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed);
     }
 
-    /** The 7-shade plastic ramp for ANY base colour (PreviewTextures.ramp), hue preserved, index 3 == base. */
+    // ---- palettes (verbatim from PreviewTextures) ----
+
     static Color[] ramp(Color base) {
         float[] hsv = base.toHsv(new float[3]);
         Color[] out = new Color[7];
@@ -106,6 +102,13 @@ final class PaletteDither {
         return out;
     }
 
+    static Color[] rampHsv(float h, float s, float v) {
+        Color base = new Color();
+        base.fromHsv(h, s, v);
+        base.a = 1f;
+        return ramp(base);
+    }
+
     static Color[] grays(int n, float lo, float hi) {
         Color[] c = new Color[n];
         for (int i = 0; i < n; i++) {
@@ -115,7 +118,6 @@ final class PaletteDither {
         return c;
     }
 
-    /** Steel-blue metal, 5 shades (PreviewTextures.steelBlue). */
     static Color[] steelBlue() {
         return new Color[]{
                 new Color(0.30f, 0.35f, 0.42f, 1f),
@@ -126,23 +128,10 @@ final class PaletteDither {
         };
     }
 
-    private record Profile(Color[] palette, int grainMax, float zeroWeight, boolean ordered) {}
-
-    /** Palette + dither profile per material, matching PreviewPart's box() calls (keyed by the box colour). */
-    private static Profile profile(Color c) {
-        if (near(c, WHITE)) return new Profile(grays(6, 0.85f, 1.0f), 1, 0.3f, false);   // white band
-        if (near(c, STEEL)) return new Profile(steelBlue(), 1, 1.6f, true);              // metal (ordered)
-        return new Profile(ramp(c), 2, 0.3f, false);                                     // plastic body/knob
-    }
-
-    /**
-     * Object-space lit-palette dither (a Pixmap port of PreviewTextures.litFace): each texel's object position
-     * (bilinear over the 4 corners) gives a lit value that biases which conserved shade it picks; the result is
-     * multiplied by {@code mul} (the face's baked studio lighting). No runtime lighting — this IS the final look.
-     */
+    /** Object-space lit-palette dither — a Pixmap port of PreviewTextures.litFace, × the per-face {@code mul}. */
     private static Pixmap litFace(Color[] palette, Vector3 p00, Vector3 p10, Vector3 p11, Vector3 p01,
-                                  int pw, int ph, int grainMax, float zeroWeight, boolean ordered,
-                                  Vector3 mul, long seed) {
+                                  int pw, int ph, float scx, float scy, float scz, float radius,
+                                  int grainMax, float zeroWeight, boolean ordered, Vector3 mul, long seed) {
         int shades = palette.length, mid = shades / 2;
         int peak = Math.max(1, Math.round(grainMax * 0.6f));
         float[] w = new float[grainMax + 1];
@@ -157,9 +146,8 @@ final class PaletteDither {
                 float wx = lerp(lerp(p00.x, p10.x, u), lerp(p01.x, p11.x, u), v);
                 float wy = lerp(lerp(p00.y, p10.y, u), lerp(p01.y, p11.y, u), v);
                 float wz = lerp(lerp(p00.z, p10.z, u), lerp(p01.z, p11.z, u), v);
-                float proj = (wx - SHADE_CENTER.x) * LIGHT.x + (wy - SHADE_CENTER.y) * LIGHT.y
-                        + (wz - SHADE_CENTER.z) * LIGHT.z;
-                float lit = clamp(0.5f + 0.5f * proj / RADIUS);
+                float proj = (wx - scx) * LIGHT.x + (wy - scy) * LIGHT.y + (wz - scz) * LIGHT.z;
+                float lit = clamp(0.5f + 0.5f * proj / radius);
                 float cIdx = mid + (lit - 0.5f) * SHIFT;
                 int idx;
                 if (ordered) {
@@ -181,7 +169,7 @@ final class PaletteDither {
         return pm;
     }
 
-    /** The 4 object-space corners of face f (a,b,c,d), matching PartMesh's world-corner order exactly. */
+    /** The 4 object-space corners (p00,p10,p11,p01) of face f — the SAME order PreviewPart passes to litFace. */
     private static Vector3[] objCorners(PartMesh.Box b, int f) {
         float x0 = b.ocx() - b.sx() / 2f, x1 = b.ocx() + b.sx() / 2f;
         float y0 = b.ocy() - b.sy() / 2f, y1 = b.ocy() + b.sy() / 2f;
@@ -196,31 +184,15 @@ final class PaletteDither {
         };
     }
 
-    /** The face's fixed studio-light multiplier: ambient + weak directional·normal (from ModelPreviewApp). */
-    private static Vector3 faceMul(int[] n) {
+    private static Vector3 faceMul(int[] n, Color diffuse) {
         float ndl = Math.max(0f, n[0] * DIR_TO_LIGHT.x + n[1] * DIR_TO_LIGHT.y + n[2] * DIR_TO_LIGHT.z);
-        return new Vector3(clamp(AMBIENT.x + DIR_COLOR.x * ndl),
-                clamp(AMBIENT.y + DIR_COLOR.y * ndl), clamp(AMBIENT.z + DIR_COLOR.z * ndl));
-    }
-
-    private static boolean near(Color a, Color b) {
-        return Math.abs(a.r - b.r) < 0.01f && Math.abs(a.g - b.g) < 0.01f && Math.abs(a.b - b.b) < 0.01f;
+        return new Vector3(clamp((AMBIENT.x + DIR_COLOR.x * ndl) * diffuse.r),
+                clamp((AMBIENT.y + DIR_COLOR.y * ndl) * diffuse.g),
+                clamp((AMBIENT.z + DIR_COLOR.z * ndl) * diffuse.b));
     }
 
     private static Vector3 v(float x, float y, float z) {
         return new Vector3(x, y, z);
-    }
-
-    private static int r2(float v) {
-        return Math.round(v * 2f);
-    }
-
-    private static String hex(Color c) {
-        return String.format("%02x%02x%02x", to255(c.r), to255(c.g), to255(c.b));
-    }
-
-    private static int to255(float v) {
-        return Math.max(0, Math.min(255, Math.round(v * 255f)));
     }
 
     private static float clamp(float v) {
