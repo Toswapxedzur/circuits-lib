@@ -35,7 +35,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
     /** The demo board slab under the row. Shared with {@link SeedPartTextures} so its sprites are generated too. */
     static PartMesh.Box boardBox() {
         PaletteDither.Paint paint = new PaletteDither.Paint(
-                PaletteDither.rampHsv(160f, 0.92f, 0.80f), Color.WHITE, // teal base board
+                PaletteDither.ramp(new Color(0.16f, 0.18f, 0.22f, 1f)), Color.WHITE, // dark board so teal parts read
                 2, 0.3f, false, 900L, 0f, -1f, 0f, 400f);
         float w = COUNT * SPACING + 30f;
         return PartMesh.Box.local(0f, -1f, 0f, w, 2f, 49f, paint);
