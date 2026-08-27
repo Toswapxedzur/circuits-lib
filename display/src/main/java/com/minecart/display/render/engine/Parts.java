@@ -40,13 +40,18 @@ final class Parts {
     private static final Color[] BAND = PaletteDither.grays(6, 0.85f, 1.0f);        // white plastic band
     private static final Color[] STEEL = PaletteDither.steelBlue();                 // metal
     private static final Color[] KNOB = PaletteDither.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black
+    private static final Color[] CAP_BODY = PaletteDither.ramp(new Color(0.07f, 0.07f, 0.08f, 1f)); // black cap body
+    private static final Color[] CAP_LEG = PaletteDither.rampHsv(160f, 0.92f, 0.80f); // teal base plastic (legs)
     private static final Color BAND_WHITE = new Color(0.97f, 0.97f, 0.96f, 1f);     // band diffuse tint
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
 
+    /** Capacitor sizes: {body W×W footprint, body height, leg height}. Leg is 1 wide × legH tall × 0 thick. */
+    static final float[][] CAP_SIZES = {{7f, 9f, 2f}, {5f, 6f, 3f}, {3f, 4f, 4f}}; // big, medium, small
+
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
-    final ComponentModel[] capacitors = new ComponentModel[PLASTIC_HSV.length];
+    final ComponentModel[] capacitors = new ComponentModel[CAP_SIZES.length]; // big, medium, small
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
 
@@ -78,22 +83,31 @@ final class Parts {
         // top (y4 → 7). Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
         button = new PartType("button", List.of(
                 new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f)));
+        for (int s = 0; s < CAP_SIZES.length; s++) {
+            capacitors[s] = buildCapacitor(CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 500L + s * 10L);
+        }
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
             Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
-            capacitors[c] = buildCapacitor(pal);
             switches[c] = buildSwitch(pal);
             pressSwitches[c] = buildPressSwitch(pal);
         }
     }
 
-    /** Capacitor: green rims [0,1] & [3,4], white band [1,3], two steel studs (seeds 101/202/303/404). */
-    private ComponentModel buildCapacitor(Color[] pal) {
+    /**
+     * Capacitor: a big black rectangular box (footprint {@code w}×{@code w}, height {@code h}) with noise +
+     * shading, raised off the board by two 0-thickness legs (1 wide × {@code legH} tall, teal base plastic),
+     * the legs 3 apart. The body's shade frame is its own centre so the gradient spans the box.
+     */
+    private ComponentModel buildCapacitor(float w, float h, float legH, long seed) {
+        float cy = legH + h / 2f; // body centre Y (bottom rests on the leg tops at y=legH)
+        float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
+                + Math.abs(0.4f / L) * (w / 2f));
+        PaletteDither.Paint body = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
+        PaletteDither.Paint leg = new PaletteDither.Paint(CAP_LEG, Color.WHITE, 2, 0.3f, false, seed + 2, 0f, cy, 0f, r);
         return ComponentModel.of("capacitor")
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))
-                .box(0f, 3.5f, 0f, 25f, 1f, 9f, plastic(202L, pal))
-                .box(0f, 2f, 0f, 25f, 2f, 9f, band(303L))
-                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))
-                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
+                .box(0f, cy, 0f, w, h, w, body)                    // black body
+                .box(-1.5f, legH / 2f, 0f, 1f, legH, 0f, leg)      // left leg  (0-thick quad, x -2..-1)
+                .box(1.5f, legH / 2f, 0f, 1f, legH, 0f, leg)       // right leg (x 1..2) — legs 3 apart
                 .build();
     }
 
