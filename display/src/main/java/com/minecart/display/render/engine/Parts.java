@@ -93,31 +93,33 @@ final class Parts {
         }
     }
 
+    private static PaletteDither.Paint tealBody(long seed) {
+        return new PaletteDither.Paint(CAP_BASE, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R);
+    }
+
     /**
-     * Capacitor (Snap-Circuits form): a teal plastic <b>snap base</b> spanning the two terminals, with the
-     * standard metal <b>snap studs</b> at ±8 (how it connects to the grid). On top, a big black box (footprint
-     * {@code w}×{@code w}, height {@code h}) with noise + shading, raised by two <b>metallic</b> 0-thickness
-     * legs (1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X → broad faces point
-     * inward), 3 apart. Base 25×9×2, like every other part in the series.
+     * Capacitor (Snap-Circuits form): the SAME base every part has — a teal plastic body 25×9×4 with a white
+     * band and two metal snap studs at ±8, sitting flat on the board. The capacitor's own feature is a black box
+     * ({@code w}×{@code w} × {@code h}) mounted on the body's top, raised by two <b>metallic</b> 0-thickness
+     * legs (1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X → broad faces inward),
+     * 3 apart.
      */
     private ComponentModel buildCapacitor(float w, float h, float legH, long seed) {
-        float baseH = 4f;                      // teal snap base y0..4 — same height as every other part, so all
-                                               // the snap studs sit at the SAME grid height (y4.5) across the kit
-        float cy = baseH + legH + h / 2f;      // body centre Y (legs bridge base-top → body-bottom)
+        float top = 4f;                        // teal body y0..4 (rim + white band + rim), like the switches
+        float cy = top + legH + h / 2f;        // black box centre Y (legs bridge body-top → box-bottom)
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
-        float baseR = Math.max(1f, Math.abs(0.5f / L) * 12.5f + Math.abs(0.7f / L) * (baseH / 2f)
-                + Math.abs(0.4f / L) * 4.5f);
         PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
         PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r);
-        PaletteDither.Paint teal = new PaletteDither.Paint(CAP_BASE, Color.WHITE, 2, 0.3f, false, seed + 4, 0f, baseH / 2f, 0f, baseR);
         return ComponentModel.of("capacitor")
-                .box(0f, baseH / 2f, 0f, 25f, baseH, 9f, teal)                       // teal snap base
-                .box(-8f, baseH + 0.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, baseH + 0.5f, 0f)) // snap stud
-                .box(8f, baseH + 0.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, baseH + 0.5f, 0f))
-                .box(-1.5f, baseH + legH / 2f, 0f, 0f, legH, 1f, metal)              // left leg  (faces +X)
-                .box(1.5f, baseH + legH / 2f, 0f, 0f, legH, 1f, metal)               // right leg (faces -X)
-                .box(0f, cy, 0f, w, h, w, black)                                    // black body on top
+                .box(0f, 0.5f, 0f, 25f, 1f, 9f, tealBody(seed + 4))                 // teal rim y0..1
+                .box(0f, 2f, 0f, 25f, 2f, 9f, band(seed + 5))                       // white band y1..3
+                .box(0f, 3.5f, 0f, 25f, 1f, 9f, tealBody(seed + 6))                 // teal rim y3..4
+                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))          // snap studs at ±8
+                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
+                .box(-1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)               // left leg  (faces +X)
+                .box(1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)                // right leg (faces -X)
+                .box(0f, cy, 0f, w, h, w, black)                                    // black box on top
                 .build();
     }
 
