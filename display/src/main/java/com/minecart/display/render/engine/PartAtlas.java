@@ -25,7 +25,7 @@ final class PartAtlas implements Disposable {
     /** A sprite's rectangle in the atlas, as UVs with a half-texel inset (Nearest-safe, no neighbour bleed). */
     record Region(float u0, float v0, float u1, float v1) {}
 
-    private static final int GAP = 1; // 1px gutter between sprites
+    private static final int PAD = 1; // 1px extruded border around each sprite (Nearest-safe, keeps 1:1)
 
     private final Texture texture;
     private final Map<String, Region> regions = new HashMap<>();
@@ -49,36 +49,50 @@ final class PartAtlas implements Disposable {
         for (int i = 0; i < order.length; i++) order[i] = i;
         java.util.Arrays.sort(order, (a, b) -> pixmaps.get(b).getHeight() - pixmaps.get(a).getHeight());
 
+        // Each sprite occupies (w+2*PAD)×(h+2*PAD) — a 1px extruded border around it, so Nearest sampling at a
+        // face's exact edge lands on a copy of the edge texel (no bleed) while the UVs still map to texel EDGES
+        // (1 texel = 1 world unit exactly — even pixels, no mixels).
         int widest = 0;
         for (Pixmap p : pixmaps) widest = Math.max(widest, p.getWidth());
-        int atlasW = nextPow2(Math.max(64, widest + 2 * GAP));
+        int atlasW = nextPow2(Math.max(64, widest + 2 * PAD));
 
-        int[] px = new int[names.size()];
+        int[] px = new int[names.size()]; // top-left of the sprite CONTENT (inside its border)
         int[] py = new int[names.size()];
-        int x = GAP, y = GAP, shelfH = 0;
+        int x = 0, y = 0, shelfH = 0;
         for (int oi : order) {
             Pixmap p = pixmaps.get(oi);
-            if (x + p.getWidth() + GAP > atlasW) {
-                x = GAP;
-                y += shelfH + GAP;
+            int cw = p.getWidth() + 2 * PAD, ch = p.getHeight() + 2 * PAD;
+            if (x + cw > atlasW) {
+                x = 0;
+                y += shelfH;
                 shelfH = 0;
             }
-            px[oi] = x;
-            py[oi] = y;
-            x += p.getWidth() + GAP;
-            shelfH = Math.max(shelfH, p.getHeight());
+            px[oi] = x + PAD;
+            py[oi] = y + PAD;
+            x += cw;
+            shelfH = Math.max(shelfH, ch);
         }
-        int atlasH = nextPow2(y + shelfH + GAP);
+        int atlasH = nextPow2(y + shelfH);
 
         Pixmap page = new Pixmap(atlasW, atlasH, Pixmap.Format.RGBA8888);
         page.setBlending(Pixmap.Blending.None);
         for (int i = 0; i < names.size(); i++) {
             Pixmap p = pixmaps.get(i);
-            page.drawPixmap(p, px[i], py[i]);
-            // Half-texel inset so Nearest sampling at u/v = 0 or 1 stays inside this sprite.
+            int ox = px[i], oy = py[i], w = p.getWidth(), h = p.getHeight();
+            page.drawPixmap(p, ox, oy);
+            // Extrude the 4 edges + corners into the 1px border.
+            page.drawPixmap(p, ox - 1, oy, 0, 0, 1, h);         // left
+            page.drawPixmap(p, ox + w, oy, w - 1, 0, 1, h);     // right
+            page.drawPixmap(p, ox, oy - 1, 0, 0, w, 1);         // top
+            page.drawPixmap(p, ox, oy + h, 0, h - 1, w, 1);     // bottom
+            page.drawPixmap(p, ox - 1, oy - 1, 0, 0, 1, 1);     // TL
+            page.drawPixmap(p, ox + w, oy - 1, w - 1, 0, 1, 1); // TR
+            page.drawPixmap(p, ox - 1, oy + h, 0, h - 1, 1, 1); // BL
+            page.drawPixmap(p, ox + w, oy + h, w - 1, h - 1, 1, 1); // BR
+            // Texel-edge UVs → face UV 0..1 spans exactly the w×h texels (pixel-perfect).
             regions.put(names.get(i), new Region(
-                    (px[i] + 0.5f) / atlasW, (py[i] + 0.5f) / atlasH,
-                    (px[i] + p.getWidth() - 0.5f) / atlasW, (py[i] + p.getHeight() - 0.5f) / atlasH));
+                    ox / (float) atlasW, oy / (float) atlasH,
+                    (ox + w) / (float) atlasW, (oy + h) / (float) atlasH));
             p.dispose();
         }
 
