@@ -20,6 +20,17 @@ tasks.register<JavaExec>("preview") {
     }
 }
 
+// GPU-instanced component renderer engine demo: ./gradlew :display:enginedemo
+tasks.register<JavaExec>("enginedemo") {
+    group = "application"
+    description = "Launch the instanced component renderer engine demo"
+    mainClass = "com.minecart.display.render.engine.EngineDemoApp"
+    classpath = sourceSets["main"].runtimeClasspath
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 val gdxVersion = "1.14.0"
 
 dependencies {
