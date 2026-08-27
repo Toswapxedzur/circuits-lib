@@ -22,7 +22,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
     private static final int GREEN = 3;      // lime — the switches' colour
     private static final float SPACING = 34f; // X spacing between listed parts
-    private static final int COUNT = Parts.CAP_SIZES.length + 2; // 3 capacitor sizes + slide + press
+    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 2; // 11 colours + 3 sizes + slide + press
 
     private PerspectiveCamera cam;
     private FlyController fly;
@@ -49,9 +49,13 @@ public final class EngineDemoApp extends ApplicationAdapter {
         float mid = (COUNT - 1) / 2f;
         Matrix4 world = new Matrix4();
         int i = 0;
-        for (int s = 0; s < parts.capacitors.length; s++, i++) {
+        for (int c = 0; c < parts.capacitors.length; c++, i++) {          // capacitor in every base colour (RESTORED)
             world.setToTranslation((i - mid) * SPACING, 0f, 0f);
-            engine.add(new ComponentInstance(parts.capacitors[s], world)); // capacitor: big, medium, small
+            engine.add(new ComponentInstance(parts.capacitors[c], world));
+        }
+        for (int s = 0; s < parts.capacitorSizes.length; s++, i++) {      // + the 3 sizes (teal)
+            world.setToTranslation((i - mid) * SPACING, 0f, 0f);
+            engine.add(new ComponentInstance(parts.capacitorSizes[s], world));
         }
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);             // green slide switch
         ComponentInstance sw = new ComponentInstance(parts.switches[GREEN], world);

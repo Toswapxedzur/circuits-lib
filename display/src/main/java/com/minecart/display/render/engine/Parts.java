@@ -51,7 +51,8 @@ final class Parts {
 
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
-    final ComponentModel[] capacitors = new ComponentModel[CAP_SIZES.length]; // big, medium, small
+    final ComponentModel[] capacitors = new ComponentModel[PLASTIC_HSV.length];   // one per base colour (big)
+    final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
 
@@ -83,38 +84,37 @@ final class Parts {
         // top (y4 → 7). Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
         button = new PartType("button", List.of(
                 new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f)));
-        for (int s = 0; s < CAP_SIZES.length; s++) {
-            capacitors[s] = buildCapacitor(CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 500L + s * 10L);
+        Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
+        for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
+            capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
         }
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
             Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
+            // capacitor: base recoloured per colour (RESTORED variants); black box + legs identical → dedupe.
+            capacitors[c] = buildCapacitor(pal, 7f, 9f, 2f, 700L);
             switches[c] = buildSwitch(pal);
             pressSwitches[c] = buildPressSwitch(pal);
         }
     }
 
-    private static PaletteDither.Paint tealBody(long seed) {
-        return new PaletteDither.Paint(CAP_BASE, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R);
-    }
-
     /**
-     * Capacitor (Snap-Circuits form): the SAME base every part has — a teal plastic body 25×9×4 with a white
-     * band and two metal snap studs at ±8, sitting flat on the board. The capacitor's own feature is a black box
-     * ({@code w}×{@code w} × {@code h}) mounted on the body's top, raised by two <b>metallic</b> 0-thickness
-     * legs (1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X → broad faces inward),
-     * 3 apart.
+     * Capacitor (Snap-Circuits form): the SAME base every part has — a <b>recolourable</b> plastic body 25×9×4
+     * ({@code pal} rim + white band + rim) with two metal snap studs at ±8, sitting flat on the board. Its own
+     * feature is a black box ({@code w}×{@code w} × {@code h}) on the body's top, raised by two <b>metallic</b>
+     * 0-thickness legs (1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X), 3 apart.
+     * Base rims reuse seeds 101/202/303 → they dedupe with the other parts' bodies of the same colour.
      */
-    private ComponentModel buildCapacitor(float w, float h, float legH, long seed) {
-        float top = 4f;                        // teal body y0..4 (rim + white band + rim), like the switches
+    private ComponentModel buildCapacitor(Color[] pal, float w, float h, float legH, long seed) {
+        float top = 4f;                        // body y0..4 (rim + white band + rim), like the switches
         float cy = top + legH + h / 2f;        // black box centre Y (legs bridge body-top → box-bottom)
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
         PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
         PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r);
         return ComponentModel.of("capacitor")
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, tealBody(seed + 4))                 // teal rim y0..1
-                .box(0f, 2f, 0f, 25f, 2f, 9f, band(seed + 5))                       // white band y1..3
-                .box(0f, 3.5f, 0f, 25f, 1f, 9f, tealBody(seed + 6))                 // teal rim y3..4
+                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))                 // coloured rim y0..1
+                .box(0f, 3.5f, 0f, 25f, 1f, 9f, plastic(202L, pal))                 // coloured rim y3..4
+                .box(0f, 2f, 0f, 25f, 2f, 9f, band(303L))                           // white band y1..3
                 .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))          // snap studs at ±8
                 .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
                 .box(-1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)               // left leg  (faces +X)

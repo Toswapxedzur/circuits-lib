@@ -31,6 +31,7 @@ public final class SeedPartTextures extends ApplicationAdapter {
         Parts parts = new Parts();
         List<PartMesh.Box> boxes = new ArrayList<>();
         for (ComponentModel cap : parts.capacitors) boxes.addAll(cap.staticBoxes);   // every body colour
+        for (ComponentModel cap : parts.capacitorSizes) boxes.addAll(cap.staticBoxes); // the 3 sizes
         for (ComponentModel sw : parts.switches) boxes.addAll(sw.staticBoxes);
         for (ComponentModel ps : parts.pressSwitches) boxes.addAll(ps.staticBoxes);
         boxes.addAll(parts.slider.boxes());
