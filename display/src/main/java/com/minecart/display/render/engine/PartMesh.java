@@ -1,6 +1,5 @@
 package com.minecart.display.render.engine;
 
-import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Mesh;
 import com.badlogic.gdx.graphics.VertexAttribute;
@@ -28,16 +27,16 @@ import java.util.List;
 final class PartMesh implements Disposable {
 
     /**
-     * An axis-aligned coloured box. {@code cx,cy,cz} is where it sits (world, after {@link
-     * ComponentInstance#collectStatic}); {@code ocx,ocy,ocz} is its ORIGINAL object-space centre, kept so the
-     * baked object-space shading gradient ({@link PaletteDither}) is identical for every instance.
+     * An axis-aligned box. {@code cx,cy,cz} is where it sits (world, after {@link
+     * ComponentInstance#collectStatic}); {@code ocx,ocy,ocz} is its ORIGINAL object-space centre; {@code paint}
+     * carries the exact PreviewPart texture recipe. The object-space shading is identical for every instance.
      */
-    record Box(float cx, float cy, float cz, float sx, float sy, float sz, Color color,
+    record Box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                float ocx, float ocy, float ocz) {
 
         /** A box whose object-space centre is its position (used at part-definition time). */
-        static Box local(float cx, float cy, float cz, float sx, float sy, float sz, Color color) {
-            return new Box(cx, cy, cz, sx, sy, sz, color, cx, cy, cz);
+        static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint) {
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz);
         }
 
         float min(int axis) {
@@ -61,16 +60,10 @@ final class PartMesh implements Disposable {
     private static final int FLOATS_PER_INSTANCE = 16;  // a mat4 (4 vec4 columns)
     private static final float EPS = 1e-4f;
 
-    // Per-face corner UVs in [0,1] (matching the corner order emitted below), authored "seen from outside,
-    // U→right, V→down". Index: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z.
-    private static final float[][] FACE_UV = {
-            {0, 1, 0, 0, 1, 0, 1, 1}, // +X
-            {0, 1, 0, 0, 1, 0, 1, 1}, // -X
-            {0, 1, 1, 1, 1, 0, 0, 0}, // +Y
-            {0, 0, 1, 0, 1, 1, 0, 1}, // -Y
-            {0, 1, 1, 1, 1, 0, 0, 0}, // +Z
-            {0, 1, 1, 1, 1, 0, 0, 0}, // -Z
-    };
+    // The face's 4 emitted corners (a,b,c,d) ARE litFace's (p00,p10,p11,p01), so their UVs are the fixed
+    // (0,0),(1,0),(1,1),(0,1) — identical for every face. This makes the baked sprite line up with the geometry
+    // exactly as PreviewPart's rect did (pixel-exact orientation).
+    private static final float[] CORNER_UV = {0, 0, 1, 0, 1, 1, 0, 1};
 
     private final Mesh mesh;
     private final float[] instanceData;
@@ -145,7 +138,7 @@ final class PartMesh implements Disposable {
     private static void face(FloatArray v, ShortArray idx, int faceId, PartAtlas.Region r,
                              float ax, float ay, float az, float bx, float by, float bz,
                              float cx, float cy, float cz, float dx, float dy, float dz) {
-        float[] uv = FACE_UV[faceId];
+        float[] uv = CORNER_UV; // a,b,c,d == p00,p10,p11,p01 → fixed UVs for every face
         short base = (short) (v.size / FLOATS_PER_VERTEX);
         vertex(v, ax, ay, az, r, uv[0], uv[1]);
         vertex(v, bx, by, bz, r, uv[2], uv[3]);
