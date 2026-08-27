@@ -14,15 +14,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Skeleton demo of the instanced component engine: a grid mixing static capacitors and slide switches, drawn
- * as one instanced call per part-type (all studs across the whole grid = a single call). The switches' knobs
- * slide via each component's {@link AnimationState} — proving the "instance moves on user action" path (here
- * driven by a timer instead of input). Run with {@code ./gradlew :display:enginedemo}.
+ * Demo of the instanced component engine as a <b>colour chart</b>: one column per plastic body colour
+ * ({@link Parts#PLASTIC_HSV}), a capacitor in the front row and a slide switch in the back row. Drawn as one
+ * instanced call per movable part-type (every slider across the chart = a single call); the switches' knobs
+ * slide via each component's {@link AnimationState}. Run with {@code ./gradlew :display:enginedemo}.
  */
 public final class EngineDemoApp extends ApplicationAdapter {
 
-    private static final int GRID = 12;
-    private static final float SPACING = 40f;
+    private static final int COLS = Parts.PLASTIC_HSV.length; // 11 body colours
+    private static final float COL_SP = 40f;                  // X spacing between colours
+    private static final float ROW_SP = 34f;                  // Z spacing between the capacitor and switch rows
 
     private PerspectiveCamera cam;
     private CameraInputController camCtl;
@@ -33,12 +34,12 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
     /** The demo board slab. Shared with {@link SeedPartTextures} so its sprites get generated too. */
     static PartMesh.Box boardBox() {
-        float span = GRID * SPACING;
         // Board backdrop: a flat dark plastic (own shade centre + large radius → near-flat, no runtime light).
         PaletteDither.Paint paint = new PaletteDither.Paint(
                 PaletteDither.ramp(new Color(0.16f, 0.18f, 0.22f, 1f)), Color.WHITE,
                 2, 0.3f, false, 900L, 0f, -1f, 0f, 400f);
-        return PartMesh.Box.local(0f, -1f, 0f, span + 60f, 2f, span + 60f, paint);
+        float w = COLS * COL_SP + 40f, d = ROW_SP + 80f;
+        return PartMesh.Box.local(0f, -1f, 0f, w, 2f, d, paint);
     }
 
     @Override
@@ -46,29 +47,27 @@ public final class EngineDemoApp extends ApplicationAdapter {
         parts = new Parts();
         engine = new EngineRenderer();
 
-        float mid = (GRID - 1) / 2f;
+        float midCol = (COLS - 1) / 2f;
         Matrix4 world = new Matrix4();
-        for (int i = 0; i < GRID; i++) {
-            for (int j = 0; j < GRID; j++) {
-                world.setToTranslation((i - mid) * SPACING, 0f, (j - mid) * SPACING);
-                if (j % 2 == 0) {
-                    engine.add(new ComponentInstance(parts.capacitor, world));
-                } else {
-                    ComponentInstance sw = new ComponentInstance(parts.slideSwitch, world);
-                    sw.anim.channel("slide", 0f, 1f, 6f); // slider slides ±1 in the 4-wide well, eases at 6 units/s
-                    switches.add(sw);
-                    engine.add(sw);
-                }
-            }
+        for (int c = 0; c < COLS; c++) {
+            float x = (c - midCol) * COL_SP;
+            world.setToTranslation(x, 0f, -ROW_SP / 2f); // front row: capacitor
+            engine.add(new ComponentInstance(parts.capacitors[c], world));
+
+            world.setToTranslation(x, 0f, ROW_SP / 2f);  // back row: slide switch
+            ComponentInstance sw = new ComponentInstance(parts.switches[c], world);
+            sw.anim.channel("slide", 0f, 1f, 6f); // slider slides ±1 in the 4-wide well, eases at 6 units/s
+            switches.add(sw);
+            engine.add(sw);
         }
 
-        // A board slab under the grid: every component's bottom face is now neighbour-culled against its top.
+        // A board slab under the chart: every component's bottom face is neighbour-culled against its top.
         engine.addStatic(List.of(boardBox()));
         engine.build(); // stitch the atlas + bake the neighbour-culled static scene mesh (rebuild on a board edit)
 
-        float reach = mid * SPACING;
+        float reach = COLS * COL_SP / 2f;
         cam = new PerspectiveCamera(55f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        cam.position.set(reach * 0.8f, reach * 1.1f, reach * 1.5f);
+        cam.position.set(0f, reach * 0.85f, reach * 1.15f);
         cam.near = 1f;
         cam.far = 6000f;
         cam.lookAt(0f, 0f, 0f);
