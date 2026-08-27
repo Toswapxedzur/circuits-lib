@@ -14,13 +14,14 @@ import com.badlogic.gdx.utils.ShortArray;
 import java.util.List;
 
 /**
- * The base mesh for one part-type: a set of axis-aligned coloured boxes baked into one vertex-coloured
- * {@link Mesh} with GPU instancing enabled. Two face-savings are applied at bake time:
+ * The base mesh for one part-type: a set of axis-aligned coloured boxes baked into one {@link Mesh} with GPU
+ * instancing enabled. Each face samples its own atlas sprite (per-face art, Minecraft-style); the atlas UVs
+ * are <b>baked into the vertices at build time</b> (a face maps its sprite region 0..1), so the shader is a
+ * pure texture sampler — no runtime lighting or dither. Two face-savings at bake time:
  * <ul>
- *   <li><b>Occlusion cull</b> — a face fully covered by an adjacent solid box in the same part is dropped
- *       (stud bottoms, the band's top/bottom between the rims, the well floor under the fence, …).</li>
+ *   <li><b>Occlusion cull</b> — a face fully covered by an adjacent solid box in the same part is dropped.</li>
  *   <li><b>Back-face cull</b> — faces wind CCW-from-outside, so {@code GL_BACK} keeps only the outer face at
- *       any shared plane (no z-fighting, no fractional-overlap fudge).</li>
+ *       any shared plane (winding-based, so no per-vertex normal is needed).</li>
  * </ul>
  * Every frame the renderer pushes all live instance transforms and issues ONE instanced draw call.
  */
@@ -45,9 +46,20 @@ final class PartMesh implements Disposable {
         }
     }
 
-    private static final int FLOATS_PER_VERTEX = 3 + 3 + 4 + 2; // position, normal, colour, uv
-    private static final int FLOATS_PER_INSTANCE = 16;      // a mat4 (4 vec4 columns)
+    private static final int FLOATS_PER_VERTEX = 3 + 2; // position, atlas uv
+    private static final int FLOATS_PER_INSTANCE = 16;  // a mat4 (4 vec4 columns)
     private static final float EPS = 1e-4f;
+
+    // Per-face corner UVs in [0,1] (matching the corner order emitted below), authored "seen from outside,
+    // U→right, V→down". Index: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z.
+    private static final float[][] FACE_UV = {
+            {0, 1, 0, 0, 1, 0, 1, 1}, // +X
+            {0, 1, 0, 0, 1, 0, 1, 1}, // -X
+            {0, 1, 1, 1, 1, 0, 0, 0}, // +Y
+            {0, 0, 1, 0, 1, 1, 0, 1}, // -Y
+            {0, 1, 1, 1, 1, 0, 0, 0}, // +Z
+            {0, 1, 1, 1, 1, 0, 0, 0}, // -Z
+    };
 
     private final Mesh mesh;
     private final float[] instanceData;
@@ -58,32 +70,38 @@ final class PartMesh implements Disposable {
         this.instanceData = new float[maxInstances * FLOATS_PER_INSTANCE];
     }
 
-    static PartMesh of(List<Box> boxes, int maxInstances) {
+    static PartMesh of(List<Box> boxes, int maxInstances, PartAtlas atlas) {
         FloatArray v = new FloatArray();
         ShortArray idx = new ShortArray();
         for (Box b : boxes) {
             float x0 = b.min(0), x1 = b.max(0), y0 = b.min(1), y1 = b.max(1), z0 = b.min(2), z1 = b.max(2);
+            int sx = Math.round(b.sx()), sy = Math.round(b.sy()), sz = Math.round(b.sz());
             Color c = b.color();
             // Emit a face only if it is NOT fully covered by an adjacent box (occlusion). Corners are ordered
-            // CCW-from-outside (the ±X pair differs from ±Y/±Z — the shared source wound ±X inward).
+            // CCW-from-outside (the ±X pair differs from ±Y/±Z — the shared source wound ±X inward). Each face
+            // looks up its sprite (colour + in-plane size) and bakes that atlas region's UVs.
             if (!covered(boxes, b, 0, x1, true, y0, y1, z0, z1))
-                face(v, idx, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, 1, 0, 0, c);   // +X
+                face(v, idx, 0, atlas.region(PaletteDither.faceSprite(c, sz, sy)),
+                        x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);   // +X
             if (!covered(boxes, b, 0, x0, false, y0, y1, z0, z1))
-                face(v, idx, x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0, -1, 0, 0, c);  // -X
+                face(v, idx, 1, atlas.region(PaletteDither.faceSprite(c, sz, sy)),
+                        x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0);   // -X
             if (!covered(boxes, b, 1, y1, true, x0, x1, z0, z1))
-                face(v, idx, x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0, 0, 1, 0, c);   // +Y
+                face(v, idx, 2, atlas.region(PaletteDither.faceSprite(c, sx, sz)),
+                        x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);   // +Y
             if (!covered(boxes, b, 1, y0, false, x0, x1, z0, z1))
-                face(v, idx, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, 0, -1, 0, c);  // -Y
+                face(v, idx, 3, atlas.region(PaletteDither.faceSprite(c, sx, sz)),
+                        x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);   // -Y
             if (!covered(boxes, b, 2, z1, true, x0, x1, y0, y1))
-                face(v, idx, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, 0, 0, 1, c);   // +Z
+                face(v, idx, 4, atlas.region(PaletteDither.faceSprite(c, sx, sy)),
+                        x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);   // +Z
             if (!covered(boxes, b, 2, z0, false, x0, x1, y0, y1))
-                face(v, idx, x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0, 0, 0, -1, c);  // -Z
+                face(v, idx, 5, atlas.region(PaletteDither.faceSprite(c, sx, sy)),
+                        x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);   // -Z
         }
 
         Mesh mesh = new Mesh(true, v.size / FLOATS_PER_VERTEX, idx.size,
                 new VertexAttribute(Usage.Position, 3, "a_position"),
-                new VertexAttribute(Usage.Normal, 3, "a_normal"),
-                new VertexAttribute(Usage.ColorUnpacked, 4, "a_color"),
                 new VertexAttribute(Usage.TextureCoordinates, 2, "a_uv"));
         mesh.setVertices(v.items, 0, v.size);
         mesh.setIndices(idx.items, 0, idx.size);
@@ -115,28 +133,24 @@ final class PartMesh implements Disposable {
         return false;
     }
 
-    private static void face(FloatArray v, ShortArray idx,
+    private static void face(FloatArray v, ShortArray idx, int faceId, PartAtlas.Region r,
                              float ax, float ay, float az, float bx, float by, float bz,
-                             float cx, float cy, float cz, float dx, float dy, float dz,
-                             float nx, float ny, float nz, Color col) {
+                             float cx, float cy, float cz, float dx, float dy, float dz) {
+        float[] uv = FACE_UV[faceId];
         short base = (short) (v.size / FLOATS_PER_VERTEX);
-        vertex(v, ax, ay, az, nx, ny, nz, col);
-        vertex(v, bx, by, bz, nx, ny, nz, col);
-        vertex(v, cx, cy, cz, nx, ny, nz, col);
-        vertex(v, dx, dy, dz, nx, ny, nz, col);
+        vertex(v, ax, ay, az, r, uv[0], uv[1]);
+        vertex(v, bx, by, bz, r, uv[2], uv[3]);
+        vertex(v, cx, cy, cz, r, uv[4], uv[5]);
+        vertex(v, dx, dy, dz, r, uv[6], uv[7]);
         idx.add(base); idx.add((short) (base + 1)); idx.add((short) (base + 2));
         idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 3));
     }
 
-    private static void vertex(FloatArray v, float x, float y, float z, float nx, float ny, float nz, Color c) {
+    /** Appends one vertex; maps the corner's face UV (0..1) into the sprite's atlas region. */
+    private static void vertex(FloatArray v, float x, float y, float z, PartAtlas.Region r, float u, float w) {
         v.add(x); v.add(y); v.add(z);
-        v.add(nx); v.add(ny); v.add(nz);
-        v.add(c.r); v.add(c.g); v.add(c.b); v.add(c.a);
-        // UV = the two in-plane coords (the axis the face normal lies on drops out), so the shared dither tiles
-        // at 1 texel = 1 unit and stays aligned across boxes that share a plane. Wrap = Repeat.
-        if (nx != 0f) { v.add(z); v.add(y); }
-        else if (ny != 0f) { v.add(x); v.add(z); }
-        else { v.add(x); v.add(y); }
+        v.add(r.u0() + u * (r.u1() - r.u0()));
+        v.add(r.v0() + w * (r.v1() - r.v0()));
     }
 
     void begin() {

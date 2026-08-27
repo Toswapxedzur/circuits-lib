@@ -4,11 +4,11 @@ import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.graphics.g3d.utils.CameraInputController;
 import com.badlogic.gdx.math.Matrix4;
-import com.badlogic.gdx.math.Vector3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,12 +29,17 @@ public final class EngineDemoApp extends ApplicationAdapter {
     private Parts parts;
     private EngineRenderer engine;
     private final List<ComponentInstance> switches = new ArrayList<>();
-    private final Vector3 lightDir = new Vector3(0.5f, -0.7f, -0.4f).nor();
     private float clock;
+
+    /** The demo board slab. Shared with {@link SeedPartTextures} so its sprites get generated too. */
+    static PartMesh.Box boardBox() {
+        float span = GRID * SPACING;
+        return new PartMesh.Box(0f, -1f, 0f, span + 60f, 2f, span + 60f, new Color(0.16f, 0.18f, 0.22f, 1f));
+    }
 
     @Override
     public void create() {
-        parts = new Parts(8192);
+        parts = new Parts();
         engine = new EngineRenderer();
 
         float mid = (GRID - 1) / 2f;
@@ -54,10 +59,8 @@ public final class EngineDemoApp extends ApplicationAdapter {
         }
 
         // A board slab under the grid: every component's bottom face is now neighbour-culled against its top.
-        float span = GRID * SPACING;
-        engine.addStatic(List.of(new PartMesh.Box(0f, -1f, 0f, span + 60f, 2f, span + 60f,
-                new com.badlogic.gdx.graphics.Color(0.16f, 0.18f, 0.22f, 1f))));
-        engine.build(); // bake the neighbour-culled static scene mesh (rebuild only on a board edit)
+        engine.addStatic(List.of(boardBox()));
+        engine.build(); // stitch the atlas + bake the neighbour-culled static scene mesh (rebuild on a board edit)
 
         float reach = mid * SPACING;
         cam = new PerspectiveCamera(55f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
@@ -85,7 +88,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
         Gdx.gl.glClearColor(0.11f, 0.12f, 0.15f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
-        engine.render(cam, lightDir);
+        engine.render(cam);
     }
 
     @Override
@@ -98,7 +101,6 @@ public final class EngineDemoApp extends ApplicationAdapter {
     @Override
     public void dispose() {
         engine.dispose();
-        parts.dispose();
     }
 
     public static void main(String[] args) {

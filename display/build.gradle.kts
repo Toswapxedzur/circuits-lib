@@ -20,6 +20,19 @@ tasks.register<JavaExec>("preview") {
     }
 }
 
+// One-time: draw the part sprites to fixed PNGs under src/main/resources/textures/parts.
+// ./gradlew :display:seedtextures   (then commit the generated PNGs)
+tasks.register<JavaExec>("seedtextures") {
+    group = "application"
+    description = "Generate the fixed part-sprite PNGs for the atlas"
+    mainClass = "com.minecart.display.render.engine.SeedPartTextures"
+    classpath = sourceSets["main"].runtimeClasspath
+    workingDir = projectDir // so src/main/resources/... resolves to this module
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 // GPU-instanced component renderer engine demo: ./gradlew :display:enginedemo
 tasks.register<JavaExec>("enginedemo") {
     group = "application"
