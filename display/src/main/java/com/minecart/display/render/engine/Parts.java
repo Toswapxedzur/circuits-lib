@@ -1,18 +1,17 @@
 package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.utils.Disposable;
 
 import java.util.List;
 
 /**
- * The part + component library. Static geometry is declared as boxes on the {@link ComponentModel} (merged
- * into the scene mesh with neighbour culling); the switch's slider is the only movable part-type (instanced).
- * Geometry matches the pixel-perfect {@code PreviewPart} parts exactly, but the z-fighting fixes it needed
- * (fractional-{@code E} overlaps) are gone — occlusion drops internal faces, back-face culling handles seams.
- * Colours are flat palette base shades for now (per-face litFace dither needs a texture atlas — later).
+ * The part + component library, as pure data (no GL). Static geometry is declared as boxes on the
+ * {@link ComponentModel} (merged into the scene mesh with neighbour culling); the switch's slider is the only
+ * movable part-type (instanced by the renderer). Geometry matches the pixel-perfect {@code PreviewPart} parts
+ * exactly, but the z-fighting fixes it needed (fractional-{@code E} overlaps) are gone — occlusion drops
+ * internal faces, back-face culling handles seams. Each box colour + face size selects a fixed atlas sprite.
  */
-final class Parts implements Disposable {
+final class Parts {
 
     private static final Color LIME = new Color(0.55f, 0.82f, 0.16f, 1f);
     private static final Color WHITE = new Color(0.85f, 0.86f, 0.83f, 1f);
@@ -26,9 +25,9 @@ final class Parts implements Disposable {
     final ComponentModel capacitor;
     final ComponentModel slideSwitch;
 
-    Parts(int maxSliderInstances) {
-        slider = new PartType("slider", PartMesh.of(List.of(
-                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, BLACK)), maxSliderInstances));
+    Parts() {
+        slider = new PartType("slider", List.of(
+                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, BLACK)));
 
         // Capacitor: green rims [0,1] & [3,4], white band [1,3], two steel studs — all static.
         capacitor = ComponentModel.of("capacitor")
@@ -58,10 +57,5 @@ final class Parts implements Disposable {
                 .box(8f, 4.5f, 0f, 3f, 1f, 3f, STEEL)
                 .movable(slider, OX, 5f, OZ, MovableBinding.translate("slide", 1f, 0f, 0f))
                 .build();
-    }
-
-    @Override
-    public void dispose() {
-        slider.dispose();
     }
 }

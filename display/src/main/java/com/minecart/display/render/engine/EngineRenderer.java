@@ -3,16 +3,16 @@ package com.minecart.display.render.engine;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
-import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The scene: the Create-style split of static vs. moving geometry.
@@ -20,20 +20,22 @@ import java.util.Map;
  *   <li><b>Static</b> — every component's static boxes (+ the board) are merged into ONE neighbour-culled
  *       {@link PartMesh} ({@link #build}), so faces hidden by the board or an adjacent component are dropped.
  *       Drawn once (identity transform); rebuilt only on a board edit. Not instanced.</li>
- *   <li><b>Movable</b> — movable part-types are GPU-instanced: one draw call per type, transforms updated per
- *       frame from each component's animation.</li>
+ *   <li><b>Movable</b> — movable part-types are GPU-instanced: one {@link PartMesh} + draw call per type,
+ *       transforms updated per frame from each component's animation.</li>
  * </ul>
- * Back-face culling is on (winding CCW-from-outside).
+ * All faces sample one {@link PartAtlas} (built in {@link #build}, once every box — hence every sprite — is
+ * known). Back-face culling is on (winding CCW-from-outside).
  */
 final class EngineRenderer implements Disposable {
 
     private final ShaderProgram shader = InstancedShader.create();
-    private final Texture dither = EngineTextures.dither(); // one shared tiling grain tile for every face
     private final Matrix4 identity = new Matrix4();
 
     private final List<ComponentInstance> components = new ArrayList<>();
     private final List<PartMesh.Box> extraStatic = new ArrayList<>();
     private final Map<PartType, List<ComponentInstance.PartInstance>> movableBuckets = new LinkedHashMap<>();
+    private final Map<PartType, PartMesh> movableMeshes = new LinkedHashMap<>();
+    private PartAtlas atlas;
     private PartMesh staticMesh;
 
     /** Places a component: its static boxes join the scene mesh (on {@link #build}); its movables are instanced. */
@@ -49,16 +51,34 @@ final class EngineRenderer implements Disposable {
         extraStatic.addAll(worldBoxes);
     }
 
-    /** Bakes the static scene mesh with neighbour face-culling. Call after all {@link #add}s / on board edit. */
+    /**
+     * Bakes the atlas and every mesh. Order matters: collect all boxes → stitch the atlas from their sprites →
+     * bake the static scene mesh (neighbour-culled) and one instanced mesh per movable type. Call after all
+     * {@link #add}s / on a board edit.
+     */
     void build() {
-        if (staticMesh != null) {
-            staticMesh.dispose();
-        }
+        disposeMeshes();
+
         List<PartMesh.Box> all = new ArrayList<>(extraStatic);
         for (ComponentInstance c : components) {
             c.collectStatic(all);
         }
-        staticMesh = PartMesh.of(all, 1);
+
+        // Every sprite any face can request: static boxes + every movable part-type's local boxes.
+        Set<PaletteDither.Spec> specs = new LinkedHashSet<>(PaletteDither.specs(all));
+        for (PartType type : movableBuckets.keySet()) {
+            specs.addAll(PaletteDither.specs(type.boxes()));
+        }
+        Set<String> names = new LinkedHashSet<>();
+        for (PaletteDither.Spec s : specs) {
+            names.add(PaletteDither.name(s));
+        }
+        atlas = new PartAtlas(names);
+
+        staticMesh = PartMesh.of(all, 1, atlas);
+        for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
+            movableMeshes.put(e.getKey(), PartMesh.of(e.getKey().boxes(), Math.max(1, e.getValue().size()), atlas));
+        }
     }
 
     /** Eases every component's animation and recomputes its movable parts' world matrices. */
@@ -68,16 +88,15 @@ final class EngineRenderer implements Disposable {
         }
     }
 
-    void render(Camera cam, Vector3 lightDir) {
+    void render(Camera cam) {
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
         Gdx.gl.glCullFace(GL20.GL_BACK);
 
         shader.bind();
         shader.setUniformMatrix("u_projView", cam.combined);
-        shader.setUniformf("u_lightDir", lightDir);
-        dither.bind(0);
-        shader.setUniformi("u_dither", 0);
+        atlas.texture().bind(0);
+        shader.setUniformi("u_atlas", 0);
 
         if (staticMesh != null) {
             staticMesh.begin();
@@ -85,7 +104,7 @@ final class EngineRenderer implements Disposable {
             staticMesh.render(shader);
         }
         for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
-            PartMesh mesh = e.getKey().mesh;
+            PartMesh mesh = movableMeshes.get(e.getKey());
             mesh.begin();
             for (ComponentInstance.PartInstance p : e.getValue()) {
                 mesh.add(p.world);
@@ -94,13 +113,24 @@ final class EngineRenderer implements Disposable {
         }
     }
 
+    private void disposeMeshes() {
+        if (staticMesh != null) {
+            staticMesh.dispose();
+            staticMesh = null;
+        }
+        for (PartMesh m : movableMeshes.values()) {
+            m.dispose();
+        }
+        movableMeshes.clear();
+        if (atlas != null) {
+            atlas.dispose();
+            atlas = null;
+        }
+    }
+
     @Override
     public void dispose() {
         shader.dispose();
-        dither.dispose();
-        if (staticMesh != null) {
-            staticMesh.dispose();
-        }
-        // movable PartType meshes are owned by whoever built them (e.g. Parts).
+        disposeMeshes();
     }
 }
