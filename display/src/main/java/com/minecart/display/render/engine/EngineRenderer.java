@@ -3,6 +3,7 @@ package com.minecart.display.render.engine;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
@@ -27,6 +28,7 @@ import java.util.Map;
 final class EngineRenderer implements Disposable {
 
     private final ShaderProgram shader = InstancedShader.create();
+    private final Texture dither = EngineTextures.dither(); // one shared tiling grain tile for every face
     private final Matrix4 identity = new Matrix4();
 
     private final List<ComponentInstance> components = new ArrayList<>();
@@ -74,6 +76,8 @@ final class EngineRenderer implements Disposable {
         shader.bind();
         shader.setUniformMatrix("u_projView", cam.combined);
         shader.setUniformf("u_lightDir", lightDir);
+        dither.bind(0);
+        shader.setUniformi("u_dither", 0);
 
         if (staticMesh != null) {
             staticMesh.begin();
@@ -93,6 +97,7 @@ final class EngineRenderer implements Disposable {
     @Override
     public void dispose() {
         shader.dispose();
+        dither.dispose();
         if (staticMesh != null) {
             staticMesh.dispose();
         }

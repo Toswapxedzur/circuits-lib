@@ -45,7 +45,7 @@ final class PartMesh implements Disposable {
         }
     }
 
-    private static final int FLOATS_PER_VERTEX = 3 + 3 + 4; // position, normal, colour
+    private static final int FLOATS_PER_VERTEX = 3 + 3 + 4 + 2; // position, normal, colour, uv
     private static final int FLOATS_PER_INSTANCE = 16;      // a mat4 (4 vec4 columns)
     private static final float EPS = 1e-4f;
 
@@ -83,7 +83,8 @@ final class PartMesh implements Disposable {
         Mesh mesh = new Mesh(true, v.size / FLOATS_PER_VERTEX, idx.size,
                 new VertexAttribute(Usage.Position, 3, "a_position"),
                 new VertexAttribute(Usage.Normal, 3, "a_normal"),
-                new VertexAttribute(Usage.ColorUnpacked, 4, "a_color"));
+                new VertexAttribute(Usage.ColorUnpacked, 4, "a_color"),
+                new VertexAttribute(Usage.TextureCoordinates, 2, "a_uv"));
         mesh.setVertices(v.items, 0, v.size);
         mesh.setIndices(idx.items, 0, idx.size);
         mesh.enableInstancedRendering(false, maxInstances,
@@ -131,6 +132,11 @@ final class PartMesh implements Disposable {
         v.add(x); v.add(y); v.add(z);
         v.add(nx); v.add(ny); v.add(nz);
         v.add(c.r); v.add(c.g); v.add(c.b); v.add(c.a);
+        // UV = the two in-plane coords (the axis the face normal lies on drops out), so the shared dither tiles
+        // at 1 texel = 1 unit and stays aligned across boxes that share a plane. Wrap = Repeat.
+        if (nx != 0f) { v.add(z); v.add(y); }
+        else if (ny != 0f) { v.add(x); v.add(z); }
+        else { v.add(x); v.add(y); }
     }
 
     void begin() {
