@@ -74,11 +74,10 @@ final class Parts {
     Parts() {
         slider = new PartType("slider", List.of(
                 new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f)));
-        // Press button: a 3×4 plunger (width 3, depth 4), height 3, resting with its top 3px above the body top
-        // (y4 → 7). Shaded at that rest pose. Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px
-        // above (y5). Width 3 in the 4-wide well → centred with a 0.5 margin left/right.
+        // Press button: a 3×3 plunger, height 3, centred on the body, resting with its top 3px above the body
+        // top (y4 → 7). Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
         button = new PartType("button", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 4f, knob(360L), OX, 5.5f, OZ)));
+                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f)));
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
             Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
             capacitors[c] = buildCapacitor(pal);
@@ -120,27 +119,28 @@ final class Parts {
     }
 
     /**
-     * Press switch: same body/band/studs as the slide switch, but with a square <b>6×6 hole</b> ringed by a
-     * <b>4×4 steel fence</b> (well interior 4×4) and a black well floor, plus a 4×4 press button (movable) that
-     * plunges straight down. The button's {@code press} channel 0→1 drops it 2 in Y (top 3px→1px above the body).
+     * Press switch: same body/band/studs as the slide switch, but the mechanism is <b>centred on the body</b>
+     * (not the +0.5 slide offset): a square <b>5×5 hole</b> ringed by a 1px steel fence (well interior 3×3) and
+     * a black well floor, plus a <b>3×3 press button</b> (movable) that plunges straight down. Odd widths (5,3)
+     * keep every edge on the odd 25×9 body's texel grid. The button's {@code press} 0→1 drops it 2 in Y.
      */
     private ComponentModel buildPressSwitch(Color[] pal) {
-        float hx0 = OX - 3f, hx1 = OX + 3f, hz0 = OZ - 3f, hz1 = OZ + 3f; // 6×6 hole (x/z -2.5..3.5)
+        float hx0 = -2.5f, hx1 = 2.5f, hz0 = -2.5f, hz1 = 2.5f; // 5×5 hole, centred on the body (0,0)
         return ComponentModel.of("press_switch")
                 .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))                    // green y0..1
                 .box(0f, 2f, 0f, 25f, 2f, 9f, band(102L))                              // white band y1..3
-                .box((-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic(121L, pal)) // top green: left
-                .box((hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic(122L, pal))  // right
-                .box(OX, 3.5f, (-4.5f + hz0) / 2f, 6f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip
-                .box(OX, 3.5f, (hz1 + 4.5f) / 2f, 6f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip
-                .box(hx0 + 0.5f, 4f, OZ, 1f, 2f, 6f, fence(210L))                      // fence left (y3..5)
-                .box(hx1 - 0.5f, 4f, OZ, 1f, 2f, 6f, fence(220L))                      // fence right
-                .box(OX, 4f, hz0 + 0.5f, 6f, 2f, 1f, fence(230L))                      // fence front
-                .box(OX, 4f, hz1 - 0.5f, 6f, 2f, 1f, fence(240L))                      // fence back
-                .box(OX, 3.5f, OZ, 4f, 1f, 4f, knob(250L))                             // black well floor y3..4
+                .box((-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic(121L, pal)) // top green: left w10
+                .box((hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic(122L, pal))  // right w10
+                .box(0f, 3.5f, (-4.5f + hz0) / 2f, 5f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip d2
+                .box(0f, 3.5f, (hz1 + 4.5f) / 2f, 5f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip d2
+                .box(hx0 + 0.5f, 4f, 0f, 1f, 2f, 5f, fence(210L))                      // fence left (y3..5)
+                .box(hx1 - 0.5f, 4f, 0f, 1f, 2f, 5f, fence(220L))                      // fence right
+                .box(0f, 4f, hz0 + 0.5f, 5f, 2f, 1f, fence(230L))                      // fence front
+                .box(0f, 4f, hz1 - 0.5f, 5f, 2f, 1f, fence(240L))                      // fence back
+                .box(0f, 3.5f, 0f, 3f, 1f, 3f, knob(250L))                             // black well floor 3×3
                 .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))             // stud
                 .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
-                .movable(button, OX, 5.5f, OZ, MovableBinding.translate("press", 0f, -2f, 0f))
+                .movable(button, 0f, 5.5f, 0f, MovableBinding.translate("press", 0f, -2f, 0f))
                 .build();
     }
 }
