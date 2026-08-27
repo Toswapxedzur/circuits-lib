@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * Instanced component engine demo. Everything is listed <b>once, in order</b> along a single row: the capacitor
- * in each of the 11 plastic colours (red→pink), then a green slide switch, then a green press switch. Inspect
+ * in each of the 11 plastic colours (red→pink), then a green slide switch, press switch, resistor, and LED. Inspect
  * freely with a fly camera — <b>WASD</b> to move, <b>Space</b>/<b>Shift</b> up/down, drag to look, scroll for
  * speed. The switch/press buttons animate on a timer. Run with {@code ./gradlew :display:enginedemo}.
  */
@@ -22,7 +22,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
     private static final int GREEN = 3;      // lime — the switches' colour
     private static final float SPACING = 34f; // X spacing between listed parts
-    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 2; // 11 colours + 3 sizes + slide + press
+    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 4; // 11 colours + 3 sizes + slide + press + resistor + led
 
     private PerspectiveCamera cam;
     private FlyController fly;
@@ -62,21 +62,25 @@ public final class EngineDemoApp extends ApplicationAdapter {
         sw.anim.channel("slide", 0f, 1f, 6f);
         switches.add(sw);
         engine.add(sw);
-        world.setToTranslation((i - mid) * SPACING, 0f, 0f);              // green press switch
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);            // green press switch
         ComponentInstance ps = new ComponentInstance(parts.pressSwitches[GREEN], world);
         ps.anim.channel("press", 0f, 1f, 9f);
         pressers.add(ps);
         engine.add(ps);
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);            // green resistor
+        engine.add(new ComponentInstance(parts.resistors[GREEN], world));
+        world.setToTranslation((i - mid) * SPACING, 0f, 0f);             // green LED
+        engine.add(new ComponentInstance(parts.leds[GREEN], world));
 
         engine.addStatic(List.of(boardBox()));
         engine.build();
 
         float reach = COUNT * SPACING / 2f;
         cam = new PerspectiveCamera(60f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        cam.position.set(0f, reach * 0.5f, reach * 0.8f);
+        cam.position.set(0f, reach * 0.62f, reach * 0.95f); // overview; fly (WASD/Space/Shift/drag) to inspect
         cam.near = 0.5f;
         cam.far = 8000f;
-        cam.lookAt(0f, 3f, 0f);
+        cam.lookAt(0f, 4f, 0f);
         cam.up.set(0f, 1f, 0f);
         cam.update();
         fly = new FlyController(cam, reach * 0.9f);

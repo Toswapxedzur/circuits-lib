@@ -34,6 +34,8 @@ public final class SeedPartTextures extends ApplicationAdapter {
         for (ComponentModel cap : parts.capacitorSizes) boxes.addAll(cap.staticBoxes); // the 3 sizes
         for (ComponentModel sw : parts.switches) boxes.addAll(sw.staticBoxes);
         for (ComponentModel ps : parts.pressSwitches) boxes.addAll(ps.staticBoxes);
+        for (ComponentModel r : parts.resistors) boxes.addAll(r.staticBoxes);
+        for (ComponentModel l : parts.leds) boxes.addAll(l.staticBoxes);
         boxes.addAll(parts.slider.boxes());
         boxes.addAll(parts.button.boxes());
         boxes.add(EngineDemoApp.boardBox());

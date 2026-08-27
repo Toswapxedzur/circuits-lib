@@ -42,6 +42,11 @@ final class Parts {
     private static final Color[] KNOB = PaletteDither.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black
     private static final Color[] CAP_BODY = PaletteDither.ramp(new Color(0.07f, 0.07f, 0.08f, 1f)); // black cap body
     private static final Color[] CAP_BASE = PaletteDither.rampHsv(160f, 0.92f, 0.80f); // teal snap base plastic
+    private static final Color[] RES_BODY = PaletteDither.ramp(new Color(0.82f, 0.68f, 0.45f, 1f)); // tan resistor body
+    private static final Color[] RES_B1 = PaletteDither.ramp(new Color(0.35f, 0.20f, 0.10f, 1f));   // band: brown
+    private static final Color[] RES_B2 = PaletteDither.ramp(new Color(0.72f, 0.10f, 0.10f, 1f));   // band: red
+    private static final Color[] RES_B3 = PaletteDither.ramp(new Color(0.82f, 0.62f, 0.18f, 1f));   // band: gold
+    private static final Color[] LED_RED = PaletteDither.rampHsv(2f, 0.85f, 0.98f);  // bright red LED bulb
     private static final Color BAND_WHITE = new Color(0.97f, 0.97f, 0.96f, 1f);     // band diffuse tint
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
@@ -55,6 +60,8 @@ final class Parts {
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
+    final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
+    final ComponentModel[] leds = new ComponentModel[PLASTIC_HSV.length];
 
     // Paint factories — plastic is per-colour; the rest are shared across colours.
     private static PaletteDither.Paint plastic(long seed, Color[] pal) {
@@ -94,7 +101,44 @@ final class Parts {
             capacitors[c] = buildCapacitor(pal, 7f, 9f, 2f, 700L);
             switches[c] = buildSwitch(pal);
             pressSwitches[c] = buildPressSwitch(pal);
+            resistors[c] = buildResistor(pal);
+            leds[c] = buildLed(pal);
         }
+    }
+
+    /** The standard part base every component shares: coloured rim + white band + rim + two snap studs at ±8. */
+    private ComponentModel.Builder base(String id, Color[] pal) {
+        return ComponentModel.of(id)
+                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))        // coloured rim y0..1
+                .box(0f, 3.5f, 0f, 25f, 1f, 9f, plastic(202L, pal))        // coloured rim y3..4
+                .box(0f, 2f, 0f, 25f, 2f, 9f, band(303L))                  // white band y1..3
+                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f)) // snap studs at ±8
+                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f));
+    }
+
+    /**
+     * Resistor: the standard base + a horizontal tan body (11×3×3) laid across it, banded with three colour
+     * codes. The body is built as 4 tan segments + 3 colour bands (all 3×3, abutting) so no faces overlap —
+     * neighbour culling drops the seams. Body + bands are colour-independent → they dedupe across every base hue.
+     */
+    private ComponentModel buildResistor(Color[] pal) {
+        return base("resistor", pal)
+                .box(-4.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY)) // tan   x -5.5..-3.5
+                .box(-3f, 5.5f, 0f, 1f, 3f, 3f, plastic(902L, RES_B1))     // brown x -3.5..-2.5
+                .box(-1.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY)) // tan   x -2.5..-0.5
+                .box(0f, 5.5f, 0f, 1f, 3f, 3f, plastic(903L, RES_B2))      // red   x -0.5..0.5
+                .box(1.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY))  // tan   x 0.5..2.5
+                .box(3f, 5.5f, 0f, 1f, 3f, 3f, plastic(904L, RES_B3))      // gold  x 2.5..3.5
+                .box(4.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY))  // tan   x 3.5..5.5
+                .build();
+    }
+
+    /** LED: the standard base + a bright-red bulb — a 3×3×4 body with a 1×1 tip — centred on the board. */
+    private ComponentModel buildLed(Color[] pal) {
+        return base("led", pal)
+                .box(0f, 6f, 0f, 3f, 4f, 3f, plastic(911L, LED_RED))   // red bulb body y4..8
+                .box(0f, 8.5f, 0f, 1f, 1f, 1f, plastic(912L, LED_RED)) // tip y8..9
+                .build();
     }
 
     /**
