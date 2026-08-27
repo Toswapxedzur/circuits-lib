@@ -101,7 +101,8 @@ final class Parts {
      * inward), 3 apart. Base 25×9×2, like every other part in the series.
      */
     private ComponentModel buildCapacitor(float w, float h, float legH, long seed) {
-        float baseH = 2f;                      // teal snap base occupies y0..2 (sits on the board)
+        float baseH = 4f;                      // teal snap base y0..4 — same height as every other part, so all
+                                               // the snap studs sit at the SAME grid height (y4.5) across the kit
         float cy = baseH + legH + h / 2f;      // body centre Y (legs bridge base-top → body-bottom)
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
