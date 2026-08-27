@@ -96,32 +96,28 @@ final class PreviewPart implements Disposable {
         float studCY = topY + studH / 2f;
 
         if (type == PartType.SWITCH) {
-            // Snap-circuit slide switch. Body keeps the full white band (all below the shallow well). The centre
-            // top is a 1px-deep well whose SIDES are steel (a metal fence, 1px proud of the top) and whose FLOOR
-            // is a flat 4x2 black plate; a 2x2 black stem rises from it (poking 1px above the fence), pushed to
-            // one end. Every junction interpenetrates by E so no faces are coplanar -> no z-fighting.
-            float E = 0.15f;
-            float ground = topY;          // 4
-            float floorY = 3f;            // well floor, 1px below the top
-            float fenceTop = topY + 1f;   // 5, fence 1px proud
+            // PIXEL-PERFECT slide switch. All box dims are INTEGER (1 texel = 1 unit). The whole mechanism is
+            // offset +0.5 in X and Z so its edges land on the odd 25x9 body's half-integer texel grid (aligned).
+            // Back-face culling (box()) drops coincident back-to-back faces, so pieces tile EXACTLY with no
+            // z-fighting and no fractional fudge. Fence 6x4 ("4 by 6"), well interior 4x2, 1px walls, 1px proud.
+            float ox = 0.5f, oz = 0.5f;
+            float hx0 = ox - 3f, hx1 = ox + 3f, hz0 = oz - 2f, hz1 = oz + 2f;   // 6x4 hole edges: -2.5,3.5 / -1.5,2.5
             Color[] knob = PreviewTextures.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black slider
-
             box(mb, 0f, 0.5f, 0f, length, 1f, body, plastic, Color.WHITE, false, 2, 0.3f, false, 101L, SHADE_CENTER, shadeRadius);   // green y0..1
-            box(mb, 0f, 2.0f, 0f, length, 2f, body, bandGray, BAND_WHITE, false, 1, 0.3f, false, 102L, SHADE_CENTER, shadeRadius);   // white band y1..3 (full)
-            layerWithHole(mb, 3.5f, 1f, plastic, Color.WHITE, 120L, length, body, 3f, 2f);   // green y3..4 with a 6x4 hole for the fence
-
-            // Steel fence = the well's metal side walls: 1px thick ring, inner faces at ±2 / ±1 (well interior
-            // 4x2), extended outward into the green and down into the band so nothing is coplanar.
-            float wCy = (floorY - E + fenceTop) / 2f, wH = fenceTop - (floorY - E);
-            box(mb, -(2f + (3f + E)) / 2f, wCy, 0f, (1f + E), wH, (4f + 2f * E), steel, Color.WHITE, true, 1, 1.6f, true, 210L, SHADE_CENTER, shadeRadius); // left
-            box(mb, (2f + (3f + E)) / 2f, wCy, 0f, (1f + E), wH, (4f + 2f * E), steel, Color.WHITE, true, 1, 1.6f, true, 220L, SHADE_CENTER, shadeRadius);  // right
-            box(mb, 0f, wCy, -(1f + (2f + E)) / 2f, 4f, wH, (1f + E), steel, Color.WHITE, true, 1, 1.6f, true, 230L, SHADE_CENTER, shadeRadius);            // front
-            box(mb, 0f, wCy, (1f + (2f + E)) / 2f, 4f, wH, (1f + E), steel, Color.WHITE, true, 1, 1.6f, true, 240L, SHADE_CENTER, shadeRadius);             // back
-
-            // Black slider: flat 4x2 floor plate (fills the well bottom, overlaps the walls + band) ...
-            box(mb, 0f, (floorY - E + floorY + 0.4f) / 2f, 0f, (4f + 2f * E), (0.4f + E), (2f + 2f * E), knob, Color.WHITE, false, 2, 0.3f, false, 250L, SHADE_CENTER, shadeRadius);
-            // ... and a 2x2 stem rising from the floor to 1px above the fence (y=6), pushed to the -X end.
-            box(mb, -(2f + E) / 2f, (floorY + (fenceTop + 1f)) / 2f, 0f, (2f + E), (fenceTop + 1f - floorY), (2f + 2f * E), knob, Color.WHITE, false, 2, 0.3f, false, 260L, SHADE_CENTER, shadeRadius);
+            box(mb, 0f, 2f, 0f, length, 2f, body, bandGray, BAND_WHITE, false, 1, 0.3f, false, 102L, SHADE_CENTER, shadeRadius);      // white band y1..3
+            // green top y3..4 with the 6x4 hole — four integer-width strips (10, 9, and 6x3 / 6x2)
+            box(mb, (-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic, Color.WHITE, false, 2, 0.3f, false, 121L, SHADE_CENTER, shadeRadius); // left  w10
+            box(mb, (hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic, Color.WHITE, false, 2, 0.3f, false, 122L, SHADE_CENTER, shadeRadius);  // right w9
+            box(mb, ox, 3.5f, (-4.5f + hz0) / 2f, 6f, 1f, hz0 + 4.5f, plastic, Color.WHITE, false, 2, 0.3f, false, 123L, SHADE_CENTER, shadeRadius);   // front d3
+            box(mb, ox, 3.5f, (hz1 + 4.5f) / 2f, 6f, 1f, 4.5f - hz1, plastic, Color.WHITE, false, 2, 0.3f, false, 124L, SHADE_CENTER, shadeRadius);    // back  d2
+            // steel fence: 1px walls (well interior 4x2), y3..5 (1px proud of the top)
+            box(mb, hx0 + 0.5f, 4f, oz, 1f, 2f, 4f, steel, Color.WHITE, true, 1, 1.6f, true, 210L, SHADE_CENTER, shadeRadius);   // left  x[-2.5,-1.5]
+            box(mb, hx1 - 0.5f, 4f, oz, 1f, 2f, 4f, steel, Color.WHITE, true, 1, 1.6f, true, 220L, SHADE_CENTER, shadeRadius);   // right x[2.5,3.5]
+            box(mb, ox, 4f, hz0 + 0.5f, 4f, 2f, 1f, steel, Color.WHITE, true, 1, 1.6f, true, 230L, SHADE_CENTER, shadeRadius);   // front z[-1.5,-0.5]
+            box(mb, ox, 4f, hz1 - 0.5f, 4f, 2f, 1f, steel, Color.WHITE, true, 1, 1.6f, true, 240L, SHADE_CENTER, shadeRadius);   // back  z[1.5,2.5]
+            // black slider: 4x2 floor filling the well (y3..4, top y4), and a 2x2 stem to 1px above the fence (y6), pushed -X
+            box(mb, ox, 3.5f, oz, 4f, 1f, 2f, knob, Color.WHITE, false, 2, 0.3f, false, 250L, SHADE_CENTER, shadeRadius);   // floor
+            box(mb, ox - 1f, 5f, oz, 2f, 2f, 2f, knob, Color.WHITE, false, 2, 0.3f, false, 260L, SHADE_CENTER, shadeRadius); // stem y4..6
 
             addStuds(mb, studX, studCY, studW, studH, steel, studR);
         } else if (type == PartType.PRESS_SWITCH) {
@@ -221,8 +217,8 @@ final class PreviewPart implements Disposable {
                      boolean ordered, long seedBase, Vector3 shadeCenter, float shadeR) {
         float hx = sx / 2f, hy = sy / 2f, hz = sz / 2f;
         float x0 = cx - hx, x1 = cx + hx, y0 = cy - hy, y1 = cy + hy, z0 = cz - hz, z1 = cz + hz;
-        face(mb, x1, y0, z0, x1, y0, z1, x1, y1, z1, x1, y1, z0, 1, 0, 0, sz, sy, palette, diffuse, metallic, grainMax, zeroWeight, ordered, seedBase + 1, shadeCenter, shadeR);
-        face(mb, x0, y0, z1, x0, y0, z0, x0, y1, z0, x0, y1, z1, -1, 0, 0, sz, sy, palette, diffuse, metallic, grainMax, zeroWeight, ordered, seedBase + 2, shadeCenter, shadeR);
+        face(mb, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, 1, 0, 0, sz, sy, palette, diffuse, metallic, grainMax, zeroWeight, ordered, seedBase + 1, shadeCenter, shadeR);  // +X (reversed: source wound ±X inward)
+        face(mb, x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0, -1, 0, 0, sz, sy, palette, diffuse, metallic, grainMax, zeroWeight, ordered, seedBase + 2, shadeCenter, shadeR); // -X (reversed)
         face(mb, x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0, 0, 1, 0, sx, sz, palette, diffuse, metallic, grainMax, zeroWeight, ordered, seedBase + 3, shadeCenter, shadeR);
         face(mb, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, 0, -1, 0, sx, sz, palette, diffuse, metallic, grainMax, zeroWeight, ordered, seedBase + 4, shadeCenter, shadeR);
         face(mb, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, 0, 0, 1, sx, sy, palette, diffuse, metallic, grainMax, zeroWeight, ordered, seedBase + 5, shadeCenter, shadeR);
@@ -248,7 +244,7 @@ final class PreviewPart implements Disposable {
         Material mat = new Material(
                 TextureAttribute.createDiffuse(tex),
                 ColorAttribute.createDiffuse(diffuse),
-                IntAttribute.createCullFace(GL20.GL_NONE));
+                IntAttribute.createCullFace(GL20.GL_BACK)); // back-cull: coincident back-to-back faces drop one -> no z-fight
         if (metallic) {
             mat.set(ColorAttribute.createSpecular(0.70f, 0.74f, 0.82f, 1f), FloatAttribute.createShininess(45f));
         }
