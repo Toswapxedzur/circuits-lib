@@ -56,7 +56,10 @@ final class ComponentInstance {
     void collectStatic(List<PartMesh.Box> out) {
         float tx = world.val[Matrix4.M03], ty = world.val[Matrix4.M13], tz = world.val[Matrix4.M23];
         for (PartMesh.Box b : model.staticBoxes) {
-            out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.color()));
+            // Translate geometry to world, but KEEP the object-space centre so the baked shading gradient is
+            // identical for every instance (and instances share one sprite).
+            out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.color(),
+                    b.ocx(), b.ocy(), b.ocz()));
         }
     }
 }
