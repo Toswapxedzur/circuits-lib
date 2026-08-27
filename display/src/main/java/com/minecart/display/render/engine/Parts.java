@@ -41,7 +41,6 @@ final class Parts {
     private static final Color[] STEEL = PaletteDither.steelBlue();                 // metal
     private static final Color[] KNOB = PaletteDither.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black
     private static final Color[] CAP_BODY = PaletteDither.ramp(new Color(0.07f, 0.07f, 0.08f, 1f)); // black cap body
-    private static final Color[] CAP_LEG = PaletteDither.rampHsv(160f, 0.92f, 0.80f); // teal base plastic (legs)
     private static final Color BAND_WHITE = new Color(0.97f, 0.97f, 0.96f, 1f);     // band diffuse tint
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
@@ -95,19 +94,23 @@ final class Parts {
 
     /**
      * Capacitor: a big black rectangular box (footprint {@code w}×{@code w}, height {@code h}) with noise +
-     * shading, raised off the board by two 0-thickness legs (1 wide × {@code legH} tall, teal base plastic),
-     * the legs 3 apart. The body's shade frame is its own centre so the gradient spans the box.
+     * shading, standing on a black <b>basement</b> slab (y0..1), raised by two <b>metallic</b> 0-thickness legs
+     * (each 1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X → broad faces point
+     * inward), 3 apart. One object-space shade frame (body centre) so the gradient spans the whole unit.
      */
     private ComponentModel buildCapacitor(float w, float h, float legH, long seed) {
-        float cy = legH + h / 2f; // body centre Y (bottom rests on the leg tops at y=legH)
+        float baseTop = 1f;                    // basement occupies y0..1 (sits on the board)
+        float bodyBottom = baseTop + legH;     // legs bridge basement-top → body-bottom
+        float cy = bodyBottom + h / 2f;        // body centre Y
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
-        PaletteDither.Paint body = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
-        PaletteDither.Paint leg = new PaletteDither.Paint(CAP_LEG, Color.WHITE, 2, 0.3f, false, seed + 2, 0f, cy, 0f, r);
+        PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
+        PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r);
         return ComponentModel.of("capacitor")
-                .box(0f, cy, 0f, w, h, w, body)                    // black body
-                .box(-1.5f, legH / 2f, 0f, 1f, legH, 0f, leg)      // left leg  (0-thick quad, x -2..-1)
-                .box(1.5f, legH / 2f, 0f, 1f, legH, 0f, leg)       // right leg (x 1..2) — legs 3 apart
+                .box(0f, 0.5f, 0f, w, 1f, w, black)                          // basement slab y0..1
+                .box(-1.5f, baseTop + legH / 2f, 0f, 0f, legH, 1f, metal)    // left leg  (0-thick in X, faces +X)
+                .box(1.5f, baseTop + legH / 2f, 0f, 0f, legH, 1f, metal)     // right leg (faces -X) — 3 apart
+                .box(0f, cy, 0f, w, h, w, black)                            // black body on top
                 .build();
     }
 
