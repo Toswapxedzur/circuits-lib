@@ -57,11 +57,17 @@ final class PaletteDither {
         return "sp" + Long.toHexString(h & 0x7fffffffffffffffL) + "_" + wh[0] + "x" + wh[1];
     }
 
-    /** Every sprite these boxes can request (all 6 faces each; occlusion only ever drops from this set). */
+    /**
+     * Every sprite these boxes can request: all 6 faces each, MINUS any degenerate (zero-area) face — a
+     * 0-thickness box (a flat leg) only has its two large faces. Occlusion drops further from this set.
+     */
     static Set<Face> faces(List<PartMesh.Box> boxes) {
         Set<Face> out = new LinkedHashSet<>();
         for (PartMesh.Box b : boxes) {
-            for (int f = 0; f < 6; f++) out.add(new Face(b, f));
+            for (int f = 0; f < 6; f++) {
+                int[] wh = size(b, f);
+                if (wh[0] > 0 && wh[1] > 0) out.add(new Face(b, f));
+            }
         }
         return out;
     }

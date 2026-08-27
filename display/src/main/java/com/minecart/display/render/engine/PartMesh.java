@@ -82,22 +82,26 @@ final class PartMesh implements Disposable {
             // Emit a face only if it is NOT fully covered by an adjacent box (occlusion). Corners are ordered
             // CCW-from-outside (the ±X pair differs from ±Y/±Z — the shared source wound ±X inward). Each face
             // resolves its own object-space-shaded sprite ({@link PaletteDither#faceName}) and bakes its UVs.
-            if (!covered(boxes, b, 0, x1, true, y0, y1, z0, z1))
+            // A zero-thickness box (e.g. a 0-thick leg) skips its degenerate faces and emits only its two
+            // coincident large faces — opposite winding = a double-sided flat quad under GL_BACK.
+            float sx = b.sx(), sy = b.sy(), sz = b.sz();
+            boolean fx = sy > EPS && sz > EPS, fy = sx > EPS && sz > EPS, fz = sx > EPS && sy > EPS;
+            if (fx && !covered(boxes, b, 0, x1, true, y0, y1, z0, z1))
                 face(v, idx, 0, atlas.region(PaletteDither.faceName(b, 0)),
                         x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);   // +X
-            if (!covered(boxes, b, 0, x0, false, y0, y1, z0, z1))
+            if (fx && !covered(boxes, b, 0, x0, false, y0, y1, z0, z1))
                 face(v, idx, 1, atlas.region(PaletteDither.faceName(b, 1)),
                         x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0);   // -X
-            if (!covered(boxes, b, 1, y1, true, x0, x1, z0, z1))
+            if (fy && !covered(boxes, b, 1, y1, true, x0, x1, z0, z1))
                 face(v, idx, 2, atlas.region(PaletteDither.faceName(b, 2)),
                         x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);   // +Y
-            if (!covered(boxes, b, 1, y0, false, x0, x1, z0, z1))
+            if (fy && !covered(boxes, b, 1, y0, false, x0, x1, z0, z1))
                 face(v, idx, 3, atlas.region(PaletteDither.faceName(b, 3)),
                         x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);   // -Y
-            if (!covered(boxes, b, 2, z1, true, x0, x1, y0, y1))
+            if (fz && !covered(boxes, b, 2, z1, true, x0, x1, y0, y1))
                 face(v, idx, 4, atlas.region(PaletteDither.faceName(b, 4)),
                         x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);   // +Z
-            if (!covered(boxes, b, 2, z0, false, x0, x1, y0, y1))
+            if (fz && !covered(boxes, b, 2, z0, false, x0, x1, y0, y1))
                 face(v, idx, 5, atlas.region(PaletteDither.faceName(b, 5)),
                         x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);   // -Z
         }
