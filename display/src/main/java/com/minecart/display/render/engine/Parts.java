@@ -6,10 +6,10 @@ import java.util.List;
 
 /**
  * The part + component library, as pure data (no GL). Geometry AND texture recipe match {@code PreviewPart}
- * exactly — each box carries the same {@link PaletteDither.Paint} (palette, grain, per-box seed, object-space
- * shade centre/radius) as the corresponding {@code PreviewPart.box(...)} call, so the baked atlas sprites are
- * pixel-identical to the {@code ModelPreviewApp} render. Static boxes merge into the neighbour-culled scene
- * mesh; the slider is the only movable part-type (instanced).
+ * exactly — each box carries the same {@link PaletteDither.Paint} as the corresponding {@code PreviewPart.box}
+ * call. The plastic BODY is recolourable across the whole {@link #PLASTIC_HSV} series (PlasticColors); only its
+ * ramp palette changes per hue, the seeds/dither stay the same, and the band/steel/knob are shared. So there is
+ * one capacitor + one slide switch per body colour.
  */
 final class Parts {
 
@@ -20,7 +20,23 @@ final class Parts {
     private static final float STUD_R = Math.max(1f,
             Math.abs(0.5f / L) * 1.5f + Math.abs(0.7f / L) * 0.5f + Math.abs(0.4f / L) * 1.5f);
 
-    private static final Color[] LIME = PaletteDither.rampHsv(85f, 0.92f, 0.80f);   // PlasticColors SET[3] "lime"
+    /** The plastic body colour set (PlasticColors.SET), as HSV — one capacitor + switch is built per row. */
+    static final float[][] PLASTIC_HSV = {
+            {0f, 0.92f, 0.80f},   // red
+            {30f, 0.92f, 0.80f},  // orange
+            {45f, 1.00f, 0.93f},  // yellow (vivid)
+            {85f, 0.92f, 0.80f},  // lime
+            {160f, 0.92f, 0.80f}, // teal
+            {185f, 0.92f, 0.80f}, // cyan
+            {210f, 0.92f, 0.80f}, // azure
+            {235f, 0.85f, 0.93f}, // blue (vivid)
+            {265f, 0.85f, 0.93f}, // violet (vivid)
+            {295f, 0.92f, 0.80f}, // purple
+            {330f, 0.92f, 0.80f}, // pink
+    };
+    static final String[] PLASTIC_NAME = {
+            "red", "orange", "yellow", "lime", "teal", "cyan", "azure", "blue", "violet", "purple", "pink"};
+
     private static final Color[] BAND = PaletteDither.grays(6, 0.85f, 1.0f);        // white plastic band
     private static final Color[] STEEL = PaletteDither.steelBlue();                 // metal
     private static final Color[] KNOB = PaletteDither.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black
@@ -28,13 +44,13 @@ final class Parts {
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
 
-    final PartType slider; // the only movable part-type
-    final ComponentModel capacitor;
-    final ComponentModel slideSwitch;
+    final PartType slider;                              // the only movable part-type (colour-independent)
+    final ComponentModel[] capacitors = new ComponentModel[PLASTIC_HSV.length];
+    final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
 
-    // Paint factories — one per PreviewPart material profile (palette, diffuse, grain, zeroWeight, ordered).
-    private static PaletteDither.Paint plastic(long seed) {
-        return new PaletteDither.Paint(LIME, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R);
+    // Paint factories — plastic is per-colour; the rest are shared across colours.
+    private static PaletteDither.Paint plastic(long seed, Color[] pal) {
+        return new PaletteDither.Paint(pal, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R);
     }
 
     private static PaletteDither.Paint band(long seed) {
@@ -54,30 +70,36 @@ final class Parts {
     }
 
     Parts() {
-        // Slider (movable): shaded at PreviewPart's stem rest (ox-1, 5, oz) so its texture matches, even though
-        // its mesh is a local 2×2×2 the renderer places via the animation.
         slider = new PartType("slider", List.of(
                 new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f)));
+        for (int c = 0; c < PLASTIC_HSV.length; c++) {
+            Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
+            capacitors[c] = buildCapacitor(pal);
+            switches[c] = buildSwitch(pal);
+        }
+    }
 
-        // Capacitor: green rims [0,1] & [3,4], white band [1,3], two steel studs (seeds 101/202/303/404).
-        capacitor = ComponentModel.of("capacitor")
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L))
-                .box(0f, 3.5f, 0f, 25f, 1f, 9f, plastic(202L))
+    /** Capacitor: green rims [0,1] & [3,4], white band [1,3], two steel studs (seeds 101/202/303/404). */
+    private ComponentModel buildCapacitor(Color[] pal) {
+        return ComponentModel.of("capacitor")
+                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))
+                .box(0f, 3.5f, 0f, 25f, 1f, 9f, plastic(202L, pal))
                 .box(0f, 2f, 0f, 25f, 2f, 9f, band(303L))
                 .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))
                 .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
                 .build();
+    }
 
-        // Slide switch: green body around a 6x4 hole, steel fence (well 4x2), black well floor, 2 studs
-        // (static) + a 2x2 black slider (movable). Seeds mirror PreviewPart's switch box() calls.
+    /** Slide switch: body around a 6x4 hole, steel fence (well 4x2), black well floor, 2 studs, + slider. */
+    private ComponentModel buildSwitch(Color[] pal) {
         float hx0 = OX - 3f, hx1 = OX + 3f, hz0 = OZ - 2f, hz1 = OZ + 2f;
-        slideSwitch = ComponentModel.of("slide_switch")
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L))                         // green y0..1
+        return ComponentModel.of("slide_switch")
+                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))                    // green y0..1
                 .box(0f, 2f, 0f, 25f, 2f, 9f, band(102L))                              // white band y1..3
-                .box((-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic(121L)) // top green: left strip
-                .box((hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic(122L))  // right strip
-                .box(OX, 3.5f, (-4.5f + hz0) / 2f, 6f, 1f, hz0 + 4.5f, plastic(123L))   // front strip
-                .box(OX, 3.5f, (hz1 + 4.5f) / 2f, 6f, 1f, 4.5f - hz1, plastic(124L))    // back strip
+                .box((-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic(121L, pal)) // left strip
+                .box((hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic(122L, pal))  // right strip
+                .box(OX, 3.5f, (-4.5f + hz0) / 2f, 6f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip
+                .box(OX, 3.5f, (hz1 + 4.5f) / 2f, 6f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip
                 .box(hx0 + 0.5f, 4f, OZ, 1f, 2f, 4f, fence(210L))                      // fence left (y3..5)
                 .box(hx1 - 0.5f, 4f, OZ, 1f, 2f, 4f, fence(220L))                      // fence right
                 .box(OX, 4f, hz0 + 0.5f, 4f, 2f, 1f, fence(230L))                      // fence front
