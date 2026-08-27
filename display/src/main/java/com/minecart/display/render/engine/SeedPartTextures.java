@@ -32,7 +32,9 @@ public final class SeedPartTextures extends ApplicationAdapter {
         List<PartMesh.Box> boxes = new ArrayList<>();
         for (ComponentModel cap : parts.capacitors) boxes.addAll(cap.staticBoxes);   // every body colour
         for (ComponentModel sw : parts.switches) boxes.addAll(sw.staticBoxes);
+        for (ComponentModel ps : parts.pressSwitches) boxes.addAll(ps.staticBoxes);
         boxes.addAll(parts.slider.boxes());
+        boxes.addAll(parts.button.boxes());
         boxes.add(EngineDemoApp.boardBox());
 
         FileHandle dir = Gdx.files.local(OUT_DIR);

@@ -31,6 +31,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
     private Parts parts;
     private EngineRenderer engine;
     private final List<ComponentInstance> switches = new ArrayList<>();
+    private final List<ComponentInstance> pressers = new ArrayList<>();
     private float clock;
 
     /** The demo board slab. Shared with {@link SeedPartTextures} so its sprites get generated too. */
@@ -39,7 +40,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
         PaletteDither.Paint paint = new PaletteDither.Paint(
                 PaletteDither.ramp(new Color(0.16f, 0.18f, 0.22f, 1f)), Color.WHITE,
                 2, 0.3f, false, 900L, 0f, -1f, 0f, 400f);
-        float w = COLS * COL_SP + 40f, d = ROW_SP + 80f;
+        float w = COLS * COL_SP + 40f, d = 2f * ROW_SP + 60f; // 3 rows span -ROW_SP..+ROW_SP
         return PartMesh.Box.local(0f, -1f, 0f, w, 2f, d, paint);
     }
 
@@ -52,14 +53,20 @@ public final class EngineDemoApp extends ApplicationAdapter {
         Matrix4 world = new Matrix4();
         for (int c = 0; c < COLS; c++) {
             float x = (c - midCol) * COL_SP;
-            world.setToTranslation(x, 0f, -ROW_SP / 2f); // front row: capacitor — one per body colour
+            world.setToTranslation(x, 0f, -ROW_SP); // front row: capacitor — one per body colour
             engine.add(new ComponentInstance(parts.capacitors[c], world));
 
-            world.setToTranslation(x, 0f, ROW_SP / 2f);  // back row: slide switch — always green (its own colour)
+            world.setToTranslation(x, 0f, 0f);      // middle row: slide switch — always green (its own colour)
             ComponentInstance sw = new ComponentInstance(parts.switches[GREEN], world);
             sw.anim.channel("slide", 0f, 1f, 6f); // slider slides ±1 in the 4-wide well, eases at 6 units/s
             switches.add(sw);
             engine.add(sw);
+
+            world.setToTranslation(x, 0f, ROW_SP);   // back row: press switch — green
+            ComponentInstance ps = new ComponentInstance(parts.pressSwitches[GREEN], world);
+            ps.anim.channel("press", 0f, 1f, 9f); // button plunges (0..1) fast, eases at 9 units/s
+            pressers.add(ps);
+            engine.add(ps);
         }
 
         // A board slab under the chart: every component's bottom face is neighbour-culled against its top.
@@ -83,10 +90,14 @@ public final class EngineDemoApp extends ApplicationAdapter {
         camCtl.update();
         float dt = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
         clock += dt;
-        // Ping-pong every ~1.5s: flip the slide target for all switches (user-action stand-in).
+        // Ping-pong (user-action stand-in): flip the slide target, and press/release the buttons.
         float slideTarget = ((int) (clock / 1.5f) % 2 == 0) ? 1f : -1f;
         for (ComponentInstance sw : switches) {
             sw.anim.target("slide", slideTarget);
+        }
+        float pressTarget = ((int) (clock / 1.1f) % 2 == 0) ? 1f : 0f;
+        for (ComponentInstance ps : pressers) {
+            ps.anim.target("press", pressTarget);
         }
         engine.update(dt);
 

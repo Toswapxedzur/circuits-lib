@@ -44,9 +44,11 @@ final class Parts {
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
 
-    final PartType slider;                              // the only movable part-type (colour-independent)
+    final PartType slider;                              // slide switch's mover (colour-independent)
+    final PartType button;                              // press switch's plunger (colour-independent)
     final ComponentModel[] capacitors = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
+    final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
 
     // Paint factories — plastic is per-colour; the rest are shared across colours.
     private static PaletteDither.Paint plastic(long seed, Color[] pal) {
@@ -72,10 +74,15 @@ final class Parts {
     Parts() {
         slider = new PartType("slider", List.of(
                 new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f)));
+        // Press button: a 4×4 plunger, height 3, resting with its top 3px above the body top (y4 → 7). Shaded
+        // at that rest pose. Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
+        button = new PartType("button", List.of(
+                new PartMesh.Box(0f, 0f, 0f, 4f, 3f, 4f, knob(360L), OX, 5.5f, OZ)));
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
             Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
             capacitors[c] = buildCapacitor(pal);
             switches[c] = buildSwitch(pal);
+            pressSwitches[c] = buildPressSwitch(pal);
         }
     }
 
@@ -108,6 +115,31 @@ final class Parts {
                 .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))             // stud
                 .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
                 .movable(slider, OX, 5f, OZ, MovableBinding.translate("slide", 1f, 0f, 0f))
+                .build();
+    }
+
+    /**
+     * Press switch: same body/band/studs as the slide switch, but with a square <b>6×6 hole</b> ringed by a
+     * <b>4×4 steel fence</b> (well interior 4×4) and a black well floor, plus a 4×4 press button (movable) that
+     * plunges straight down. The button's {@code press} channel 0→1 drops it 2 in Y (top 3px→1px above the body).
+     */
+    private ComponentModel buildPressSwitch(Color[] pal) {
+        float hx0 = OX - 3f, hx1 = OX + 3f, hz0 = OZ - 3f, hz1 = OZ + 3f; // 6×6 hole (x/z -2.5..3.5)
+        return ComponentModel.of("press_switch")
+                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))                    // green y0..1
+                .box(0f, 2f, 0f, 25f, 2f, 9f, band(102L))                              // white band y1..3
+                .box((-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic(121L, pal)) // top green: left
+                .box((hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic(122L, pal))  // right
+                .box(OX, 3.5f, (-4.5f + hz0) / 2f, 6f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip
+                .box(OX, 3.5f, (hz1 + 4.5f) / 2f, 6f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip
+                .box(hx0 + 0.5f, 4f, OZ, 1f, 2f, 6f, fence(210L))                      // fence left (y3..5)
+                .box(hx1 - 0.5f, 4f, OZ, 1f, 2f, 6f, fence(220L))                      // fence right
+                .box(OX, 4f, hz0 + 0.5f, 6f, 2f, 1f, fence(230L))                      // fence front
+                .box(OX, 4f, hz1 - 0.5f, 6f, 2f, 1f, fence(240L))                      // fence back
+                .box(OX, 3.5f, OZ, 4f, 1f, 4f, knob(250L))                             // black well floor y3..4
+                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))             // stud
+                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
+                .movable(button, OX, 5.5f, OZ, MovableBinding.translate("press", 0f, -2f, 0f))
                 .build();
     }
 }
