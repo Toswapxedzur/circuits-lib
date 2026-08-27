@@ -27,7 +27,7 @@ final class Parts {
 
     Parts() {
         slider = new PartType("slider", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, BLACK)));
+                PartMesh.Box.local(0f, 0f, 0f, 2f, 2f, 2f, BLACK)));
 
         // Capacitor: green rims [0,1] & [3,4], white band [1,3], two steel studs — all static.
         capacitor = ComponentModel.of("capacitor")

@@ -65,13 +65,13 @@ final class EngineRenderer implements Disposable {
         }
 
         // Every sprite any face can request: static boxes + every movable part-type's local boxes.
-        Set<PaletteDither.Spec> specs = new LinkedHashSet<>(PaletteDither.specs(all));
+        List<PartMesh.Box> forAtlas = new ArrayList<>(all);
         for (PartType type : movableBuckets.keySet()) {
-            specs.addAll(PaletteDither.specs(type.boxes()));
+            forAtlas.addAll(type.boxes());
         }
         Set<String> names = new LinkedHashSet<>();
-        for (PaletteDither.Spec s : specs) {
-            names.add(PaletteDither.name(s));
+        for (PaletteDither.Face f : PaletteDither.faces(forAtlas)) {
+            names.add(PaletteDither.faceName(f.box(), f.faceId()));
         }
         atlas = new PartAtlas(names);
 

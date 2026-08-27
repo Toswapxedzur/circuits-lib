@@ -27,8 +27,19 @@ import java.util.List;
  */
 final class PartMesh implements Disposable {
 
-    /** An axis-aligned coloured box in the part's local space. */
-    record Box(float cx, float cy, float cz, float sx, float sy, float sz, Color color) {
+    /**
+     * An axis-aligned coloured box. {@code cx,cy,cz} is where it sits (world, after {@link
+     * ComponentInstance#collectStatic}); {@code ocx,ocy,ocz} is its ORIGINAL object-space centre, kept so the
+     * baked object-space shading gradient ({@link PaletteDither}) is identical for every instance.
+     */
+    record Box(float cx, float cy, float cz, float sx, float sy, float sz, Color color,
+               float ocx, float ocy, float ocz) {
+
+        /** A box whose object-space centre is its position (used at part-definition time). */
+        static Box local(float cx, float cy, float cz, float sx, float sy, float sz, Color color) {
+            return new Box(cx, cy, cz, sx, sy, sz, color, cx, cy, cz);
+        }
+
         float min(int axis) {
             return center(axis) - size(axis) / 2f;
         }
@@ -75,28 +86,26 @@ final class PartMesh implements Disposable {
         ShortArray idx = new ShortArray();
         for (Box b : boxes) {
             float x0 = b.min(0), x1 = b.max(0), y0 = b.min(1), y1 = b.max(1), z0 = b.min(2), z1 = b.max(2);
-            int sx = Math.round(b.sx()), sy = Math.round(b.sy()), sz = Math.round(b.sz());
-            Color c = b.color();
             // Emit a face only if it is NOT fully covered by an adjacent box (occlusion). Corners are ordered
             // CCW-from-outside (the ±X pair differs from ±Y/±Z — the shared source wound ±X inward). Each face
-            // looks up its sprite (colour + in-plane size) and bakes that atlas region's UVs.
+            // resolves its own object-space-shaded sprite ({@link PaletteDither#faceName}) and bakes its UVs.
             if (!covered(boxes, b, 0, x1, true, y0, y1, z0, z1))
-                face(v, idx, 0, atlas.region(PaletteDither.faceSprite(c, sz, sy)),
+                face(v, idx, 0, atlas.region(PaletteDither.faceName(b, 0)),
                         x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);   // +X
             if (!covered(boxes, b, 0, x0, false, y0, y1, z0, z1))
-                face(v, idx, 1, atlas.region(PaletteDither.faceSprite(c, sz, sy)),
+                face(v, idx, 1, atlas.region(PaletteDither.faceName(b, 1)),
                         x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0);   // -X
             if (!covered(boxes, b, 1, y1, true, x0, x1, z0, z1))
-                face(v, idx, 2, atlas.region(PaletteDither.faceSprite(c, sx, sz)),
+                face(v, idx, 2, atlas.region(PaletteDither.faceName(b, 2)),
                         x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);   // +Y
             if (!covered(boxes, b, 1, y0, false, x0, x1, z0, z1))
-                face(v, idx, 3, atlas.region(PaletteDither.faceSprite(c, sx, sz)),
+                face(v, idx, 3, atlas.region(PaletteDither.faceName(b, 3)),
                         x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);   // -Y
             if (!covered(boxes, b, 2, z1, true, x0, x1, y0, y1))
-                face(v, idx, 4, atlas.region(PaletteDither.faceSprite(c, sx, sy)),
+                face(v, idx, 4, atlas.region(PaletteDither.faceName(b, 4)),
                         x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);   // +Z
             if (!covered(boxes, b, 2, z0, false, x0, x1, y0, y1))
-                face(v, idx, 5, atlas.region(PaletteDither.faceSprite(c, sx, sy)),
+                face(v, idx, 5, atlas.region(PaletteDither.faceName(b, 5)),
                         x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);   // -Z
         }
 

@@ -34,7 +34,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
     /** The demo board slab. Shared with {@link SeedPartTextures} so its sprites get generated too. */
     static PartMesh.Box boardBox() {
         float span = GRID * SPACING;
-        return new PartMesh.Box(0f, -1f, 0f, span + 60f, 2f, span + 60f, new Color(0.16f, 0.18f, 0.22f, 1f));
+        return PartMesh.Box.local(0f, -1f, 0f, span + 60f, 2f, span + 60f, new Color(0.16f, 0.18f, 0.22f, 1f));
     }
 
     @Override

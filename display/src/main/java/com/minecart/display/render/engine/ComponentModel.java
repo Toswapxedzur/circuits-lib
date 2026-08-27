@@ -44,7 +44,7 @@ final class ComponentModel {
         }
 
         Builder box(float cx, float cy, float cz, float sx, float sy, float sz, Color color) {
-            statics.add(new PartMesh.Box(cx, cy, cz, sx, sy, sz, color));
+            statics.add(PartMesh.Box.local(cx, cy, cz, sx, sy, sz, color));
             return this;
         }
 

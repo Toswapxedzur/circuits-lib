@@ -35,19 +35,22 @@ public final class SeedPartTextures extends ApplicationAdapter {
         boxes.addAll(parts.slider.boxes());
         boxes.add(EngineDemoApp.boardBox());
 
-        Set<PaletteDither.Spec> specs = new LinkedHashSet<>(PaletteDither.specs(boxes));
-
         FileHandle dir = Gdx.files.local(OUT_DIR);
         dir.mkdirs();
-        Gdx.app.log("seed", "writing " + specs.size() + " sprites to " + dir.file().getAbsolutePath());
-        for (PaletteDither.Spec s : specs) {
-            String name = PaletteDither.name(s);
-            Pixmap pm = PaletteDither.drawTile(s);
+        Gdx.app.log("seed", "writing sprites to " + dir.file().getAbsolutePath());
+        Set<String> seen = new LinkedHashSet<>();
+        int count = 0;
+        for (PaletteDither.Face f : PaletteDither.faces(boxes)) {
+            String name = PaletteDither.faceName(f.box(), f.faceId());
+            if (!seen.add(name)) {
+                continue; // identical object-space face already drawn (shared across instances)
+            }
+            Pixmap pm = PaletteDither.drawFace(f.box(), f.faceId());
             PixmapIO.writePNG(dir.child(name + ".png"), pm);
             pm.dispose();
-            Gdx.app.log("seed", "  " + name + ".png (" + s.w() + "x" + s.h() + ")");
+            count++;
         }
-        Gdx.app.log("seed", "done: " + specs.size() + " sprites");
+        Gdx.app.log("seed", "done: " + count + " sprites");
         Gdx.app.exit();
     }
 
