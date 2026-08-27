@@ -56,7 +56,7 @@ final class Parts {
 
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
-    final ComponentModel[] capacitors = new ComponentModel[PLASTIC_HSV.length];   // one per base colour (big)
+    final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];         // blank base board, one per colour
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
@@ -97,8 +97,7 @@ final class Parts {
         }
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
             Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
-            // capacitor: base recoloured per colour (RESTORED variants); black box + legs identical → dedupe.
-            capacitors[c] = buildCapacitor(pal, 7f, 9f, 2f, 700L);
+            bases[c] = base("base", pal).build(); // the blank snap base board, in every plastic colour
             switches[c] = buildSwitch(pal);
             pressSwitches[c] = buildPressSwitch(pal);
             resistors[c] = buildResistor(pal);

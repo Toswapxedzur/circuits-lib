@@ -13,8 +13,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Instanced component engine demo. Everything is listed <b>once, in order</b> along a single row: the capacitor
- * in each of the 11 plastic colours (red→pink), then a green slide switch, press switch, resistor, and LED. Inspect
+ * Instanced component engine demo. Everything is listed <b>once, in order</b> along a single row:
+ * the blank base board in each of the 11 plastic colours (red→pink), then the capacitor (3 sizes), a green
+ * slide switch, press switch, resistor, and LED. Inspect
  * freely with a fly camera — <b>WASD</b> to move, <b>Space</b>/<b>Shift</b> up/down, drag to look, scroll for
  * speed. The switch/press buttons animate on a timer. Run with {@code ./gradlew :display:enginedemo}.
  */
@@ -49,11 +50,11 @@ public final class EngineDemoApp extends ApplicationAdapter {
         float mid = (COUNT - 1) / 2f;
         Matrix4 world = new Matrix4();
         int i = 0;
-        for (int c = 0; c < parts.capacitors.length; c++, i++) {          // capacitor in every base colour (RESTORED)
+        for (int c = 0; c < parts.bases.length; c++, i++) {               // blank base board in every colour
             world.setToTranslation((i - mid) * SPACING, 0f, 0f);
-            engine.add(new ComponentInstance(parts.capacitors[c], world));
+            engine.add(new ComponentInstance(parts.bases[c], world));
         }
-        for (int s = 0; s < parts.capacitorSizes.length; s++, i++) {      // + the 3 sizes (teal)
+        for (int s = 0; s < parts.capacitorSizes.length; s++, i++) {      // capacitor, the 3 sizes (teal)
             world.setToTranslation((i - mid) * SPACING, 0f, 0f);
             engine.add(new ComponentInstance(parts.capacitorSizes[s], world));
         }
