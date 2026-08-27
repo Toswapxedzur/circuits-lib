@@ -74,10 +74,11 @@ final class Parts {
     Parts() {
         slider = new PartType("slider", List.of(
                 new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f)));
-        // Press button: a 4×4 plunger, height 3, resting with its top 3px above the body top (y4 → 7). Shaded
-        // at that rest pose. Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
+        // Press button: a 3×4 plunger (width 3, depth 4), height 3, resting with its top 3px above the body top
+        // (y4 → 7). Shaded at that rest pose. Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px
+        // above (y5). Width 3 in the 4-wide well → centred with a 0.5 margin left/right.
         button = new PartType("button", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 4f, 3f, 4f, knob(360L), OX, 5.5f, OZ)));
+                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 4f, knob(360L), OX, 5.5f, OZ)));
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
             Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
             capacitors[c] = buildCapacitor(pal);
