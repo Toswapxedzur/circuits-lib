@@ -105,39 +105,47 @@ final class PaletteDither {
         Vector3 mul = faceMul(NRM[f], p.diffuse());
         Pixmap pm = litFace(p.palette(), q[0], q[1], q[2], q[3], wh[0], wh[1],
                 p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed, p.alpha());
-        if (f == 2 && b.trace() != null) overlayTrace(pm, b, b.trace(), wh[0], wh[1]); // print the trace on top
+        if (f == 2 && b.trace() != null) { // print the trace on top — dithered like the plastics, never flat
+            Pixmap tp = litFace(ramp(b.trace().color()), q[0], q[1], q[2], q[3], wh[0], wh[1],
+                    p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul,
+                    seed + 7, p.alpha());
+            overlayTrace(pm, tp, b, b.trace(), wh[0], wh[1]);
+            tp.dispose();
+        }
         return pm;
     }
 
-    /** Prints the flat TRACE decal onto the (already-drawn) top-face pixmap: for each texel, map it back to the
-     *  box's object (x,z) and paint if it lies on the trace/symbol. Each decorated box draws only its portion. */
-    private static void overlayTrace(Pixmap pm, PartMesh.Box b, PartMesh.Trace trace, int pw, int ph) {
+    /** Prints the TRACE decal onto the (already-drawn) top-face pixmap: for each texel on the trace/symbol,
+     *  copy the texel from {@code tp} — a full litFace pass over the SAME face in the trace colour's ramp — so
+     *  the printed line carries the same conserved-palette dither + lighting as every other surface (owner
+     *  rule: no pure colours anywhere). Each decorated box draws only its portion of the shape. */
+    private static void overlayTrace(Pixmap pm, Pixmap tp, PartMesh.Box b, PartMesh.Trace trace, int pw, int ph) {
         float x0 = b.ocx() - b.sx() / 2f, x1 = b.ocx() + b.sx() / 2f;
         float z1 = b.ocz() + b.sz() / 2f, sz = b.sz();
-        pm.setColor(trace.color());
         for (int py = 0; py < ph; py++) {
             float z = z1 - ((py + 0.5f) / ph) * sz;             // +Y face: v runs z1 → z0
             for (int px = 0; px < pw; px++) {
                 float x = x0 + ((px + 0.5f) / pw) * (x1 - x0);  // u runs x0 → x1
-                if (onTrace(x, z, trace)) pm.drawPixel(px, py);
+                if (onTrace(x, z, trace)) pm.drawPixel(px, py, tp.getPixel(px, py));
             }
         }
     }
 
     /** Trace shape in a part's object frame: a 1-wide line at z=0 over x∈[−span, span] (span 10.5 on the
      *  standard ±12-stud body; the wire family passes its own); a capacitor breaks the middle and adds two
-     *  7-long plates (perpendicular) at x=±2.5 (spacing 5); {@code arrow} (the diode) adds an arrowhead
-     *  pointing in the flow direction (+x) — a chevron whose two arms extend 3px back-and-out from the tip
-     *  texel at span−0.5 (arm pixels (9,±1)(8,±2)(7,±3) on the standard body), overlaid on the line. */
+     *  7-long plates (perpendicular), each exactly 1px on the INTEGER texel-centre grid at x=−2 and x=+3
+     *  (centre-to-centre 5 — the owner's asymmetric pick: a half-integer centre like ±2.5 straddles TWO texel
+     *  centres and fattens the stroke to 2px, which is banned); {@code arrow} (the diode, currently unused)
+     *  adds an arrowhead pointing in the flow direction (+x) — a chevron whose two arms extend 3px
+     *  back-and-out from the tip texel at span−0.5 (arm pixels (9,±1)(8,±2)(7,±3)), overlaid on the line. */
     private static boolean onTrace(float x, float z, PartMesh.Trace t) {
         float span = t.span();
-        boolean capacitor = t.capacitor();
         boolean line = Math.abs(z) <= 0.5f && Math.abs(x) <= span;
         if (t.arrow() && Math.abs(z) >= 0.5f && Math.abs(z) <= 3.5f
                 && Math.abs(x - (span - 0.5f - Math.abs(z))) <= 0.5f) return true;
-        if (!capacitor) return line;
-        boolean plate = (Math.abs(x - 2.5f) <= 0.5f || Math.abs(x + 2.5f) <= 0.5f) && Math.abs(z) <= 3.5f;
-        return (line && Math.abs(x) >= 2.5f) || plate; // gap in the middle (2.5 spacing each side) + the plates
+        if (!t.capacitor()) return line;
+        boolean plate = (Math.abs(x + 2f) < 0.5f || Math.abs(x - 3f) < 0.5f) && Math.abs(z) <= 3.5f;
+        return (line && (x < -1.5f || x > 2.5f)) || plate; // line stops at the plates; gap texels −1..2
     }
 
     /** Stable atlas name for an oriented {@link PartMesh.Quad} (its object corners + size determine the pixels). */
