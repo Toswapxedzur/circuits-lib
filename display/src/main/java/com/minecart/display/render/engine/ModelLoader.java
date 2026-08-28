@@ -63,7 +63,7 @@ final class ModelLoader {
             float sx = e.to[0] - e.from[0], sy = e.to[1] - e.from[1], sz = e.to[2] - e.from[2];
             String[] faces = new String[6];
             if (e.faces != null) e.faces.forEach((k, v) -> faces[ModelJson.faceId(k)] = v);
-            out.add(PartMesh.Box.loaded(cx, cy, cz, sx, sy, sz, faces));
+            out.add(PartMesh.Box.loaded(cx, cy, cz, sx, sy, sz, faces, e.tint, e.translucent));
         }
     }
 

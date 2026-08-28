@@ -23,7 +23,8 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
     private static final int GREEN = 3;      // lime — the switches' colour
     private static final float SPACING = 34f; // X spacing between listed parts
-    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 4; // 11 colours + 3 sizes + slide + press + resistor + led
+    private static final int[] LED_COLORS = {0, 2, 3, 5, 7, 8}; // LED bulb colours: red, yellow, lime, cyan, blue, violet
+    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 3 + LED_COLORS.length; // 11 + 3 + slide/press/resistor + LEDs
 
     private PerspectiveCamera cam;
     private FlyController fly;
@@ -36,7 +37,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
     static PartMesh.Box boardBox() {
         PaletteDither.Paint paint = new PaletteDither.Paint(
                 PaletteDither.ramp(new Color(0.16f, 0.18f, 0.22f, 1f)), Color.WHITE, // dark board so teal parts read
-                2, 0.3f, false, 900L, 0f, -1f, 0f, 400f);
+                2, 0.3f, false, 900L, 0f, -1f, 0f, 400f, 1f);
         float w = COUNT * SPACING + 30f;
         return PartMesh.Box.local(0f, -1f, 0f, w, 2f, 49f, paint);
     }
@@ -71,8 +72,13 @@ public final class EngineDemoApp extends ApplicationAdapter {
         engine.add(ps);
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // yellow resistor (raised, tilted leads)
         engine.add(new ComponentInstance(loader.model("resistor_yellow"), world));
-        world.setToTranslation((i - mid) * SPACING, 0f, 0f);            // green LED
-        engine.add(new ComponentInstance(loader.model("led_" + green), world));
+        for (int c : LED_COLORS) {                                       // LEDs: ONE greyscale bulb, many entity colours
+            world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
+            Color tint = new Color().fromHsv(Parts.PLASTIC_HSV[c][0], Parts.PLASTIC_HSV[c][1], Parts.PLASTIC_HSV[c][2]);
+            tint.a = 1f;
+            engine.add(new ComponentInstance(loader.model("led_" + Parts.PLASTIC_NAME[c]), world,
+                    new ComponentEntity(tint)));
+        }
 
         engine.addStatic(List.of(boardBox()));
         engine.build();

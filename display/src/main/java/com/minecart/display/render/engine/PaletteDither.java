@@ -31,9 +31,10 @@ final class PaletteDither {
     private static final int[] BAYER4 = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
     private static final int[][] NRM = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
-    /** How one box's faces are painted — mirrors a PreviewPart {@code box(...)} call's texture args. */
+    /** How one box's faces are painted — mirrors a PreviewPart {@code box(...)} call's texture args.
+     *  {@code alpha} &lt; 1 bakes a translucent sprite (for glass-like parts drawn in the blended pass). */
     record Paint(Color[] palette, Color diffuse, int grainMax, float zeroWeight, boolean ordered,
-                 long seedBase, float scx, float scy, float scz, float radius) {}
+                 long seedBase, float scx, float scy, float scz, float radius, float alpha) {}
 
     /** A distinct sprite job: one box face. */
     record Face(PartMesh.Box box, int faceId) {}
@@ -47,6 +48,7 @@ final class PaletteDither {
         h = h * 31 + p.seedBase(); h = h * 31 + f;
         h = h * 31 + p.grainMax(); h = h * 31 + Float.floatToIntBits(p.zeroWeight());
         h = h * 31 + (p.ordered() ? 1 : 0);
+        h = h * 31 + Float.floatToIntBits(p.alpha());
         for (Color c : p.palette()) h = h * 31 + Color.rgba8888(c);
         h = h * 31 + Color.rgba8888(p.diffuse());
         for (Vector3 v : q) {
@@ -94,7 +96,7 @@ final class PaletteDither {
         long seed = 0x9E370000L + (p.seedBase() + f + 1) * 2654435761L;
         Vector3 mul = faceMul(NRM[f], p.diffuse());
         return litFace(p.palette(), q[0], q[1], q[2], q[3], wh[0], wh[1],
-                p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed);
+                p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed, p.alpha());
     }
 
     /** Stable atlas name for an oriented {@link PartMesh.Quad} (its object corners + size determine the pixels). */
@@ -105,6 +107,7 @@ final class PaletteDither {
         h = h * 31 + p.seedBase(); h = h * 31 + 6; // 6 = quad marker (past the 6 box faces)
         h = h * 31 + p.grainMax(); h = h * 31 + Float.floatToIntBits(p.zeroWeight());
         h = h * 31 + (p.ordered() ? 1 : 0);
+        h = h * 31 + Float.floatToIntBits(p.alpha());
         for (Color c : p.palette()) h = h * 31 + Color.rgba8888(c);
         h = h * 31 + Color.rgba8888(p.diffuse());
         for (Vector3 v : corners) {
@@ -124,7 +127,7 @@ final class PaletteDither {
         Vector3 n = e2.crs(e1).nor(); // up-out face normal (matches the p00,p10,p11,p01 winding)
         Vector3 mul = faceMul(n.x, n.y, n.z, p.diffuse());
         return litFace(p.palette(), q.o00(), q.o10(), q.o11(), q.o01(), q.pw(), q.ph(),
-                p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed);
+                p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed, p.alpha());
     }
 
     // ---- palettes (verbatim from PreviewTextures) ----
@@ -171,7 +174,7 @@ final class PaletteDither {
     /** Object-space lit-palette dither — a Pixmap port of PreviewTextures.litFace, × the per-face {@code mul}. */
     private static Pixmap litFace(Color[] palette, Vector3 p00, Vector3 p10, Vector3 p11, Vector3 p01,
                                   int pw, int ph, float scx, float scy, float scz, float radius,
-                                  int grainMax, float zeroWeight, boolean ordered, Vector3 mul, long seed) {
+                                  int grainMax, float zeroWeight, boolean ordered, Vector3 mul, long seed, float alpha) {
         int shades = palette.length, mid = shades / 2;
         int peak = Math.max(1, Math.round(grainMax * 0.6f));
         float[] w = new float[grainMax + 1];
@@ -202,7 +205,7 @@ final class PaletteDither {
                 }
                 idx = Math.max(0, Math.min(shades - 1, idx));
                 Color c = palette[idx];
-                pm.setColor(clamp(c.r * mul.x), clamp(c.g * mul.y), clamp(c.b * mul.z), 1f);
+                pm.setColor(clamp(c.r * mul.x), clamp(c.g * mul.y), clamp(c.b * mul.z), alpha);
                 pm.drawPixel(px, py);
             }
         }

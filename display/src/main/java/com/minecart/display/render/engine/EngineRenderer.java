@@ -36,7 +36,8 @@ final class EngineRenderer implements Disposable {
     private final Map<PartType, List<ComponentInstance.PartInstance>> movableBuckets = new LinkedHashMap<>();
     private final Map<PartType, PartMesh> movableMeshes = new LinkedHashMap<>();
     private PartAtlas atlas;
-    private PartMesh staticMesh;
+    private PartMesh staticOpaque;
+    private PartMesh staticTranslucent;
 
     /** Places a component: its static boxes join the scene mesh (on {@link #build}); its movables are instanced. */
     void add(ComponentInstance c) {
@@ -75,7 +76,13 @@ final class EngineRenderer implements Disposable {
         PartMesh.collectSpriteNames(forAtlas, allQuads, names);
         atlas = new PartAtlas(names);
 
-        staticMesh = PartMesh.of(all, allQuads, 1, atlas);
+        // Split by translucency: opaque parts (+ all quads) render first; translucent parts (e.g. the LED's
+        // glass core) render after, blended, without writing depth.
+        List<PartMesh.Box> opaque = new ArrayList<>();
+        List<PartMesh.Box> translucent = new ArrayList<>();
+        for (PartMesh.Box b : all) (b.translucent() ? translucent : opaque).add(b);
+        staticOpaque = PartMesh.of(opaque, allQuads, 1, atlas);
+        staticTranslucent = PartMesh.of(translucent, List.of(), 1, atlas);
         for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
             movableMeshes.put(e.getKey(),
                     PartMesh.of(e.getKey().boxes(), List.of(), Math.max(1, e.getValue().size()), atlas));
@@ -99,10 +106,11 @@ final class EngineRenderer implements Disposable {
         atlas.texture().bind(0);
         shader.setUniformi("u_atlas", 0);
 
-        if (staticMesh != null) {
-            staticMesh.begin();
-            staticMesh.add(identity); // scene mesh is already in world space
-            staticMesh.render(shader);
+        // --- Opaque pass: scene mesh (world space) + every movable type, depth-written. ---
+        if (staticOpaque != null) {
+            staticOpaque.begin();
+            staticOpaque.add(identity);
+            staticOpaque.render(shader);
         }
         for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
             PartMesh mesh = movableMeshes.get(e.getKey());
@@ -112,12 +120,28 @@ final class EngineRenderer implements Disposable {
             }
             mesh.render(shader);
         }
+
+        // --- Translucent pass: alpha-blended, depth-TESTED but not depth-WRITTEN (glass over the opaque cores). ---
+        if (staticTranslucent != null) {
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            Gdx.gl.glDepthMask(false);
+            staticTranslucent.begin();
+            staticTranslucent.add(identity);
+            staticTranslucent.render(shader);
+            Gdx.gl.glDepthMask(true);
+            Gdx.gl.glDisable(GL20.GL_BLEND);
+        }
     }
 
     private void disposeMeshes() {
-        if (staticMesh != null) {
-            staticMesh.dispose();
-            staticMesh = null;
+        if (staticOpaque != null) {
+            staticOpaque.dispose();
+            staticOpaque = null;
+        }
+        if (staticTranslucent != null) {
+            staticTranslucent.dispose();
+            staticTranslucent = null;
         }
         for (PartMesh m : movableMeshes.values()) {
             m.dispose();
