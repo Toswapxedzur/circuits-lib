@@ -30,6 +30,8 @@ final class ModelJson {
         float[] from;                      // [x,y,z] min corner (object space)
         float[] to;                        // [x,y,z] max corner
         Map<String, String> faces;         // faceKey → sprite name (only non-degenerate faces present)
+        boolean tint;                      // multiply by the component-entity colour (greyscale → colour)
+        boolean translucent;               // draw in the blended pass (glass-like)
     }
 
     /** An oriented flat quad: 4 object-space corners (p00,p10,p11,p01), its sprite, and the sprite's texel size. */
@@ -77,6 +79,8 @@ final class ModelJson {
                 int[] wh = PaletteDither.size(b, f);
                 if (wh[0] > 0 && wh[1] > 0) e.faces.put(FACE_KEY[f], b.faceSprite(f)); // = faceName(paint)
             }
+            e.tint = b.tint();
+            e.translucent = b.translucent();
             j.elements.add(e);
         }
         for (ComponentModel.MovablePart m : movs) {

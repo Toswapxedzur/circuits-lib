@@ -30,13 +30,19 @@ final class ComponentInstance {
     }
 
     final AnimationState anim = new AnimationState();
+    final ComponentEntity entity;                    // per-instance data (colour, …) — like a block entity
     final List<PartInstance> movables = new ArrayList<>();
     private final ComponentModel model;
     private final Matrix4 world = new Matrix4();
     private final Matrix4 motion = new Matrix4();
 
     ComponentInstance(ComponentModel model, Matrix4 world) {
+        this(model, world, new ComponentEntity());
+    }
+
+    ComponentInstance(ComponentModel model, Matrix4 world, ComponentEntity entity) {
         this.model = model;
+        this.entity = entity;
         this.world.set(world);
         for (ComponentModel.MovablePart m : model.movableParts) {
             movables.add(new PartInstance(m.type(), m.local(), m.binding().toBinding()));
@@ -56,11 +62,14 @@ final class ComponentInstance {
     /** Adds this component's static boxes, translated to world space, into {@code out} (for the scene mesh). */
     void collectStatic(List<PartMesh.Box> out) {
         float tx = world.val[Matrix4.M03], ty = world.val[Matrix4.M13], tz = world.val[Matrix4.M23];
+        float tintBits = entity.color.toFloatBits(); // this instance's colour, baked onto its tint boxes
         for (PartMesh.Box b : model.staticBoxes) {
             // Translate geometry to world, but KEEP the object-space centre so the baked shading gradient is
-            // identical for every instance (and instances share one sprite).
+            // identical for every instance (and instances share one sprite). A tint box gets this instance's
+            // entity colour; every other box stays white (greyscale/coloured texel unchanged).
             out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.paint(),
-                    b.ocx(), b.ocy(), b.ocz(), b.faceSprites()));
+                    b.ocx(), b.ocy(), b.ocz(), b.faceSprites(),
+                    b.tint(), b.translucent(), b.tint() ? tintBits : PartMesh.WHITE_BITS));
         }
     }
 

@@ -1,5 +1,6 @@
 package com.minecart.display.render.engine;
 
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Mesh;
 import com.badlogic.gdx.graphics.VertexAttribute;
@@ -32,17 +33,28 @@ final class PartMesh implements Disposable {
      * ComponentInstance#collectStatic}); {@code ocx,ocy,ocz} is its ORIGINAL object-space centre; {@code paint}
      * carries the exact PreviewPart texture recipe. The object-space shading is identical for every instance.
      */
+    /** White vertex tint = "no tint" (greyscale/coloured texel passes through unchanged). */
+    static final float WHITE_BITS = Color.WHITE.toFloatBits();
+
     record Box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
-               float ocx, float ocy, float ocz, String[] faceSprites) {
+               float ocx, float ocy, float ocz, String[] faceSprites,
+               boolean tint, boolean translucent, float tintBits) {
 
         /** A box whose object-space centre is its position (used at part-definition time). Sprites derived from paint. */
         static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint) {
-            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null);
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, false, false, WHITE_BITS);
+        }
+
+        /** A definition-time box that is tinted by the component-entity colour and/or drawn translucent. */
+        static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
+                         boolean tint, boolean translucent) {
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, tint, translucent, WHITE_BITS);
         }
 
         /** A box loaded from a model JSON: no paint, sprite name per face already resolved by the generator. */
-        static Box loaded(float cx, float cy, float cz, float sx, float sy, float sz, String[] faceSprites) {
-            return new Box(cx, cy, cz, sx, sy, sz, null, cx, cy, cz, faceSprites);
+        static Box loaded(float cx, float cy, float cz, float sx, float sy, float sz, String[] faceSprites,
+                          boolean tint, boolean translucent) {
+            return new Box(cx, cy, cz, sx, sy, sz, null, cx, cy, cz, faceSprites, tint, translucent, WHITE_BITS);
         }
 
         /** The atlas sprite for face {@code f}: the loaded name if present, else derived from the paint. */
@@ -95,7 +107,7 @@ final class PartMesh implements Disposable {
         }
     }
 
-    private static final int FLOATS_PER_VERTEX = 3 + 2; // position, atlas uv
+    private static final int FLOATS_PER_VERTEX = 3 + 2 + 1; // position, atlas uv, packed tint colour
     private static final int FLOATS_PER_INSTANCE = 16;  // a mat4 (4 vec4 columns)
     private static final float EPS = 1e-4f;
 
@@ -126,22 +138,22 @@ final class PartMesh implements Disposable {
             float sx = b.sx(), sy = b.sy(), sz = b.sz();
             boolean fx = sy > EPS && sz > EPS, fy = sx > EPS && sz > EPS, fz = sx > EPS && sy > EPS;
             if (fx && !covered(boxes, b, 0, x1, true, y0, y1, z0, z1))
-                face(v, idx, 0, atlas.region(b.faceSprite(0)),
+                face(v, idx, 0, atlas.region(b.faceSprite(0)), b.tintBits(),
                         x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);   // +X
             if (fx && !covered(boxes, b, 0, x0, false, y0, y1, z0, z1))
-                face(v, idx, 1, atlas.region(b.faceSprite(1)),
+                face(v, idx, 1, atlas.region(b.faceSprite(1)), b.tintBits(),
                         x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0);   // -X
             if (fy && !covered(boxes, b, 1, y1, true, x0, x1, z0, z1))
-                face(v, idx, 2, atlas.region(b.faceSprite(2)),
+                face(v, idx, 2, atlas.region(b.faceSprite(2)), b.tintBits(),
                         x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);   // +Y
             if (fy && !covered(boxes, b, 1, y0, false, x0, x1, z0, z1))
-                face(v, idx, 3, atlas.region(b.faceSprite(3)),
+                face(v, idx, 3, atlas.region(b.faceSprite(3)), b.tintBits(),
                         x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);   // -Y
             if (fz && !covered(boxes, b, 2, z1, true, x0, x1, y0, y1))
-                face(v, idx, 4, atlas.region(b.faceSprite(4)),
+                face(v, idx, 4, atlas.region(b.faceSprite(4)), b.tintBits(),
                         x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);   // +Z
             if (fz && !covered(boxes, b, 2, z0, false, x0, x1, y0, y1))
-                face(v, idx, 5, atlas.region(b.faceSprite(5)),
+                face(v, idx, 5, atlas.region(b.faceSprite(5)), b.tintBits(),
                         x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);   // -Z
         }
         // Oriented quads: a flat tilted plate, DOUBLE-SIDED. Emit the 4 corners ONCE (UVs p00→p10 = U, p00→p01
@@ -150,10 +162,10 @@ final class PartMesh implements Disposable {
         for (Quad q : quads) {
             PartAtlas.Region r = atlas.region(q.sprite());
             short base = (short) (v.size / FLOATS_PER_VERTEX);
-            vertex(v, q.p00().x, q.p00().y, q.p00().z, r, CORNER_UV[0], CORNER_UV[1]);
-            vertex(v, q.p10().x, q.p10().y, q.p10().z, r, CORNER_UV[2], CORNER_UV[3]);
-            vertex(v, q.p11().x, q.p11().y, q.p11().z, r, CORNER_UV[4], CORNER_UV[5]);
-            vertex(v, q.p01().x, q.p01().y, q.p01().z, r, CORNER_UV[6], CORNER_UV[7]);
+            vertex(v, q.p00().x, q.p00().y, q.p00().z, r, CORNER_UV[0], CORNER_UV[1], WHITE_BITS);
+            vertex(v, q.p10().x, q.p10().y, q.p10().z, r, CORNER_UV[2], CORNER_UV[3], WHITE_BITS);
+            vertex(v, q.p11().x, q.p11().y, q.p11().z, r, CORNER_UV[4], CORNER_UV[5], WHITE_BITS);
+            vertex(v, q.p01().x, q.p01().y, q.p01().z, r, CORNER_UV[6], CORNER_UV[7], WHITE_BITS);
             idx.add(base); idx.add((short) (base + 1)); idx.add((short) (base + 2));  // front
             idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 3));
             idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 1));  // back (reversed winding)
@@ -162,7 +174,8 @@ final class PartMesh implements Disposable {
 
         Mesh mesh = new Mesh(true, v.size / FLOATS_PER_VERTEX, idx.size,
                 new VertexAttribute(Usage.Position, 3, "a_position"),
-                new VertexAttribute(Usage.TextureCoordinates, 2, "a_uv"));
+                new VertexAttribute(Usage.TextureCoordinates, 2, "a_uv"),
+                new VertexAttribute(Usage.ColorPacked, 4, "a_color"));
         mesh.setVertices(v.items, 0, v.size);
         mesh.setIndices(idx.items, 0, idx.size);
         mesh.enableInstancedRendering(false, maxInstances,
@@ -204,24 +217,26 @@ final class PartMesh implements Disposable {
         return false;
     }
 
-    private static void face(FloatArray v, ShortArray idx, int faceId, PartAtlas.Region r,
+    private static void face(FloatArray v, ShortArray idx, int faceId, PartAtlas.Region r, float tintBits,
                              float ax, float ay, float az, float bx, float by, float bz,
                              float cx, float cy, float cz, float dx, float dy, float dz) {
         float[] uv = CORNER_UV; // a,b,c,d == p00,p10,p11,p01 → fixed UVs for every face
         short base = (short) (v.size / FLOATS_PER_VERTEX);
-        vertex(v, ax, ay, az, r, uv[0], uv[1]);
-        vertex(v, bx, by, bz, r, uv[2], uv[3]);
-        vertex(v, cx, cy, cz, r, uv[4], uv[5]);
-        vertex(v, dx, dy, dz, r, uv[6], uv[7]);
+        vertex(v, ax, ay, az, r, uv[0], uv[1], tintBits);
+        vertex(v, bx, by, bz, r, uv[2], uv[3], tintBits);
+        vertex(v, cx, cy, cz, r, uv[4], uv[5], tintBits);
+        vertex(v, dx, dy, dz, r, uv[6], uv[7], tintBits);
         idx.add(base); idx.add((short) (base + 1)); idx.add((short) (base + 2));
         idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 3));
     }
 
-    /** Appends one vertex; maps the corner's face UV (0..1) into the sprite's atlas region. */
-    private static void vertex(FloatArray v, float x, float y, float z, PartAtlas.Region r, float u, float w) {
+    /** Appends one vertex: position, the corner's face UV mapped into the sprite's atlas region, packed tint. */
+    private static void vertex(FloatArray v, float x, float y, float z, PartAtlas.Region r, float u, float w,
+                               float tintBits) {
         v.add(x); v.add(y); v.add(z);
         v.add(r.u0() + u * (r.u1() - r.u0()));
         v.add(r.v0() + w * (r.v1() - r.v0()));
+        v.add(tintBits);
     }
 
     void begin() {

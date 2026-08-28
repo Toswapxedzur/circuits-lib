@@ -19,26 +19,32 @@ final class InstancedShader {
             #version 150
             in vec3 a_position;
             in vec2 a_uv;
+            in vec4 a_color;
             in vec4 i_w0;
             in vec4 i_w1;
             in vec4 i_w2;
             in vec4 i_w3;
             uniform mat4 u_projView;
             out vec2 v_uv;
+            out vec4 v_color;
             void main() {
                 mat4 world = mat4(i_w0, i_w1, i_w2, i_w3);
                 gl_Position = u_projView * world * vec4(a_position, 1.0);
                 v_uv = a_uv;
+                v_color = a_color;
             }
             """;
 
+    // The baked greyscale (or coloured) texel is MULTIPLIED by the per-vertex tint — white for normal parts,
+    // the component-entity's colour for tintable parts (e.g. the LED bulb). Texel alpha carries translucency.
     private static final String FRAG = """
             #version 150
             in vec2 v_uv;
+            in vec4 v_color;
             uniform sampler2D u_atlas;
             out vec4 fragColor;
             void main() {
-                fragColor = texture(u_atlas, v_uv);
+                fragColor = texture(u_atlas, v_uv) * v_color;
             }
             """;
 

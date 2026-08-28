@@ -13,13 +13,15 @@
         1.5
       ],
       "faces": {
-        "east": "sp70ff65847a4aef4b_3x3",
-        "west": "sp981557dbb6629aa_3x3",
-        "up": "sp2431d46cb89b9789_3x3",
-        "down": "sp3ebecce5d08a0ae8_3x3",
-        "south": "sp595e5ec6c3fe31c7_3x3",
-        "north": "sp761a68ae73314526_3x3"
-      }
+        "east": "sp4d6ce794f1bf3415_3x3",
+        "west": "sp491075dbb092c96_3x3",
+        "up": "sp3de3b61c406d5897_3x3",
+        "down": "sp7712de64e08a8a18_3x3",
+        "south": "sp3054a0155c2d6f19_3x3",
+        "north": "sp6bb2d9cc938f409a_3x3"
+      },
+      "tint": false,
+      "translucent": false
     }
   ],
   "quads": [],

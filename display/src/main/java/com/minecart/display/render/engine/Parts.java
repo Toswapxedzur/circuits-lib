@@ -49,7 +49,8 @@ final class Parts {
     private static final Color[] RES_B1 = PaletteDither.ramp(new Color(0.35f, 0.20f, 0.10f, 1f));   // band: brown
     private static final Color[] RES_B2 = PaletteDither.ramp(new Color(0.72f, 0.10f, 0.10f, 1f));   // band: red
     private static final Color[] RES_B3 = PaletteDither.ramp(new Color(0.82f, 0.62f, 0.18f, 1f));   // band: gold
-    private static final Color[] LED_RED = PaletteDither.rampHsv(2f, 0.85f, 0.98f);  // bright red LED bulb
+    private static final Color[] BULB_CORE = PaletteDither.grays(6, 0.60f, 1.00f);  // greyscale inner glow (TINTED)
+    private static final Color[] BULB_GLASS = PaletteDither.grays(6, 0.70f, 1.00f); // greyscale glass (TINTED + translucent)
     private static final Color BAND_WHITE = new Color(0.97f, 0.97f, 0.96f, 1f);     // band diffuse tint
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
@@ -68,32 +69,45 @@ final class Parts {
 
     // Paint factories — plastic is per-colour; the rest are shared across colours.
     private static PaletteDither.Paint plastic(long seed, Color[] pal) {
-        return new PaletteDither.Paint(pal, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R);
+        return new PaletteDither.Paint(pal, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
     }
 
     private static PaletteDither.Paint band(long seed) {
-        return new PaletteDither.Paint(BAND, BAND_WHITE, 1, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R);
+        return new PaletteDither.Paint(BAND, BAND_WHITE, 1, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
     }
 
     private static PaletteDither.Paint fence(long seed) {
-        return new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed, 0f, 2f, 0f, SHADE_R);
+        return new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed, 0f, 2f, 0f, SHADE_R, 1f);
     }
 
     private static PaletteDither.Paint stud(long seed, float cx, float cy, float cz) {
-        return new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed, cx, cy, cz, STUD_R);
+        return new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed, cx, cy, cz, STUD_R, 1f);
     }
 
     private static PaletteDither.Paint knob(long seed) {
-        return new PaletteDither.Paint(KNOB, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R);
+        return new PaletteDither.Paint(KNOB, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
+    }
+
+    // LED bulb paints — GREYSCALE bases (the colour comes from the component-entity tint), shade-centred on the bulb.
+    private static PaletteDither.Paint bulbCore(long seed) {   // solid inner glow (tinted)
+        return new PaletteDither.Paint(BULB_CORE, Color.WHITE, 2, 0.3f, false, seed, 0f, 8f, 0f, SHADE_R, 1f);
+    }
+
+    private static PaletteDither.Paint bulbGlass(long seed) {  // translucent outer glass (tinted, alpha 0.45)
+        return new PaletteDither.Paint(BULB_GLASS, Color.WHITE, 2, 0.3f, false, seed, 0f, 8f, 0f, SHADE_R, 0.45f);
+    }
+
+    private static PaletteDither.Paint tube(long seed) {       // metal screw base (NOT tinted)
+        return new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed, 0f, 5f, 0f, SHADE_R, 1f);
     }
 
     Parts() {
         slider = new PartType("slider", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f, null)));
+                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f, null, false, false, PartMesh.WHITE_BITS)));
         // Press button: a 3×3 plunger, height 3, centred on the body, resting with its top 3px above the body
         // top (y4 → 7). Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
         button = new PartType("button", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f, null)));
+                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f, null, false, false, PartMesh.WHITE_BITS)));
         Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
@@ -169,11 +183,17 @@ final class Parts {
                 .build();
     }
 
-    /** LED: the standard base + a bright-red bulb — a 3×3×4 body with a 1×1 tip — centred on the board. */
+    /**
+     * LED: the standard base + an incandescent-style light <b>bulb</b>, drawn as a BASE GREYSCALE texture and
+     * <b>tinted by the component-entity colour</b> (so every LED colour reuses one texture). A metal <b>tube</b>
+     * (5×5×2 screw base, y4..6, untinted steel), a <b>solid inner core</b> (5×5×5, y7..12, tinted), and a
+     * <b>translucent outer core</b> (7×7×7, y6..13, tinted + alpha — drawn in the blended pass) around it.
+     */
     private ComponentModel buildLed(Color[] pal) {
         return base("led", pal)
-                .box(0f, 6f, 0f, 3f, 4f, 3f, plastic(911L, LED_RED))   // red bulb body y4..8
-                .box(0f, 8.5f, 0f, 1f, 1f, 1f, plastic(912L, LED_RED)) // tip y8..9
+                .box(0f, 5f, 0f, 5f, 2f, 5f, tube(913L))                       // metal tube (screw base) y4..6
+                .box(0f, 9.5f, 0f, 5f, 5f, 5f, bulbCore(914L), true, false)    // solid inner core y7..12 (tinted)
+                .box(0f, 9.5f, 0f, 7f, 7f, 7f, bulbGlass(915L), true, true)    // translucent outer core y6..13 (tinted)
                 .build();
     }
 
@@ -189,8 +209,8 @@ final class Parts {
         float cy = top + legH + h / 2f;        // black box centre Y (legs bridge body-top → box-bottom)
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
-        PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
-        PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r);
+        PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r, 1f);
+        PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r, 1f);
         return studs(ComponentModel.of("capacitor")
                 .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))                 // coloured rim y0..1
                 .box(0f, 3.5f, 0f, 33f, 1f, 9f, plastic(202L, pal))                 // coloured rim y3..4

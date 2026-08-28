@@ -52,10 +52,18 @@ final class ComponentModel {
             return this;
         }
 
+        /** A box that is TINTED by the component-entity colour and/or drawn TRANSLUCENT (e.g. the LED cores). */
+        Builder box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
+                    boolean tint, boolean translucent) {
+            statics.add(PartMesh.Box.local(cx, cy, cz, sx, sy, sz, paint, tint, translucent));
+            return this;
+        }
+
         /** A box whose object-space shading centre differs from where it sits (e.g. a movable part's rest pose). */
         Builder boxAt(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                       float ocx, float ocy, float ocz) {
-            statics.add(new PartMesh.Box(cx, cy, cz, sx, sy, sz, paint, ocx, ocy, ocz, null));
+            statics.add(new PartMesh.Box(cx, cy, cz, sx, sy, sz, paint, ocx, ocy, ocz, null,
+                    false, false, PartMesh.WHITE_BITS));
             return this;
         }
 
@@ -66,7 +74,7 @@ final class ComponentModel {
 
         /** Adds a box loaded from a model JSON: geometry + per-face sprite names, no paint (runtime path). */
         Builder loadedBox(float cx, float cy, float cz, float sx, float sy, float sz, String[] faceSprites) {
-            return box(PartMesh.Box.loaded(cx, cy, cz, sx, sy, sz, faceSprites));
+            return box(PartMesh.Box.loaded(cx, cy, cz, sx, sy, sz, faceSprites, false, false));
         }
 
         /** Adds a pre-built box (used by {@link ModelLoader}). */
