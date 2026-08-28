@@ -31,4 +31,20 @@ final class SnapBoardScene {
             engine.addEntity(e);
         }
     }
+
+    /**
+     * Rebuilds the engine's entity set from a fresh board snapshot (drop all → repopulate → {@link
+     * EngineRenderer#build()}, which re-stitches the atlas + meshes). Call when the board's {@code revision()}
+     * advances after an edit.
+     *
+     * <p><b>Concurrency (for the real SnapScreen):</b> the board mutates on the server tick thread and renders on
+     * the GL thread. Read {@code board.revision()} <b>before</b> taking the {@code placements()} snapshot, so an
+     * edit that lands between the two isn't silently missed (the next frame's revision check will catch it). The
+     * snapshot passed here should be that already-taken copy.
+     */
+    static void rebuild(EngineRenderer engine, ModelLoader loader, Iterable<SnapPlacement> placements) {
+        engine.clearEntities();
+        populate(engine, loader, placements);
+        engine.build();
+    }
 }

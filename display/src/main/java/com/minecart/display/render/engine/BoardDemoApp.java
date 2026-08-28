@@ -24,6 +24,11 @@ public final class BoardDemoApp extends ApplicationAdapter {
     private PerspectiveCamera cam;
     private FlyController fly;
     private EngineRenderer engine;
+    private ModelLoader loader;
+    private SnapBoard board;
+    private int lastRevision;
+    private float clock;
+    private boolean blinkOn;
 
     /** A small hand-built board: a wire run that turns a corner, a cross branch, and a battery→resistor stack. */
     private static SnapBoard demoBoard() {
@@ -48,10 +53,11 @@ public final class BoardDemoApp extends ApplicationAdapter {
 
     @Override
     public void create() {
-        ModelLoader loader = new ModelLoader();
+        loader = new ModelLoader();
         engine = new EngineRenderer();
 
-        SnapBoard board = demoBoard();
+        board = demoBoard();
+        lastRevision = board.revision();
         SnapBoardScene.populate(engine, loader, board.placements());
 
         // (No board slab: a slab's sprites would need a datagen seed pass for its exact dimensions; the parts'
@@ -75,6 +81,24 @@ public final class BoardDemoApp extends ApplicationAdapter {
     public void render() {
         float dt = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
         fly.update(dt);
+
+        // Live-edit proof: blink a wire in/out on a timer, then rebuild the engine from the board whenever its
+        // revision advances — the same revision-driven refresh the real 3D SnapScreen will run on edits.
+        clock += dt;
+        if (clock >= 1.5f) {
+            clock = 0f;
+            blinkOn = !blinkOn;
+            if (blinkOn) {
+                board.place(AllSnapParts.SNAP_WIRE, 0, 5, 0, Facing.EAST); // a free edge (0,5)->(1,5)
+            } else {
+                board.remove(new com.minecart.snap.Post(0, 5, 0), new com.minecart.snap.Post(1, 5, 0));
+            }
+        }
+        int rev = board.revision();                 // read revision BEFORE the snapshot (see SnapBoardScene#rebuild)
+        if (rev != lastRevision) {
+            lastRevision = rev;
+            SnapBoardScene.rebuild(engine, loader, board.placements());
+        }
         engine.update(dt);
 
         Gdx.gl.glClearColor(0.11f, 0.12f, 0.15f, 1f);

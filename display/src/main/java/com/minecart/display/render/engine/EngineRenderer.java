@@ -83,6 +83,12 @@ final class EngineRenderer implements Disposable {
         entities.add(e);
     }
 
+    /** Drops all registered entities (e.g. to repopulate from a new board snapshot). Their meshes are freed on
+     *  the next {@link #build()}; call build() after re-adding. */
+    void clearEntities() {
+        entities.clear();
+    }
+
     /**
      * Bakes the atlas and every mesh. Order matters: collect all boxes → stitch the atlas from their sprites →
      * bake the static scene mesh (neighbour-culled) and one instanced mesh per movable type. Call after all
