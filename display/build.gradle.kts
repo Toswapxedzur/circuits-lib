@@ -9,17 +9,6 @@ application {
     }
 }
 
-// Standalone 3D model viewer for iterating on part models: ./gradlew :display:preview
-tasks.register<JavaExec>("preview") {
-    group = "application"
-    description = "Launch the part model preview viewer"
-    mainClass = "com.minecart.display.preview.ModelPreviewApp"
-    classpath = sourceSets["main"].runtimeClasspath
-    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
-        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
-    }
-}
-
 // One-time: draw the part sprites to fixed PNGs under src/main/resources/textures/parts.
 // ./gradlew :display:seedtextures   (then commit the generated PNGs)
 tasks.register<JavaExec>("seedtextures") {

@@ -23,6 +23,12 @@ final class Parts {
     private static final float STUD_R = Math.max(1f,
             Math.abs(0.5f / L) * 1.5f + Math.abs(0.7f / L) * 0.5f + Math.abs(0.4f / L) * 1.5f);
 
+    /** The series shading radius for a body of half-width {@code halfX} — the standard body's 16.5 gives
+     *  exactly {@link #SHADE_R}; the wire family passes its own so the gradient spans the longer body. */
+    private static float shadeR(float halfX) {
+        return Math.abs(0.5f / L) * halfX + Math.abs(0.7f / L) * 3f + Math.abs(0.4f / L) * 4.5f;
+    }
+
     /** The plastic body colour set (PlasticColors.SET), as HSV — one capacitor + switch is built per row. */
     static final float[][] PLASTIC_HSV = {
             {0f, 0.92f, 0.80f},   // red
@@ -60,6 +66,13 @@ final class Parts {
     /** Capacitor sizes: {body W×W footprint, body height, leg height}. Leg is 1 wide × legH tall × 0 thick. */
     static final float[][] CAP_SIZES = {{7f, 9f, 2f}, {5f, 6f, 3f}, {3f, 4f, 4f}}; // big, medium, small
 
+    /** The wire family's generated size range (grid points spanned). ONE wire component type — its length is a
+     *  component STATE, so the range is just this datagen bound: bump WIRE_MAX and re-run datagen for more. */
+    static final int WIRE_MIN = 2, WIRE_MAX = 7;
+
+    /** The wire's plastic colour: azure ({@link #PLASTIC_HSV}[{@link #WIRE_COLOR}]), the owner's pick. */
+    static final int WIRE_COLOR = 6;
+
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
     final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];         // blank base board, one per colour
@@ -69,14 +82,23 @@ final class Parts {
     final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] diodes = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] leds = new ComponentModel[PLASTIC_HSV.length];
+    final ComponentModel[] wires = new ComponentModel[WIRE_MAX - WIRE_MIN + 1]; // azure, indexed n − WIRE_MIN
 
     // Paint factories — plastic is per-colour; the rest are shared across colours.
     private static PaletteDither.Paint plastic(long seed, Color[] pal) {
-        return new PaletteDither.Paint(pal, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
+        return plastic(seed, pal, SHADE_R);
+    }
+
+    private static PaletteDither.Paint plastic(long seed, Color[] pal, float r) {
+        return new PaletteDither.Paint(pal, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, r, 1f);
     }
 
     private static PaletteDither.Paint band(long seed) {
-        return new PaletteDither.Paint(BAND, BAND_WHITE, 1, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
+        return band(seed, SHADE_R);
+    }
+
+    private static PaletteDither.Paint band(long seed, float r) {
+        return new PaletteDither.Paint(BAND, BAND_WHITE, 1, 0.3f, false, seed, 0f, 2f, 0f, r, 1f);
     }
 
     private static PaletteDither.Paint fence(long seed) {
@@ -124,6 +146,11 @@ final class Parts {
             diodes[c] = buildDiode(pal);
             leds[c] = buildLed(pal);
         }
+        Color[] azure = PaletteDither.rampHsv(
+                PLASTIC_HSV[WIRE_COLOR][0], PLASTIC_HSV[WIRE_COLOR][1], PLASTIC_HSV[WIRE_COLOR][2]);
+        for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
+            wires[n - WIRE_MIN] = buildWire(n, azure);
+        }
     }
 
     /** The coloured rims + white band shared by every part — the TOP rim's +Y face carries the {@code trace}
@@ -149,6 +176,35 @@ final class Parts {
     private static PartMesh.Trace redTrace() { return new PartMesh.Trace(TRACE_RED, false, false); }
     private static PartMesh.Trace capTrace() { return new PartMesh.Trace(TRACE_WHITE, true, false); }
     private static PartMesh.Trace diodeTrace() { return new PartMesh.Trace(TRACE_RED, false, true); }
+
+    /** The wire's printed line: stud-to-stud across the whole family, span = outer stud offset − 1.5. */
+    private static PartMesh.Trace wireTrace(float span) {
+        return new PartMesh.Trace(TRACE_WHITE, false, false, span);
+    }
+
+    /**
+     * Wire (conductor link) of size {@code n} — ONE component type whose length is a component STATE; the model
+     * is generated per size by this one builder, freely extensible via {@link #WIRE_MAX}. Azure plastic, the
+     * standard rim + white band + rim profile on the grid formula width = (n−1)·12 + 9 (3px end buffers). A
+     * metal snap stud at EVERY grid point on top — a conductor connects wherever it crosses — but only TWO
+     * underside sockets, one at each END (it mounts by its ends). The white trace runs stud-to-stud, passing
+     * under the intermediate studs. n=3 reproduces the standard body exactly, so its rim/band/stud/socket
+     * sprites all dedupe with the other parts'.
+     */
+    private ComponentModel buildWire(int n, Color[] pal) {
+        float s = (n - 1) * 6f;                 // outer stud offset: studs at −s..s, pitch 12
+        float w = (n - 1) * 12f + 9f;
+        float r = shadeR(w / 2f);
+        ComponentModel.Builder b = ComponentModel.of("wire")
+                .box(0f, 0.5f, 0f, w, 1f, 9f, plastic(101L, pal, r))                      // rim y0..1
+                .box(0f, 3.5f, 0f, w, 1f, 9f, plastic(202L, pal, r), wireTrace(s - 1.5f)) // top rim + trace
+                .box(0f, 2f, 0f, w, 2f, 9f, band(303L, r));                               // white band y1..3
+        for (int k = 0; k < n; k++) {           // a stud at EVERY grid point (local shading frame → all dedupe)
+            float x = -s + k * 12f;
+            b = b.box(x, 4.5f, 0f, 3f, 1f, 3f, stud(404L, x, 4.5f, 0f));
+        }
+        return socket(socket(b, -s), s).build(); // underside sockets at the ENDS only
+    }
 
     /**
      * The two snap studs, at the part's ENDS (x = ±12), + the matching two underside female <b>sockets</b>.
@@ -313,6 +369,9 @@ final class Parts {
             m.put("resistor_" + PLASTIC_NAME[c], resistors[c]);
             m.put("diode_" + PLASTIC_NAME[c], diodes[c]);
             m.put("led_" + PLASTIC_NAME[c], leds[c]);
+        }
+        for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
+            m.put("wire_" + n, wires[n - WIRE_MIN]); // one type, size = component state → wire_<n>
         }
         return m;
     }
