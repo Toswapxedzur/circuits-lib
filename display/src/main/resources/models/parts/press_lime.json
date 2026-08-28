@@ -233,12 +233,12 @@
         1.5
       ],
       "faces": {
-        "east": "sp2702ffaa8cf87cc3_1x3",
-        "west": "sp5e271f7356427544_1x3",
-        "up": "sp176e28678813d5c5_3x3",
-        "down": "sp50a8f6941b80e446_3x3",
-        "south": "sp9eab84496eb6ac7_3x1",
-        "north": "sp4548f1fbce4d3c48_3x1"
+        "east": "sp1be2e2dc128a07c3_1x3",
+        "west": "sp530702a4dbd40044_1x3",
+        "up": "spc4e0b990da560c5_3x3",
+        "down": "sp4588d9c5a1126f46_3x3",
+        "south": "sp7eca9b761c7cf5c7_3x1",
+        "north": "sp3a28d52d53dec748_3x1"
       },
       "tint": false,
       "translucent": false

@@ -13,12 +13,12 @@
         1.0
       ],
       "faces": {
-        "east": "sp7b464ace8005aa79_2x2",
-        "west": "sp331ec5cc3247147a_2x2",
-        "up": "sp6c6ba01861ef4b7b_2x2",
-        "down": "sp25a0cb6b4e12db7c_2x2",
-        "south": "sp5ee25d03773a387d_2x2",
-        "north": "sp198c3ea01d8b887e_2x2"
+        "east": "sp70262e0005973579_2x2",
+        "west": "sp27fea8fdb7d89f7a_2x2",
+        "up": "sp614b8349e780d67b_2x2",
+        "down": "sp1a80ae9cd3a4667c_2x2",
+        "south": "sp53c24034fccbc37d_2x2",
+        "north": "spe6c21d1a31d137e_2x2"
       },
       "tint": false,
       "translucent": false
