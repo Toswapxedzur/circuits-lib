@@ -56,3 +56,6 @@ run-data/
 
 # Third-party Minecraft resource pack (friend-provided, unused after jME retirement; not for redistribution)
 /assets/
+
+# Local Claude Code overrides (personal, not shared)
+.claude/settings.local.json
