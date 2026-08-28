@@ -42,9 +42,18 @@ final class Parts {
             {265f, 0.85f, 0.93f}, // violet (vivid)
             {295f, 0.92f, 0.80f}, // purple
             {330f, 0.92f, 0.80f}, // pink
+            {112f, 0.97f, 0.48f}, // deep green (owner-picked: bluer than lime, sat up, value down hard)
+            {0f, 0f, 0.72f},      // light gray
+            {0f, 0f, 0.35f},      // dark gray
+            {0f, 0f, 1.00f},      // white (whole body white — band-matched palette, see WHITE_NAME)
     };
     static final String[] PLASTIC_NAME = {
-            "red", "orange", "yellow", "lime", "teal", "cyan", "azure", "blue", "violet", "purple", "pink"};
+            "red", "orange", "yellow", "lime", "teal", "cyan", "azure", "blue", "violet", "purple", "pink",
+            "green", "lgray", "dgray", "white"};
+
+    /** The white piece renders its WHOLE body white — its rim palette is the band's grays (not ramp-white,
+     *  which spans 0.75–1.0 and would seam against the 0.85–1.0 band). Matched by name here. */
+    private static final String WHITE_NAME = "white";
 
     private static final Color[] BAND = PaletteDither.grays(6, 0.85f, 1.0f);        // white plastic band
     private static final Color[] STEEL = PaletteDither.steelBlue();                 // metal
@@ -140,7 +149,9 @@ final class Parts {
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
         }
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
-            Color[] pal = PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
+            // The white piece uses the band's grays for its rims too, so the whole body is one seamless white.
+            Color[] pal = WHITE_NAME.equals(PLASTIC_NAME[c]) ? PaletteDither.grays(7, 0.85f, 1.0f)
+                    : PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
             bases[c] = base("base", pal).build(); // the blank snap base board, in every plastic colour
             switches[c] = buildSwitch(pal);
             pressSwitches[c] = buildPressSwitch(pal);
