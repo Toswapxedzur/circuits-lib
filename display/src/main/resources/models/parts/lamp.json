@@ -413,44 +413,22 @@
     },
     {
       "from": [
-        -1.5,
-        4.0,
-        -1.5
-      ],
-      "to": [
-        1.5,
-        9.0,
-        1.5
-      ],
-      "faces": {
-        "east": "sp3bdf934b03689eb8_5x3",
-        "west": "sp7303b313ccb29739_5x3",
-        "up": "sp2c62079ca5a98eba_3x3",
-        "down": "sp65858a015276e33b_3x3",
-        "south": "sp1ec74bb1ce5226bc_3x5",
-        "north": "sp5a25856905b3f83d_3x5"
-      },
-      "tint": false,
-      "translucent": false
-    },
-    {
-      "from": [
         -2.5,
-        9.0,
+        5.0,
         -2.5
       ],
       "to": [
         2.5,
-        10.0,
+        6.0,
         2.5
       ],
       "faces": {
-        "east": "sp27ec2b84270a9801_1x5",
-        "west": "sp3f0565139636ef60_1x5",
-        "up": "sp59aa415297beb03f_5x5",
-        "down": "sp74427f7efe40209e_5x5",
-        "south": "spee27190963a9a7d_5x1",
-        "north": "sp2d072bad678eb0dc_5x1"
+        "east": "sp27d4dfbc406ade01_1x5",
+        "west": "sp3eee194baf973560_1x5",
+        "up": "sp5992f58ab11ef63f_5x5",
+        "down": "sp742b33b717a0669e_5x5",
+        "south": "specb25c8af9ae07d_5x1",
+        "north": "sp2cefdfe580eef6dc_5x1"
       },
       "tint": false,
       "translucent": true
