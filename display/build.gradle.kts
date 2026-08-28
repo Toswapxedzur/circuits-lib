@@ -43,6 +43,17 @@ tasks.register<JavaExec>("enginedemo") {
     }
 }
 
+// Bullet physics proof for the world-entity system: drop a body onto a ramp. ./gradlew :display:entityproof
+tasks.register<JavaExec>("entityproof") {
+    group = "application"
+    description = "Bullet 3D-physics proof — an entity falls and rests against a ramp"
+    mainClass = "com.minecart.display.entity.EntityPhysicsProof"
+    classpath = sourceSets["main"].runtimeClasspath
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 val gdxVersion = "1.14.0"
 
 dependencies {
@@ -66,6 +77,11 @@ dependencies {
     implementation("com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion")
     // Source: https://mvnrepository.com/artifact/com.badlogicgames.gdx/gdx-platform
     runtimeOnly("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop")
+
+    // Bullet 3D rigid-body physics (JNI) for the world-ENTITY system (a battery that falls / rests at an angle).
+    // Source: https://mvnrepository.com/artifact/com.badlogicgames.gdx/gdx-bullet
+    implementation("com.badlogicgames.gdx:gdx-bullet:$gdxVersion")
+    runtimeOnly("com.badlogicgames.gdx:gdx-bullet-platform:$gdxVersion:natives-desktop")
 
     // Logback is the chosen SLF4J implementation for the desktop client binary. runtimeOnly keeps it off
     // the compile classpath so application code can't accidentally reach into Logback APIs (except
