@@ -60,6 +60,9 @@ final class PaletteDither {
             h = h * 31 + Color.rgba8888(b.trace().color());
             h = h * 31 + (b.trace().capacitor() ? 1 : 0);
             h = h * 31 + (b.trace().arrow() ? 1 : 0);
+            if (b.trace().span() != PartMesh.Trace.DEFAULT_SPAN) { // folded in only when non-default, so every
+                h = h * 31 + Float.floatToIntBits(b.trace().span()); // pre-span sprite name stays byte-stable
+            }
         }
         return "sp" + Long.toHexString(h & 0x7fffffffffffffffL) + "_" + wh[0] + "x" + wh[1];
     }
@@ -116,19 +119,22 @@ final class PaletteDither {
             float z = z1 - ((py + 0.5f) / ph) * sz;             // +Y face: v runs z1 → z0
             for (int px = 0; px < pw; px++) {
                 float x = x0 + ((px + 0.5f) / pw) * (x1 - x0);  // u runs x0 → x1
-                if (onTrace(x, z, trace.capacitor(), trace.arrow())) pm.drawPixel(px, py);
+                if (onTrace(x, z, trace)) pm.drawPixel(px, py);
             }
         }
     }
 
-    /** Trace shape in a part's object frame: a 1-wide line at z=0 over x∈[−10.5,10.5]; a capacitor breaks the
-     *  middle and adds two 7-long plates (perpendicular) at x=±2.5 (spacing 5); {@code arrow} (the diode) adds
-     *  an arrowhead pointing in the flow direction (+x) — a chevron whose two arms extend 3px back-and-out from
-     *  the tip texel at x=10 (arm pixels (9,±1)(8,±2)(7,±3)), overlaid on the continuous line. */
-    private static boolean onTrace(float x, float z, boolean capacitor, boolean arrow) {
-        boolean line = Math.abs(z) <= 0.5f && Math.abs(x) <= 10.5f;
-        if (arrow && Math.abs(z) >= 0.5f && Math.abs(z) <= 3.5f
-                && Math.abs(x - (10f - Math.abs(z))) <= 0.5f) return true;
+    /** Trace shape in a part's object frame: a 1-wide line at z=0 over x∈[−span, span] (span 10.5 on the
+     *  standard ±12-stud body; the wire family passes its own); a capacitor breaks the middle and adds two
+     *  7-long plates (perpendicular) at x=±2.5 (spacing 5); {@code arrow} (the diode) adds an arrowhead
+     *  pointing in the flow direction (+x) — a chevron whose two arms extend 3px back-and-out from the tip
+     *  texel at span−0.5 (arm pixels (9,±1)(8,±2)(7,±3) on the standard body), overlaid on the line. */
+    private static boolean onTrace(float x, float z, PartMesh.Trace t) {
+        float span = t.span();
+        boolean capacitor = t.capacitor();
+        boolean line = Math.abs(z) <= 0.5f && Math.abs(x) <= span;
+        if (t.arrow() && Math.abs(z) >= 0.5f && Math.abs(z) <= 3.5f
+                && Math.abs(x - (span - 0.5f - Math.abs(z))) <= 0.5f) return true;
         if (!capacitor) return line;
         boolean plate = (Math.abs(x - 2.5f) <= 0.5f || Math.abs(x + 2.5f) <= 0.5f) && Math.abs(z) <= 3.5f;
         return (line && Math.abs(x) >= 2.5f) || plate; // gap in the middle (2.5 spacing each side) + the plates

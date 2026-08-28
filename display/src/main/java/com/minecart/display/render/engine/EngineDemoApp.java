@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Instanced component engine demo. Everything is listed <b>once, in order</b> along a single row:
  * the blank base board in each of the 11 plastic colours (red→pink), then the capacitor (3 sizes), a green
- * slide switch, press switch, resistor, diode, and LED. Inspect
+ * slide switch, press switch, resistor, diode, LED, then the azure wire family (every size state). Inspect
  * freely with a fly camera — <b>WASD</b> to move, <b>Space</b>/<b>Shift</b> up/down, drag to look, scroll for
  * speed. The switch/press buttons animate on a timer. Run with {@code ./gradlew :display:enginedemo}.
  */
@@ -33,13 +33,22 @@ public final class EngineDemoApp extends ApplicationAdapter {
     private final List<ComponentInstance> pressers = new ArrayList<>();
     private float clock;
 
+    /** Total row length of the appended wire family (each wire body + its 13px gap). */
+    private static float wireSpan() {
+        float t = 0f;
+        for (int n = Parts.WIRE_MIN; n <= Parts.WIRE_MAX; n++) {
+            t += 13f + (n - 1) * 12f + 9f;
+        }
+        return t;
+    }
+
     /** The demo board slab under the row. Shared with {@link SeedPartTextures} so its sprites are generated too. */
     static PartMesh.Box boardBox() {
+        float w = COUNT * SPACING + 30f + wireSpan(); // classic slots + the wire family off the right end
         PaletteDither.Paint paint = new PaletteDither.Paint(
                 PaletteDither.ramp(new Color(0.16f, 0.18f, 0.22f, 1f)), Color.WHITE, // dark board so teal parts read
-                2, 0.3f, false, 900L, 0f, -1f, 0f, 400f, 1f);
-        float w = COUNT * SPACING + 30f;
-        return PartMesh.Box.local(0f, -1f, 0f, w, 2f, 49f, paint);
+                2, 0.3f, false, 900L, wireSpan() / 2f, -1f, 0f, w / 2f, 1f);
+        return PartMesh.Box.local(wireSpan() / 2f, -1f, 0f, w, 2f, 49f, paint);
     }
 
     @Override
@@ -82,15 +91,24 @@ public final class EngineDemoApp extends ApplicationAdapter {
                     new ComponentEntity(tint)));
         }
 
+        float wx = (COUNT - 1 - mid) * SPACING + 16.5f;                  // right edge of the classic row
+        for (int n = Parts.WIRE_MIN; n <= Parts.WIRE_MAX; n++) {         // the wire family, one per size state
+            float w = (n - 1) * 12f + 9f;
+            wx += 13f + w / 2f;                                          // gap, then this wire's centre
+            world.setToTranslation(wx, 0f, 0f);
+            engine.add(new ComponentInstance(loader.model("wire_" + n), world));
+            wx += w / 2f;
+        }
+
         engine.addStatic(List.of(boardBox()));
         engine.build();
 
-        float reach = COUNT * SPACING / 2f;
+        float reach = (COUNT * SPACING + wireSpan()) / 2f;
         cam = new PerspectiveCamera(60f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        cam.position.set(0f, reach * 0.62f, reach * 0.95f); // overview; fly (WASD/Space/Shift/drag) to inspect
+        cam.position.set(wireSpan() / 2f, reach * 0.62f, reach * 0.95f); // overview of the full row incl. wires
         cam.near = 0.5f;
         cam.far = 8000f;
-        cam.lookAt(0f, 4f, 0f);
+        cam.lookAt(wireSpan() / 2f, 4f, 0f);
         cam.up.set(0f, 1f, 0f);
         cam.update();
         fly = new FlyController(cam, reach * 0.9f);
