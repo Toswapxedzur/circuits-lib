@@ -27,7 +27,6 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
     private PerspectiveCamera cam;
     private FlyController fly;
-    private Parts parts;
     private EngineRenderer engine;
     private final List<ComponentInstance> switches = new ArrayList<>();
     private final List<ComponentInstance> pressers = new ArrayList<>();
@@ -44,34 +43,36 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
     @Override
     public void create() {
-        parts = new Parts();
+        ModelLoader loader = new ModelLoader(); // load parts from committed JSON (datagen output), not code
         engine = new EngineRenderer();
 
+        String green = Parts.PLASTIC_NAME[GREEN];        // "lime" — the switches' colour
+        String[] capNames = {"big", "medium", "small"};
         float mid = (COUNT - 1) / 2f;
         Matrix4 world = new Matrix4();
         int i = 0;
-        for (int c = 0; c < parts.bases.length; c++, i++) {               // blank base board in every colour
-            world.setToTranslation((i - mid) * SPACING, 0f, 0f);
-            engine.add(new ComponentInstance(parts.bases[c], world));
+        for (String name : Parts.PLASTIC_NAME) {                          // blank base board in every colour
+            world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
+            engine.add(new ComponentInstance(loader.model("base_" + name), world));
         }
-        for (int s = 0; s < parts.capacitorSizes.length; s++, i++) {      // capacitor, the 3 sizes (teal)
-            world.setToTranslation((i - mid) * SPACING, 0f, 0f);
-            engine.add(new ComponentInstance(parts.capacitorSizes[s], world));
+        for (String size : capNames) {                                   // capacitor, the 3 sizes (teal)
+            world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
+            engine.add(new ComponentInstance(loader.model("capacitor_" + size), world));
         }
-        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);             // green slide switch
-        ComponentInstance sw = new ComponentInstance(parts.switches[GREEN], world);
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // green slide switch
+        ComponentInstance sw = new ComponentInstance(loader.model("switch_" + green), world);
         sw.anim.channel("slide", 0f, 1f, 6f);
         switches.add(sw);
         engine.add(sw);
-        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);            // green press switch
-        ComponentInstance ps = new ComponentInstance(parts.pressSwitches[GREEN], world);
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // green press switch
+        ComponentInstance ps = new ComponentInstance(loader.model("press_" + green), world);
         ps.anim.channel("press", 0f, 1f, 9f);
         pressers.add(ps);
         engine.add(ps);
-        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);            // green resistor
-        engine.add(new ComponentInstance(parts.resistors[GREEN], world));
-        world.setToTranslation((i - mid) * SPACING, 0f, 0f);             // green LED
-        engine.add(new ComponentInstance(parts.leds[GREEN], world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // green resistor
+        engine.add(new ComponentInstance(loader.model("resistor_" + green), world));
+        world.setToTranslation((i - mid) * SPACING, 0f, 0f);            // green LED
+        engine.add(new ComponentInstance(loader.model("led_" + green), world));
 
         engine.addStatic(List.of(boardBox()));
         engine.build();

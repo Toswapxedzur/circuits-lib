@@ -70,9 +70,7 @@ final class EngineRenderer implements Disposable {
             forAtlas.addAll(type.boxes());
         }
         Set<String> names = new LinkedHashSet<>();
-        for (PaletteDither.Face f : PaletteDither.faces(forAtlas)) {
-            names.add(PaletteDither.faceName(f.box(), f.faceId()));
-        }
+        PartMesh.collectSpriteNames(forAtlas, names);
         atlas = new PartAtlas(names);
 
         staticMesh = PartMesh.of(all, 1, atlas);

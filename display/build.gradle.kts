@@ -33,6 +33,16 @@ tasks.register<JavaExec>("seedtextures") {
     }
 }
 
+// Model generator (datagen half producing JSON; seedtextures produces the PNGs). Run AFTER seedtextures.
+// ./gradlew :display:genmodels   (then commit the generated JSON under src/main/resources/models/parts)
+tasks.register<JavaExec>("genmodels") {
+    group = "application"
+    description = "Generate the part model JSONs (Minecraft-style) from the datagen source"
+    mainClass = "com.minecart.display.render.engine.GenModels"
+    classpath = sourceSets["main"].runtimeClasspath
+    workingDir = projectDir // so src/main/resources/... resolves to this module
+}
+
 // GPU-instanced component renderer engine demo: ./gradlew :display:enginedemo
 tasks.register<JavaExec>("enginedemo") {
     group = "application"
@@ -51,6 +61,10 @@ dependencies {
     implementation(project(":protocol"))
     implementation(project(":client"))
     implementation(project(":server"))
+
+    // Model datagen writes / the runtime loader reads part model JSON.
+    // Source: https://mvnrepository.com/artifact/com.google.code.gson/gson
+    implementation("com.google.code.gson:gson:2.13.2")
 
     // Source: https://mvnrepository.com/artifact/io.netty/netty-common
     implementation("io.netty:netty-common:4.2.12.Final")
