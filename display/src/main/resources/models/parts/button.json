@@ -1,0 +1,26 @@
+{
+  "id": "button",
+  "elements": [
+    {
+      "from": [
+        -1.5,
+        -1.5,
+        -1.5
+      ],
+      "to": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "faces": {
+        "east": "sp70ff65847a4aef4b_3x3",
+        "west": "sp981557dbb6629aa_3x3",
+        "up": "sp2431d46cb89b9789_3x3",
+        "down": "sp3ebecce5d08a0ae8_3x3",
+        "south": "sp595e5ec6c3fe31c7_3x3",
+        "north": "sp761a68ae73314526_3x3"
+      }
+    }
+  ],
+  "movables": []
+}

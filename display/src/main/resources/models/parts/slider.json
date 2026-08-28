@@ -1,0 +1,26 @@
+{
+  "id": "slider",
+  "elements": [
+    {
+      "from": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "to": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "faces": {
+        "east": "sp12d3bdd31e97c967_2x2",
+        "west": "sp2c0a090148aa7546_2x2",
+        "up": "sp46b4b37df023ee25_2x2",
+        "down": "sp6147af015418c004_2x2",
+        "south": "sp7be710c9f5115ee3_2x2",
+        "north": "sp17eec2971333f0c2_2x2"
+      }
+    }
+  ],
+  "movables": []
+}

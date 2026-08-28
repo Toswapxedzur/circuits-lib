@@ -16,8 +16,8 @@ import java.util.List;
  */
 final class ComponentModel {
 
-    /** A movable sub-part: its part-type, placement within the component, and how it moves. */
-    record MovablePart(PartType type, Matrix4 local, MovableBinding binding) {}
+    /** A movable sub-part: its part-type, placement within the component, and how it moves (as serialisable data). */
+    record MovablePart(PartType type, Matrix4 local, BindingSpec binding) {}
 
     final String id;
     final List<PartMesh.Box> staticBoxes;
@@ -50,12 +50,23 @@ final class ComponentModel {
         /** A box whose object-space shading centre differs from where it sits (e.g. a movable part's rest pose). */
         Builder boxAt(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                       float ocx, float ocy, float ocz) {
-            statics.add(new PartMesh.Box(cx, cy, cz, sx, sy, sz, paint, ocx, ocy, ocz));
+            statics.add(new PartMesh.Box(cx, cy, cz, sx, sy, sz, paint, ocx, ocy, ocz, null));
             return this;
         }
 
-        Builder movable(PartType type, float x, float y, float z, MovableBinding binding) {
+        Builder movable(PartType type, float x, float y, float z, BindingSpec binding) {
             movables.add(new MovablePart(type, new Matrix4().setToTranslation(x, y, z), binding));
+            return this;
+        }
+
+        /** Adds a box loaded from a model JSON: geometry + per-face sprite names, no paint (runtime path). */
+        Builder loadedBox(float cx, float cy, float cz, float sx, float sy, float sz, String[] faceSprites) {
+            return box(PartMesh.Box.loaded(cx, cy, cz, sx, sy, sz, faceSprites));
+        }
+
+        /** Adds a pre-built box (used by {@link ModelLoader}). */
+        Builder box(PartMesh.Box b) {
+            statics.add(b);
             return this;
         }
 

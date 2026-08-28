@@ -38,7 +38,7 @@ final class ComponentInstance {
         this.model = model;
         this.world.set(world);
         for (ComponentModel.MovablePart m : model.movableParts) {
-            movables.add(new PartInstance(m.type(), m.local(), m.binding()));
+            movables.add(new PartInstance(m.type(), m.local(), m.binding().toBinding()));
         }
         update(0f);
     }
@@ -59,7 +59,7 @@ final class ComponentInstance {
             // Translate geometry to world, but KEEP the object-space centre so the baked shading gradient is
             // identical for every instance (and instances share one sprite).
             out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.paint(),
-                    b.ocx(), b.ocy(), b.ocz()));
+                    b.ocx(), b.ocy(), b.ocz(), b.faceSprites()));
         }
     }
 }

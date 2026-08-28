@@ -2,7 +2,9 @@ package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.graphics.Color;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The part + component library, as pure data (no GL). Geometry AND texture recipe match {@code PreviewPart}
@@ -16,7 +18,7 @@ final class Parts {
     // Series shading frame (== ModelPreviewApp.SHADING + PreviewPart's HALF_X/Y/Z and stud extents).
     private static final float L = (float) Math.sqrt(0.5 * 0.5 + 0.7 * 0.7 + 0.4 * 0.4);
     private static final float SHADE_R =
-            Math.abs(0.5f / L) * 12.5f + Math.abs(0.7f / L) * 3f + Math.abs(0.4f / L) * 4.5f;
+            Math.abs(0.5f / L) * 16.5f + Math.abs(0.7f / L) * 3f + Math.abs(0.4f / L) * 4.5f;
     private static final float STUD_R = Math.max(1f,
             Math.abs(0.5f / L) * 1.5f + Math.abs(0.7f / L) * 0.5f + Math.abs(0.4f / L) * 1.5f);
 
@@ -86,11 +88,11 @@ final class Parts {
 
     Parts() {
         slider = new PartType("slider", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f)));
+                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f, null)));
         // Press button: a 3×3 plunger, height 3, centred on the body, resting with its top 3px above the body
         // top (y4 → 7). Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
         button = new PartType("button", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f)));
+                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f, null)));
         Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
@@ -105,14 +107,38 @@ final class Parts {
         }
     }
 
-    /** The standard part base every component shares: coloured rim + white band + rim + two snap studs at ±8. */
+    /** The standard part base every component shares: coloured rim + white band + rim + two end snap studs at ±12. */
     private ComponentModel.Builder base(String id, Color[] pal) {
-        return ComponentModel.of(id)
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))        // coloured rim y0..1
-                .box(0f, 3.5f, 0f, 25f, 1f, 9f, plastic(202L, pal))        // coloured rim y3..4
-                .box(0f, 2f, 0f, 25f, 2f, 9f, band(303L))                  // white band y1..3
-                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f)) // snap studs at ±8
-                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f));
+        return studs(ComponentModel.of(id)
+                .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))        // coloured rim y0..1
+                .box(0f, 3.5f, 0f, 33f, 1f, 9f, plastic(202L, pal))        // coloured rim y3..4
+                .box(0f, 2f, 0f, 33f, 2f, 9f, band(303L)));                // white band y1..3
+    }
+
+    /**
+     * The two snap studs, at the part's ENDS (x = ±12), + the matching two underside female <b>sockets</b>.
+     * A part <b>occupies 3 stud spaces</b> (its 33-wide body spans grid points −12/0/+12) but carries <b>only
+     * these two studs on top</b> — the middle grid point is covered but unstudded, exactly like a multi-cell
+     * Snap-Circuits part.
+     */
+    private ComponentModel.Builder studs(ComponentModel.Builder b) {
+        b = b.box(-12f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -12f, 4.5f, 0f))
+                .box(12f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 12f, 4.5f, 0f));
+        return socket(socket(b, -12f), 12f);
+    }
+
+    /**
+     * The underside female snap socket at one end (x). A 1px-tall <b>steel fence</b> — outer 5×5, 1px walls,
+     * inner 3×3 hole — protruding just below the body (y −1..0), with a <b>recessed metal floor</b> (3×3,
+     * flush with the body bottom y0) so the interior is metal but the cavity stays hollow: it caps the 3×3 top
+     * stud of the part below. Snap-Circuits female snap. Seeds are shared across both ends → the sockets dedupe.
+     */
+    private ComponentModel.Builder socket(ComponentModel.Builder b, float x) {
+        return b.box(x - 2f, -0.5f, 0f, 1f, 1f, 5f, fence(501L)) // fence: left wall  (full depth)
+                .box(x + 2f, -0.5f, 0f, 1f, 1f, 5f, fence(501L)) // fence: right wall
+                .box(x, -0.5f, -2f, 3f, 1f, 1f, fence(502L))     // fence: front wall (fills the gap)
+                .box(x, -0.5f, 2f, 3f, 1f, 1f, fence(502L))      // fence: back wall
+                .box(x, 0f, 0f, 3f, 0f, 3f, fence(503L));        // recessed metal floor (down-facing skin at y0)
     }
 
     /**
@@ -141,8 +167,8 @@ final class Parts {
     }
 
     /**
-     * Capacitor (Snap-Circuits form): the SAME base every part has — a <b>recolourable</b> plastic body 25×9×4
-     * ({@code pal} rim + white band + rim) with two metal snap studs at ±8, sitting flat on the board. Its own
+     * Capacitor (Snap-Circuits form): the SAME base every part has — a <b>recolourable</b> plastic body 33×9×4
+     * ({@code pal} rim + white band + rim) with three metal snap studs at −12/0/+12, sitting flat on the board. Its own
      * feature is a black box ({@code w}×{@code w} × {@code h}) on the body's top, raised by two <b>metallic</b>
      * 0-thickness legs (1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X), 3 apart.
      * Base rims reuse seeds 101/202/303 → they dedupe with the other parts' bodies of the same colour.
@@ -154,12 +180,10 @@ final class Parts {
                 + Math.abs(0.4f / L) * (w / 2f));
         PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r);
         PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r);
-        return ComponentModel.of("capacitor")
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))                 // coloured rim y0..1
-                .box(0f, 3.5f, 0f, 25f, 1f, 9f, plastic(202L, pal))                 // coloured rim y3..4
-                .box(0f, 2f, 0f, 25f, 2f, 9f, band(303L))                           // white band y1..3
-                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))          // snap studs at ±8
-                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
+        return studs(ComponentModel.of("capacitor")
+                .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))                 // coloured rim y0..1
+                .box(0f, 3.5f, 0f, 33f, 1f, 9f, plastic(202L, pal))                 // coloured rim y3..4
+                .box(0f, 2f, 0f, 33f, 2f, 9f, band(303L)))                          // white band y1..3
                 .box(-1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)               // left leg  (faces +X)
                 .box(1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)                // right leg (faces -X)
                 .box(0f, cy, 0f, w, h, w, black)                                    // black box on top
@@ -169,21 +193,19 @@ final class Parts {
     /** Slide switch: body around a 6x4 hole, steel fence (well 4x2), black well floor, 2 studs, + slider. */
     private ComponentModel buildSwitch(Color[] pal) {
         float hx0 = OX - 3f, hx1 = OX + 3f, hz0 = OZ - 2f, hz1 = OZ + 2f;
-        return ComponentModel.of("slide_switch")
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))                    // green y0..1
-                .box(0f, 2f, 0f, 25f, 2f, 9f, band(102L))                              // white band y1..3
-                .box((-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic(121L, pal)) // left strip
-                .box((hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic(122L, pal))  // right strip
+        return studs(ComponentModel.of("slide_switch")
+                .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))                    // green y0..1
+                .box(0f, 2f, 0f, 33f, 2f, 9f, band(102L))                              // white band y1..3
+                .box((-16.5f + hx0) / 2f, 3.5f, 0f, hx0 + 16.5f, 1f, 9f, plastic(121L, pal)) // left strip
+                .box((hx1 + 16.5f) / 2f, 3.5f, 0f, 16.5f - hx1, 1f, 9f, plastic(122L, pal))  // right strip
                 .box(OX, 3.5f, (-4.5f + hz0) / 2f, 6f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip
                 .box(OX, 3.5f, (hz1 + 4.5f) / 2f, 6f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip
                 .box(hx0 + 0.5f, 4f, OZ, 1f, 2f, 4f, fence(210L))                      // fence left (y3..5)
                 .box(hx1 - 0.5f, 4f, OZ, 1f, 2f, 4f, fence(220L))                      // fence right
                 .box(OX, 4f, hz0 + 0.5f, 4f, 2f, 1f, fence(230L))                      // fence front
                 .box(OX, 4f, hz1 - 0.5f, 4f, 2f, 1f, fence(240L))                      // fence back
-                .box(OX, 3.5f, OZ, 4f, 1f, 2f, knob(250L))                             // black well floor y3..4
-                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))             // stud
-                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
-                .movable(slider, OX, 5f, OZ, MovableBinding.translate("slide", 1f, 0f, 0f))
+                .box(OX, 3.5f, OZ, 4f, 1f, 2f, knob(250L)))                            // black well floor y3..4
+                .movable(slider, OX, 5f, OZ, BindingSpec.translate("slide", 1f, 0f, 0f))
                 .build();
     }
 
@@ -191,25 +213,48 @@ final class Parts {
      * Press switch: same body/band/studs as the slide switch, but the mechanism is <b>centred on the body</b>
      * (not the +0.5 slide offset): a square <b>5×5 hole</b> ringed by a 1px steel fence (well interior 3×3) and
      * a black well floor, plus a <b>3×3 press button</b> (movable) that plunges straight down. Odd widths (5,3)
-     * keep every edge on the odd 25×9 body's texel grid. The button's {@code press} 0→1 drops it 2 in Y.
+     * keep every edge on the odd 33×9 body's texel grid. The button's {@code press} 0→1 drops it 2 in Y.
      */
     private ComponentModel buildPressSwitch(Color[] pal) {
         float hx0 = -2.5f, hx1 = 2.5f, hz0 = -2.5f, hz1 = 2.5f; // 5×5 hole, centred on the body (0,0)
-        return ComponentModel.of("press_switch")
-                .box(0f, 0.5f, 0f, 25f, 1f, 9f, plastic(101L, pal))                    // green y0..1
-                .box(0f, 2f, 0f, 25f, 2f, 9f, band(102L))                              // white band y1..3
-                .box((-12.5f + hx0) / 2f, 3.5f, 0f, hx0 + 12.5f, 1f, 9f, plastic(121L, pal)) // top green: left w10
-                .box((hx1 + 12.5f) / 2f, 3.5f, 0f, 12.5f - hx1, 1f, 9f, plastic(122L, pal))  // right w10
+        return studs(ComponentModel.of("press_switch")
+                .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))                    // green y0..1
+                .box(0f, 2f, 0f, 33f, 2f, 9f, band(102L))                              // white band y1..3
+                .box((-16.5f + hx0) / 2f, 3.5f, 0f, hx0 + 16.5f, 1f, 9f, plastic(121L, pal)) // top green: left w11
+                .box((hx1 + 16.5f) / 2f, 3.5f, 0f, 16.5f - hx1, 1f, 9f, plastic(122L, pal))  // right w11
                 .box(0f, 3.5f, (-4.5f + hz0) / 2f, 5f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip d2
                 .box(0f, 3.5f, (hz1 + 4.5f) / 2f, 5f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip d2
                 .box(hx0 + 0.5f, 4f, 0f, 1f, 2f, 5f, fence(210L))                      // fence left (y3..5)
                 .box(hx1 - 0.5f, 4f, 0f, 1f, 2f, 5f, fence(220L))                      // fence right
                 .box(0f, 4f, hz0 + 0.5f, 5f, 2f, 1f, fence(230L))                      // fence front
                 .box(0f, 4f, hz1 - 0.5f, 5f, 2f, 1f, fence(240L))                      // fence back
-                .box(0f, 3.5f, 0f, 3f, 1f, 3f, knob(250L))                             // black well floor 3×3
-                .box(-8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, -8f, 4.5f, 0f))             // stud
-                .box(8f, 4.5f, 0f, 3f, 1f, 3f, stud(404L, 8f, 4.5f, 0f))
-                .movable(button, 0f, 5.5f, 0f, MovableBinding.translate("press", 0f, -2f, 0f))
+                .box(0f, 3.5f, 0f, 3f, 1f, 3f, knob(250L)))                            // black well floor 3×3
+                .movable(button, 0f, 5.5f, 0f, BindingSpec.translate("press", 0f, -2f, 0f))
                 .build();
+    }
+
+    // ---- datagen registry: the named set the model-gen writes to JSON, and the loader reads back ----
+
+    /** Every component model by its unique datagen id (the JSON file name). Movables reference {@link #partTypes}. */
+    Map<String, ComponentModel> registry() {
+        Map<String, ComponentModel> m = new LinkedHashMap<>();
+        for (int c = 0; c < PLASTIC_NAME.length; c++) m.put("base_" + PLASTIC_NAME[c], bases[c]);
+        String[] cap = {"big", "medium", "small"};
+        for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
+        for (int c = 0; c < PLASTIC_NAME.length; c++) {
+            m.put("switch_" + PLASTIC_NAME[c], switches[c]);
+            m.put("press_" + PLASTIC_NAME[c], pressSwitches[c]);
+            m.put("resistor_" + PLASTIC_NAME[c], resistors[c]);
+            m.put("led_" + PLASTIC_NAME[c], leds[c]);
+        }
+        return m;
+    }
+
+    /** The movable part-types (id → boxes) that component models' movables borrow, generated as their own models. */
+    Map<String, PartType> partTypes() {
+        Map<String, PartType> m = new LinkedHashMap<>();
+        m.put(slider.id(), slider);   // "slider"
+        m.put(button.id(), button);   // "button"
+        return m;
     }
 }

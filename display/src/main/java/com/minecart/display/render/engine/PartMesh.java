@@ -32,11 +32,21 @@ final class PartMesh implements Disposable {
      * carries the exact PreviewPart texture recipe. The object-space shading is identical for every instance.
      */
     record Box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
-               float ocx, float ocy, float ocz) {
+               float ocx, float ocy, float ocz, String[] faceSprites) {
 
-        /** A box whose object-space centre is its position (used at part-definition time). */
+        /** A box whose object-space centre is its position (used at part-definition time). Sprites derived from paint. */
         static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint) {
-            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz);
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null);
+        }
+
+        /** A box loaded from a model JSON: no paint, sprite name per face already resolved by the generator. */
+        static Box loaded(float cx, float cy, float cz, float sx, float sy, float sz, String[] faceSprites) {
+            return new Box(cx, cy, cz, sx, sy, sz, null, cx, cy, cz, faceSprites);
+        }
+
+        /** The atlas sprite for face {@code f}: the loaded name if present, else derived from the paint. */
+        String faceSprite(int f) {
+            return faceSprites != null ? faceSprites[f] : PaletteDither.faceName(this, f);
         }
 
         float min(int axis) {
@@ -87,22 +97,22 @@ final class PartMesh implements Disposable {
             float sx = b.sx(), sy = b.sy(), sz = b.sz();
             boolean fx = sy > EPS && sz > EPS, fy = sx > EPS && sz > EPS, fz = sx > EPS && sy > EPS;
             if (fx && !covered(boxes, b, 0, x1, true, y0, y1, z0, z1))
-                face(v, idx, 0, atlas.region(PaletteDither.faceName(b, 0)),
+                face(v, idx, 0, atlas.region(b.faceSprite(0)),
                         x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);   // +X
             if (fx && !covered(boxes, b, 0, x0, false, y0, y1, z0, z1))
-                face(v, idx, 1, atlas.region(PaletteDither.faceName(b, 1)),
+                face(v, idx, 1, atlas.region(b.faceSprite(1)),
                         x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0);   // -X
             if (fy && !covered(boxes, b, 1, y1, true, x0, x1, z0, z1))
-                face(v, idx, 2, atlas.region(PaletteDither.faceName(b, 2)),
+                face(v, idx, 2, atlas.region(b.faceSprite(2)),
                         x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);   // +Y
             if (fy && !covered(boxes, b, 1, y0, false, x0, x1, z0, z1))
-                face(v, idx, 3, atlas.region(PaletteDither.faceName(b, 3)),
+                face(v, idx, 3, atlas.region(b.faceSprite(3)),
                         x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);   // -Y
             if (fz && !covered(boxes, b, 2, z1, true, x0, x1, y0, y1))
-                face(v, idx, 4, atlas.region(PaletteDither.faceName(b, 4)),
+                face(v, idx, 4, atlas.region(b.faceSprite(4)),
                         x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);   // +Z
             if (fz && !covered(boxes, b, 2, z0, false, x0, x1, y0, y1))
-                face(v, idx, 5, atlas.region(PaletteDither.faceName(b, 5)),
+                face(v, idx, 5, atlas.region(b.faceSprite(5)),
                         x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);   // -Z
         }
 
@@ -117,6 +127,16 @@ final class PartMesh implements Disposable {
                 new VertexAttribute(Usage.Generic, 4, "i_w2"),
                 new VertexAttribute(Usage.Generic, 4, "i_w3"));
         return new PartMesh(mesh, maxInstances);
+    }
+
+    /** Every atlas sprite the given boxes can request (all non-degenerate faces) — for pre-building the atlas. */
+    static void collectSpriteNames(List<Box> boxes, java.util.Set<String> out) {
+        for (Box b : boxes) {
+            for (int f = 0; f < 6; f++) {
+                int[] wh = PaletteDither.size(b, f);
+                if (wh[0] > 0 && wh[1] > 0) out.add(b.faceSprite(f));
+            }
+        }
     }
 
     /**
