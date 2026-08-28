@@ -68,6 +68,11 @@ final class Parts {
     private static final Color[] RES_B3 = PaletteDither.ramp(new Color(0.82f, 0.62f, 0.18f, 1f));   // band: gold
     private static final Color[] BULB_CORE = PaletteDither.grays(6, 0.60f, 1.00f);  // greyscale inner glow (TINTED)
     private static final Color[] BULB_GLASS = PaletteDither.grays(6, 0.70f, 1.00f); // greyscale glass (TINTED + translucent)
+    // White plastic body — the band's grays (0.85–1.0), so the white piece + lamp walls are seamlessly white.
+    private static final Color[] WHITE_PLASTIC = PaletteDither.grays(7, 0.85f, 1.0f);
+    private static final Color[] LAMP_GLOW = PaletteDither.ramp(new Color(1.0f, 0.88f, 0.55f, 1f)); // warm filament glow
+    private static final Color[] LAMP_GLASS = PaletteDither.grays(6, 0.72f, 1.00f); // translucent warm-white cap
+    private static final Color WARM = new Color(1.0f, 0.95f, 0.82f, 1f);            // warm diffuse tint for the lamp
     private static final Color TRACE_WHITE = new Color(0.95f, 0.95f, 0.95f, 1f);    // printed trace (default)
     private static final Color TRACE_RED = new Color(0.86f, 0.13f, 0.13f, 1f);      // printed trace (resistor)
     private static final Color BAND_WHITE = new Color(0.97f, 0.97f, 0.96f, 1f);     // band diffuse tint
@@ -88,6 +93,7 @@ final class Parts {
     final PartType button;                              // press switch's plunger (colour-independent)
     final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];         // blank base board, one per colour
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
+    final ComponentModel lamp;                                                     // white-encased bulb (single)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
@@ -133,6 +139,19 @@ final class Parts {
         return new PaletteDither.Paint(BULB_GLASS, Color.WHITE, 2, 0.3f, false, seed, 0f, 8f, 0f, SHADE_R, 0.45f);
     }
 
+    // Lamp paints — opaque white walls, a warm opaque emitter, and translucent warm caps (shade-centred up the tube).
+    private static PaletteDither.Paint lampWall(long seed) {
+        return new PaletteDither.Paint(WHITE_PLASTIC, BAND_WHITE, 1, 0.3f, false, seed, 0f, 7.5f, 0f, SHADE_R, 1f);
+    }
+
+    private static PaletteDither.Paint lampEmitter(long seed) {
+        return new PaletteDither.Paint(LAMP_GLOW, WARM, 2, 0.3f, false, seed, 0f, 6.5f, 0f, SHADE_R, 1f);
+    }
+
+    private static PaletteDither.Paint lampGlass(long seed) { // translucent warm cap (alpha 0.45)
+        return new PaletteDither.Paint(LAMP_GLASS, WARM, 1, 0.3f, false, seed, 0f, 10f, 0f, SHADE_R, 0.45f);
+    }
+
     private static PaletteDither.Paint tube(long seed) {       // metal screw base (NOT tinted)
         return new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed, 0f, 5f, 0f, SHADE_R, 1f);
     }
@@ -150,7 +169,7 @@ final class Parts {
         }
         for (int c = 0; c < PLASTIC_HSV.length; c++) {
             // The white piece uses the band's grays for its rims too, so the whole body is one seamless white.
-            Color[] pal = WHITE_NAME.equals(PLASTIC_NAME[c]) ? PaletteDither.grays(7, 0.85f, 1.0f)
+            Color[] pal = WHITE_NAME.equals(PLASTIC_NAME[c]) ? WHITE_PLASTIC
                     : PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
             bases[c] = base("base", pal).build(); // the blank snap base board, in every plastic colour
             switches[c] = buildSwitch(pal);
@@ -161,6 +180,7 @@ final class Parts {
         }
         Color[] azure = PaletteDither.rampHsv(
                 PLASTIC_HSV[WIRE_COLOR][0], PLASTIC_HSV[WIRE_COLOR][1], PLASTIC_HSV[WIRE_COLOR][2]);
+        lamp = buildLamp(WHITE_PLASTIC);
         for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
             wires[n - WIRE_MIN] = buildWire(n, azure);
         }
@@ -305,6 +325,26 @@ final class Parts {
     }
 
     /**
+     * Lamp (Snap-Circuits L1, the white-encased variant): the standard base + a <b>tall white-plastic tube</b>
+     * that fully encloses a warm light. The tube is a 7×7 fence (1px walls → inner 5×5 hollow), 7px tall
+     * (y4..11). Inside, a warm <b>emitter</b> (3×3×5, y4..9) sits on the base; a <b>thin translucent glass
+     * layer</b> (5×5×1, y9..10) seals the light chamber ~5px above the base top; a <b>7×7 translucent top
+     * cover</b> (y11..12) caps the tube and glows as the light shines up through it. Walls are opaque white
+     * plastic; both caps are translucent (drawn in the blended pass). All features odd-width, centred on 0.
+     */
+    private ComponentModel buildLamp(Color[] pal) {
+        return base("lamp", pal, whiteTrace())
+                .box(-3f, 7.5f, 0f, 1f, 7f, 7f, lampWall(931L))   // fence: left wall  x -3.5..-2.5 (full depth)
+                .box(3f, 7.5f, 0f, 1f, 7f, 7f, lampWall(931L))    // fence: right wall x  2.5.. 3.5
+                .box(0f, 7.5f, -3f, 5f, 7f, 1f, lampWall(932L))   // fence: front wall z -3.5..-2.5 (fills the gap)
+                .box(0f, 7.5f, 3f, 5f, 7f, 1f, lampWall(932L))    // fence: back wall  z  2.5.. 3.5
+                .box(0f, 6.5f, 0f, 3f, 5f, 3f, lampEmitter(933L)) // warm light emitter y4..9, inside the hollow
+                .box(0f, 9.5f, 0f, 5f, 1f, 5f, lampGlass(934L), false, true)  // thin glass enclosing layer y9..10
+                .box(0f, 11.5f, 0f, 7f, 1f, 7f, lampGlass(935L), false, true) // 7×7 translucent top cover y11..12
+                .build();
+    }
+
+    /**
      * Capacitor (Snap-Circuits form): the SAME base every part has — a <b>recolourable</b> plastic body 33×9×4
      * ({@code pal} rim + white band + rim) with three metal snap studs at −12/0/+12, sitting flat on the board. Its own
      * feature is a black box ({@code w}×{@code w} × {@code h}) on the body's top, raised by two <b>metallic</b>
@@ -376,6 +416,7 @@ final class Parts {
         for (int c = 0; c < PLASTIC_NAME.length; c++) m.put("base_" + PLASTIC_NAME[c], bases[c]);
         String[] cap = {"big", "medium", "small"};
         for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
+        m.put("lamp", lamp); // single white-encased bulb
         for (int c = 0; c < PLASTIC_NAME.length; c++) {
             m.put("switch_" + PLASTIC_NAME[c], switches[c]);
             m.put("press_" + PLASTIC_NAME[c], pressSwitches[c]);
