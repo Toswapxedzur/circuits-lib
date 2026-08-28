@@ -48,15 +48,15 @@ final class Parts {
 
     private static final Color[] BAND = PaletteDither.grays(6, 0.85f, 1.0f);        // white plastic band
     private static final Color[] STEEL = PaletteDither.steelBlue();                 // metal
-    private static final Color[] KNOB = PaletteDither.ramp(new Color(0.12f, 0.12f, 0.14f, 1f)); // near-black
-    private static final Color[] CAP_BODY = PaletteDither.ramp(new Color(0.07f, 0.07f, 0.08f, 1f)); // black cap body
+    // THE series black (owner 2026-08-28): "muddy" charcoal, black but clearly visible — the lighting and
+    // palette noise must read. Every black plastic surface (capacitor body, knobs/buttons, well floors, diode
+    // blob) uses THIS ramp; never a darker "void" one.
+    private static final Color[] SERIES_BLACK = PaletteDither.ramp(new Color(0.19f, 0.19f, 0.22f, 1f));
     private static final Color[] CAP_BASE = PaletteDither.rampHsv(160f, 0.92f, 0.80f); // teal snap base plastic
     private static final Color[] RES_BODY = PaletteDither.ramp(new Color(0.82f, 0.68f, 0.45f, 1f)); // tan resistor body
     private static final Color[] RES_B1 = PaletteDither.ramp(new Color(0.35f, 0.20f, 0.10f, 1f));   // band: brown
     private static final Color[] RES_B2 = PaletteDither.ramp(new Color(0.72f, 0.10f, 0.10f, 1f));   // band: red
     private static final Color[] RES_B3 = PaletteDither.ramp(new Color(0.82f, 0.62f, 0.18f, 1f));   // band: gold
-    // Diode blob: charcoal, NOT the 0.07 void-black — bright enough that the lighting + palette noise read.
-    private static final Color[] DIODE_BODY = PaletteDither.ramp(new Color(0.19f, 0.19f, 0.22f, 1f));
     private static final Color[] BULB_CORE = PaletteDither.grays(6, 0.60f, 1.00f);  // greyscale inner glow (TINTED)
     private static final Color[] BULB_GLASS = PaletteDither.grays(6, 0.70f, 1.00f); // greyscale glass (TINTED + translucent)
     private static final Color TRACE_WHITE = new Color(0.95f, 0.95f, 0.95f, 1f);    // printed trace (default)
@@ -112,7 +112,7 @@ final class Parts {
     }
 
     private static PaletteDither.Paint knob(long seed) {
-        return new PaletteDither.Paint(KNOB, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
+        return new PaletteDither.Paint(SERIES_BLACK, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
     }
 
     // LED bulb paints — GREYSCALE bases (the colour comes from the component-entity tint), shade-centred on the bulb.
@@ -270,7 +270,7 @@ final class Parts {
     private ComponentModel buildDiode(Color[] pal) {
         float s5 = (float) Math.sqrt(5.0);
         return base("diode", pal, redTrace())
-                .box(-1.5f, 5.5f, 0f, 8f, 3f, 3f, plastic(921L, DIODE_BODY)) // charcoal blob x -5.5..2.5, y4..7
+                .box(-1.5f, 5.5f, 0f, 8f, 3f, 3f, plastic(921L, SERIES_BLACK)) // charcoal blob x -5.5..2.5, y4..7
                 .box(4f, 5.5f, 0f, 3f, 3f, 3f, band(922L))                   // white 3×3×3 end x 2.5..5.5 (flow mark)
                 .quad(new Vector3(5.5f, 6f, -0.5f), new Vector3(5.5f + s5, 4f, -0.5f),
                         new Vector3(5.5f + s5, 4f, 0.5f), new Vector3(5.5f, 6f, 0.5f), fence(905L), 3, 1)
@@ -305,7 +305,7 @@ final class Parts {
         float cy = top + legH + h / 2f;        // black box centre Y (legs bridge body-top → box-bottom)
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
-        PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r, 1f);
+        PaletteDither.Paint black = new PaletteDither.Paint(SERIES_BLACK, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r, 1f);
         PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r, 1f);
         return studs(rims(ComponentModel.of("capacitor"), pal, capTrace())
                 .box(-1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)               // left leg  (faces +X)

@@ -115,12 +115,12 @@
         1.5
       ],
       "faces": {
-        "east": "sp668ae59fb9abbfa8_4x3",
-        "west": "sp1daf056882f5b829_4x3",
-        "up": "sp5707870c322349ea_3x3",
-        "down": "sp1030dc62d8988ceb_3x3",
-        "south": "sp49729e135457a12c_3x4",
-        "north": "sp4d0d7ca8bb972ad_3x4"
+        "east": "sp748e74c3b4ea3ca8_4x3",
+        "west": "sp2bb2948c7e343529_4x3",
+        "up": "sp650b16302d61c6ea_3x3",
+        "down": "sp1e346b86d3d709eb_3x3",
+        "south": "sp57762d374f961e2c_3x4",
+        "north": "sp12d466ee86f7efad_3x4"
       },
       "tint": false,
       "translucent": false
