@@ -43,6 +43,17 @@ tasks.register<JavaExec>("enginedemo") {
     }
 }
 
+// Pivot Phase-B keystone: render a real SnapBoard in 3D via SnapModelBridge + the engine. ./gradlew :display:boarddemo
+tasks.register<JavaExec>("boarddemo") {
+    group = "application"
+    description = "Render a real SnapBoard through the instanced engine (SnapModelBridge bridge demo)"
+    mainClass = "com.minecart.display.render.engine.BoardDemoApp"
+    classpath = sourceSets["main"].runtimeClasspath
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 // Bullet physics proof for the world-entity system: drop a body onto a ramp. ./gradlew :display:entityproof
 tasks.register<JavaExec>("entityproof") {
     group = "application"
