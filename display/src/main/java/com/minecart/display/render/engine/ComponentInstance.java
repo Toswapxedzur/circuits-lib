@@ -69,7 +69,7 @@ final class ComponentInstance {
             // entity colour; every other box stays white (greyscale/coloured texel unchanged).
             out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.paint(),
                     b.ocx(), b.ocy(), b.ocz(), b.faceSprites(),
-                    b.tint(), b.translucent(), b.tint() ? tintBits : PartMesh.WHITE_BITS));
+                    b.tint(), b.translucent(), b.tint() ? tintBits : PartMesh.WHITE_BITS, b.trace()));
         }
     }
 

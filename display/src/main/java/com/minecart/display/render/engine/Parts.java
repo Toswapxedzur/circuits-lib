@@ -51,6 +51,8 @@ final class Parts {
     private static final Color[] RES_B3 = PaletteDither.ramp(new Color(0.82f, 0.62f, 0.18f, 1f));   // band: gold
     private static final Color[] BULB_CORE = PaletteDither.grays(6, 0.60f, 1.00f);  // greyscale inner glow (TINTED)
     private static final Color[] BULB_GLASS = PaletteDither.grays(6, 0.70f, 1.00f); // greyscale glass (TINTED + translucent)
+    private static final Color TRACE_WHITE = new Color(0.95f, 0.95f, 0.95f, 1f);    // printed trace (default)
+    private static final Color TRACE_RED = new Color(0.86f, 0.13f, 0.13f, 1f);      // printed trace (resistor)
     private static final Color BAND_WHITE = new Color(0.97f, 0.97f, 0.96f, 1f);     // band diffuse tint
 
     private static final float OX = 0.5f, OZ = 0.5f; // slide-switch centre offset, kept from PreviewPart
@@ -103,11 +105,11 @@ final class Parts {
 
     Parts() {
         slider = new PartType("slider", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f, null, false, false, PartMesh.WHITE_BITS)));
+                new PartMesh.Box(0f, 0f, 0f, 2f, 2f, 2f, knob(260L), -0.5f, 5f, 0.5f, null, false, false, PartMesh.WHITE_BITS, null)));
         // Press button: a 3×3 plunger, height 3, centred on the body, resting with its top 3px above the body
         // top (y4 → 7). Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
         button = new PartType("button", List.of(
-                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f, null, false, false, PartMesh.WHITE_BITS)));
+                new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f, null, false, false, PartMesh.WHITE_BITS, null)));
         Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
@@ -122,13 +124,27 @@ final class Parts {
         }
     }
 
-    /** The standard part base every component shares: coloured rim + white band + rim + two end snap studs at ±12. */
-    private ComponentModel.Builder base(String id, Color[] pal) {
-        return studs(ComponentModel.of(id)
-                .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))        // coloured rim y0..1
-                .box(0f, 3.5f, 0f, 33f, 1f, 9f, plastic(202L, pal))        // coloured rim y3..4
-                .box(0f, 2f, 0f, 33f, 2f, 9f, band(303L)));                // white band y1..3
+    /** The coloured rims + white band shared by every part — the TOP rim's +Y face carries the {@code trace}
+     *  decal (printed line between the studs, capacitor symbol, etc.), or none if {@code trace} is null. */
+    private ComponentModel.Builder rims(ComponentModel.Builder b, Color[] pal, PartMesh.Trace trace) {
+        return b.box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))         // coloured rim y0..1
+                .box(0f, 3.5f, 0f, 33f, 1f, 9f, plastic(202L, pal), trace)  // coloured rim y3..4 (top — trace here)
+                .box(0f, 2f, 0f, 33f, 2f, 9f, band(303L));                  // white band y1..3
     }
+
+    /** The standard part base: rims + white band + two end snap studs at ±12, with an optional top-face trace. */
+    private ComponentModel.Builder base(String id, Color[] pal, PartMesh.Trace trace) {
+        return studs(rims(ComponentModel.of(id), pal, trace));
+    }
+
+    private ComponentModel.Builder base(String id, Color[] pal) {
+        return base(id, pal, null);
+    }
+
+    // Printed-trace decals (flat, baked into the top-face texture). White by default, red for the resistor.
+    private static PartMesh.Trace whiteTrace() { return new PartMesh.Trace(TRACE_WHITE, false); }
+    private static PartMesh.Trace redTrace() { return new PartMesh.Trace(TRACE_RED, false); }
+    private static PartMesh.Trace capTrace() { return new PartMesh.Trace(TRACE_WHITE, true); }
 
     /**
      * The two snap studs, at the part's ENDS (x = ±12), + the matching two underside female <b>sockets</b>.
@@ -166,7 +182,7 @@ final class Parts {
         // plate is a TILTED flat quad = the hypotenuse (len 3) of a 2-√5-3 right triangle (rise 2 from base y4
         // to the lead's top y6 on the end face, run √5 outward toward the terminal), 1 wide in Z — laid like a ladder.
         float s5 = (float) Math.sqrt(5.0);
-        return base("resistor", pal)
+        return base("resistor", pal, redTrace())
                 .box(-4.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY)) // tan   x -5.5..-3.5, y4..7
                 .box(-3f, 5.5f, 0f, 1f, 3f, 3f, plastic(902L, RES_B1))     // brown x -3.5..-2.5
                 .box(-1.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY)) // tan   x -2.5..-0.5
@@ -190,7 +206,7 @@ final class Parts {
      * <b>translucent outer core</b> (7×7×7, y6..13, tinted + alpha — drawn in the blended pass) around it.
      */
     private ComponentModel buildLed(Color[] pal) {
-        return base("led", pal)
+        return base("led", pal, whiteTrace())
                 .box(0f, 5f, 0f, 5f, 2f, 5f, tube(913L))                       // metal tube (screw base) y4..6
                 .box(0f, 9f, 0f, 5f, 6f, 5f, bulbCore(914L), true, false)      // solid inner core y6..12, ON the tube (tinted)
                 .box(0f, 9.5f, 0f, 7f, 7f, 7f, bulbGlass(915L), true, true)    // translucent outer core y6..13 (tinted)
@@ -211,13 +227,10 @@ final class Parts {
                 + Math.abs(0.4f / L) * (w / 2f));
         PaletteDither.Paint black = new PaletteDither.Paint(CAP_BODY, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r, 1f);
         PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r, 1f);
-        return studs(ComponentModel.of("capacitor")
-                .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))                 // coloured rim y0..1
-                .box(0f, 3.5f, 0f, 33f, 1f, 9f, plastic(202L, pal))                 // coloured rim y3..4
-                .box(0f, 2f, 0f, 33f, 2f, 9f, band(303L)))                          // white band y1..3
+        return studs(rims(ComponentModel.of("capacitor"), pal, capTrace())
                 .box(-1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)               // left leg  (faces +X)
                 .box(1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)                // right leg (faces -X)
-                .box(0f, cy, 0f, w, h, w, black)                                    // black box on top
+                .box(0f, cy, 0f, w, h, w, black))                                   // black box on top
                 .build();
     }
 
@@ -227,8 +240,8 @@ final class Parts {
         return studs(ComponentModel.of("slide_switch")
                 .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))                    // green y0..1
                 .box(0f, 2f, 0f, 33f, 2f, 9f, band(102L))                              // white band y1..3
-                .box((-16.5f + hx0) / 2f, 3.5f, 0f, hx0 + 16.5f, 1f, 9f, plastic(121L, pal)) // left strip
-                .box((hx1 + 16.5f) / 2f, 3.5f, 0f, 16.5f - hx1, 1f, 9f, plastic(122L, pal))  // right strip
+                .box((-16.5f + hx0) / 2f, 3.5f, 0f, hx0 + 16.5f, 1f, 9f, plastic(121L, pal), whiteTrace()) // left strip (trace)
+                .box((hx1 + 16.5f) / 2f, 3.5f, 0f, 16.5f - hx1, 1f, 9f, plastic(122L, pal), whiteTrace())  // right strip (trace)
                 .box(OX, 3.5f, (-4.5f + hz0) / 2f, 6f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip
                 .box(OX, 3.5f, (hz1 + 4.5f) / 2f, 6f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip
                 .box(hx0 + 0.5f, 4f, OZ, 1f, 2f, 4f, fence(210L))                      // fence left (y3..5)
@@ -251,8 +264,8 @@ final class Parts {
         return studs(ComponentModel.of("press_switch")
                 .box(0f, 0.5f, 0f, 33f, 1f, 9f, plastic(101L, pal))                    // green y0..1
                 .box(0f, 2f, 0f, 33f, 2f, 9f, band(102L))                              // white band y1..3
-                .box((-16.5f + hx0) / 2f, 3.5f, 0f, hx0 + 16.5f, 1f, 9f, plastic(121L, pal)) // top green: left w11
-                .box((hx1 + 16.5f) / 2f, 3.5f, 0f, 16.5f - hx1, 1f, 9f, plastic(122L, pal))  // right w11
+                .box((-16.5f + hx0) / 2f, 3.5f, 0f, hx0 + 16.5f, 1f, 9f, plastic(121L, pal), whiteTrace()) // left w11 (trace)
+                .box((hx1 + 16.5f) / 2f, 3.5f, 0f, 16.5f - hx1, 1f, 9f, plastic(122L, pal), whiteTrace())  // right w11 (trace)
                 .box(0f, 3.5f, (-4.5f + hz0) / 2f, 5f, 1f, hz0 + 4.5f, plastic(123L, pal))   // front strip d2
                 .box(0f, 3.5f, (hz1 + 4.5f) / 2f, 5f, 1f, 4.5f - hz1, plastic(124L, pal))    // back strip d2
                 .box(hx0 + 0.5f, 4f, 0f, 1f, 2f, 5f, fence(210L))                      // fence left (y3..5)

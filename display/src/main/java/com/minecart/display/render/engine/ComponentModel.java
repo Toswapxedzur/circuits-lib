@@ -59,11 +59,18 @@ final class ComponentModel {
             return this;
         }
 
+        /** A box with a TRACE decal printed on its top (+Y) face (e.g. a base top rim / a switch top strip). */
+        Builder box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
+                    PartMesh.Trace trace) {
+            statics.add(PartMesh.Box.local(cx, cy, cz, sx, sy, sz, paint, trace));
+            return this;
+        }
+
         /** A box whose object-space shading centre differs from where it sits (e.g. a movable part's rest pose). */
         Builder boxAt(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                       float ocx, float ocy, float ocz) {
             statics.add(new PartMesh.Box(cx, cy, cz, sx, sy, sz, paint, ocx, ocy, ocz, null,
-                    false, false, PartMesh.WHITE_BITS));
+                    false, false, PartMesh.WHITE_BITS, null));
             return this;
         }
 

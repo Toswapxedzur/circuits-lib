@@ -56,6 +56,10 @@ final class PaletteDither {
             h = h * 31 + Math.round((v.y - p.scy()) * 2f);
             h = h * 31 + Math.round((v.z - p.scz()) * 2f);
         }
+        if (f == 2 && b.trace() != null) { // the trace decal is printed only on the top (+Y) face
+            h = h * 31 + Color.rgba8888(b.trace().color());
+            h = h * 31 + (b.trace().capacitor() ? 1 : 0);
+        }
         return "sp" + Long.toHexString(h & 0x7fffffffffffffffL) + "_" + wh[0] + "x" + wh[1];
     }
 
@@ -95,8 +99,34 @@ final class PaletteDither {
         Vector3[] q = objCorners(b, f); // p00,p10,p11,p01 — same order PreviewPart passes to litFace
         long seed = 0x9E370000L + (p.seedBase() + f + 1) * 2654435761L;
         Vector3 mul = faceMul(NRM[f], p.diffuse());
-        return litFace(p.palette(), q[0], q[1], q[2], q[3], wh[0], wh[1],
+        Pixmap pm = litFace(p.palette(), q[0], q[1], q[2], q[3], wh[0], wh[1],
                 p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed, p.alpha());
+        if (f == 2 && b.trace() != null) overlayTrace(pm, b, b.trace(), wh[0], wh[1]); // print the trace on top
+        return pm;
+    }
+
+    /** Prints the flat TRACE decal onto the (already-drawn) top-face pixmap: for each texel, map it back to the
+     *  box's object (x,z) and paint if it lies on the trace/symbol. Each decorated box draws only its portion. */
+    private static void overlayTrace(Pixmap pm, PartMesh.Box b, PartMesh.Trace trace, int pw, int ph) {
+        float x0 = b.ocx() - b.sx() / 2f, x1 = b.ocx() + b.sx() / 2f;
+        float z1 = b.ocz() + b.sz() / 2f, sz = b.sz();
+        pm.setColor(trace.color());
+        for (int py = 0; py < ph; py++) {
+            float z = z1 - ((py + 0.5f) / ph) * sz;             // +Y face: v runs z1 → z0
+            for (int px = 0; px < pw; px++) {
+                float x = x0 + ((px + 0.5f) / pw) * (x1 - x0);  // u runs x0 → x1
+                if (onTrace(x, z, trace.capacitor())) pm.drawPixel(px, py);
+            }
+        }
+    }
+
+    /** Trace shape in a part's object frame: a 1-wide line at z=0 over x∈[−10.5,10.5]; a capacitor breaks the
+     *  middle and adds two 7-long plates (perpendicular) at x=±2.5 (spacing 5). */
+    private static boolean onTrace(float x, float z, boolean capacitor) {
+        boolean line = Math.abs(z) <= 0.5f && Math.abs(x) <= 10.5f;
+        if (!capacitor) return line;
+        boolean plate = (Math.abs(x - 2.5f) <= 0.5f || Math.abs(x + 2.5f) <= 0.5f) && Math.abs(z) <= 3.5f;
+        return (line && Math.abs(x) >= 2.5f) || plate; // gap in the middle (2.5 spacing each side) + the plates
     }
 
     /** Stable atlas name for an oriented {@link PartMesh.Quad} (its object corners + size determine the pixels). */
