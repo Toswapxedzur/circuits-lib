@@ -69,8 +69,8 @@ public final class EngineDemoApp extends ApplicationAdapter {
         ps.anim.channel("press", 0f, 1f, 9f);
         pressers.add(ps);
         engine.add(ps);
-        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // green resistor
-        engine.add(new ComponentInstance(loader.model("resistor_" + green), world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // yellow resistor (raised, tilted leads)
+        engine.add(new ComponentInstance(loader.model("resistor_yellow"), world));
         world.setToTranslation((i - mid) * SPACING, 0f, 0f);            // green LED
         engine.add(new ComponentInstance(loader.model("led_" + green), world));
 

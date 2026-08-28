@@ -30,12 +30,11 @@ public final class SeedPartTextures extends ApplicationAdapter {
     public void create() {
         Parts parts = new Parts();
         List<PartMesh.Box> boxes = new ArrayList<>();
-        for (ComponentModel b : parts.bases) boxes.addAll(b.staticBoxes);            // blank base, every colour
-        for (ComponentModel cap : parts.capacitorSizes) boxes.addAll(cap.staticBoxes); // the 3 sizes
-        for (ComponentModel sw : parts.switches) boxes.addAll(sw.staticBoxes);
-        for (ComponentModel ps : parts.pressSwitches) boxes.addAll(ps.staticBoxes);
-        for (ComponentModel r : parts.resistors) boxes.addAll(r.staticBoxes);
-        for (ComponentModel l : parts.leds) boxes.addAll(l.staticBoxes);
+        List<PartMesh.Quad> quads = new ArrayList<>();
+        for (ComponentModel m : parts.registry().values()) {   // every part: its boxes AND oriented quads
+            boxes.addAll(m.staticBoxes);
+            quads.addAll(m.staticQuads);
+        }
         boxes.addAll(parts.slider.boxes());
         boxes.addAll(parts.button.boxes());
         boxes.add(EngineDemoApp.boardBox());
@@ -51,6 +50,14 @@ public final class SeedPartTextures extends ApplicationAdapter {
                 continue; // identical object-space face already drawn (shared across instances)
             }
             Pixmap pm = PaletteDither.drawFace(f.box(), f.faceId());
+            PixmapIO.writePNG(dir.child(name + ".png"), pm);
+            pm.dispose();
+            count++;
+        }
+        for (PartMesh.Quad q : quads) {                 // oriented-quad sprites (tilted plates)
+            String name = q.sprite();
+            if (!seen.add(name)) continue;
+            Pixmap pm = PaletteDither.drawQuad(q);
             PixmapIO.writePNG(dir.child(name + ".png"), pm);
             pm.dispose();
             count++;

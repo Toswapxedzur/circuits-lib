@@ -39,9 +39,9 @@ public final class GenModels {
         // Build every model JSON (part-types first — they have no movables), keyed by "model:<id>".
         Map<String, ModelJson> models = new LinkedHashMap<>();
         parts.partTypes().forEach((id, t) ->
-                models.put("model:" + id, ModelJson.of(id, t.boxes(), List.of(), typeIds)));
+                models.put("model:" + id, ModelJson.of(id, t.boxes(), List.of(), List.of(), typeIds)));
         parts.registry().forEach((id, m) ->
-                models.put("model:" + id, ModelJson.of(id, m.staticBoxes, m.movableParts, typeIds)));
+                models.put("model:" + id, ModelJson.of(id, m.staticBoxes, m.staticQuads, m.movableParts, typeIds)));
 
         // The dependency graph: texture leaves + part/model nodes that borrow them.
         Map<String, List<String>> deps = new LinkedHashMap<>();

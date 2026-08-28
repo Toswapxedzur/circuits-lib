@@ -1,6 +1,7 @@
 package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.math.Vector3;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -147,14 +148,24 @@ final class Parts {
      * neighbour culling drops the seams. Body + bands are colour-independent → they dedupe across every base hue.
      */
     private ComponentModel buildResistor(Color[] pal) {
+        // Body sits at y4..7; two metal LEAD-plates emerge from each 3×3 end and angle down to the base. Each
+        // plate is a TILTED flat quad = the hypotenuse (len 3) of a 2-√5-3 right triangle (rise 2 from base y4
+        // to the lead's top y6 on the end face, run √5 outward toward the terminal), 1 wide in Z — laid like a ladder.
+        float s5 = (float) Math.sqrt(5.0);
         return base("resistor", pal)
-                .box(-4.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY)) // tan   x -5.5..-3.5
+                .box(-4.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY)) // tan   x -5.5..-3.5, y4..7
                 .box(-3f, 5.5f, 0f, 1f, 3f, 3f, plastic(902L, RES_B1))     // brown x -3.5..-2.5
                 .box(-1.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY)) // tan   x -2.5..-0.5
                 .box(0f, 5.5f, 0f, 1f, 3f, 3f, plastic(903L, RES_B2))      // red   x -0.5..0.5
                 .box(1.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY))  // tan   x 0.5..2.5
                 .box(3f, 5.5f, 0f, 1f, 3f, 3f, plastic(904L, RES_B3))      // gold  x 2.5..3.5
                 .box(4.5f, 5.5f, 0f, 2f, 3f, 3f, plastic(901L, RES_BODY))  // tan   x 3.5..5.5
+                // +X lead: top at body-bottom-end (x5.5,y6), down-and-out to the base (x5.5+√5, y4)
+                .quad(new Vector3(5.5f, 6f, -0.5f), new Vector3(5.5f + s5, 4f, -0.5f),
+                        new Vector3(5.5f + s5, 4f, 0.5f), new Vector3(5.5f, 6f, 0.5f), fence(905L), 3, 1)
+                // -X lead (mirror)
+                .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
+                        new Vector3(-5.5f - s5, 4f, -0.5f), new Vector3(-5.5f, 6f, -0.5f), fence(905L), 3, 1)
                 .build();
     }
 

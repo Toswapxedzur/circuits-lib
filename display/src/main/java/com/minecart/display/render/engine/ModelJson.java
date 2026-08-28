@@ -22,6 +22,7 @@ final class ModelJson {
     String id;
     String parent;                         // optional: inherit this model's elements first (borrow)
     List<Element> elements = new ArrayList<>();
+    List<Quad> quads = new ArrayList<>();   // oriented (tilted) flat plates — non-axis-aligned
     List<Movable> movables = new ArrayList<>();
 
     /** One axis-aligned cuboid: object-space {@code from}/{@code to} corners + a sprite per present face. */
@@ -29,6 +30,13 @@ final class ModelJson {
         float[] from;                      // [x,y,z] min corner (object space)
         float[] to;                        // [x,y,z] max corner
         Map<String, String> faces;         // faceKey → sprite name (only non-degenerate faces present)
+    }
+
+    /** An oriented flat quad: 4 object-space corners (p00,p10,p11,p01), its sprite, and the sprite's texel size. */
+    static final class Quad {
+        float[][] corners;                 // [4][3] — p00,p10,p11,p01
+        int w, h;                          // sprite size in texels
+        String sprite;
     }
 
     /** A movable sub-part: which part-type it borrows, where it sits, and its serialised binding. */
@@ -46,10 +54,20 @@ final class ModelJson {
     }
 
     /** Serialises a component model (or part-type, movables empty) to its JSON form. */
-    static ModelJson of(String id, List<PartMesh.Box> boxes, List<ComponentModel.MovablePart> movs,
-                        Map<PartType, String> typeIds) {
+    static ModelJson of(String id, List<PartMesh.Box> boxes, List<PartMesh.Quad> quads,
+                        List<ComponentModel.MovablePart> movs, Map<PartType, String> typeIds) {
         ModelJson j = new ModelJson();
         j.id = id;
+        for (PartMesh.Quad q : quads) {
+            Quad jq = new Quad();
+            jq.corners = new float[][]{
+                    {q.o00().x, q.o00().y, q.o00().z}, {q.o10().x, q.o10().y, q.o10().z},
+                    {q.o11().x, q.o11().y, q.o11().z}, {q.o01().x, q.o01().y, q.o01().z}};
+            jq.w = q.pw();
+            jq.h = q.ph();
+            jq.sprite = q.sprite();
+            j.quads.add(jq);
+        }
         for (PartMesh.Box b : boxes) {
             Element e = new Element();
             e.from = new float[]{b.cx() - b.sx() / 2f, b.cy() - b.sy() / 2f, b.cz() - b.sz() / 2f};
@@ -74,10 +92,11 @@ final class ModelJson {
         return j;
     }
 
-    /** Every sprite name any element references — the texture dependencies of this model. */
+    /** Every sprite name any element or quad references — the texture dependencies of this model. */
     List<String> textureDeps() {
         List<String> out = new ArrayList<>();
         for (Element e : elements) if (e.faces != null) out.addAll(e.faces.values());
+        for (Quad q : quads) if (q.sprite != null) out.add(q.sprite);
         return out;
     }
 
