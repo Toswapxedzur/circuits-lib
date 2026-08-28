@@ -36,25 +36,35 @@ final class PartMesh implements Disposable {
     /** White vertex tint = "no tint" (greyscale/coloured texel passes through unchanged). */
     static final float WHITE_BITS = Color.WHITE.toFloatBits();
 
+    /** A flat TRACE decal PRINTED onto a box's top (+Y) face at bake time — the conductive line between the
+     *  studs, and (for the capacitor) the two-plate symbol. Gen-time only; the runtime just loads the sprite. */
+    record Trace(Color color, boolean capacitor) {}
+
     record Box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                float ocx, float ocy, float ocz, String[] faceSprites,
-               boolean tint, boolean translucent, float tintBits) {
+               boolean tint, boolean translucent, float tintBits, Trace trace) {
 
         /** A box whose object-space centre is its position (used at part-definition time). Sprites derived from paint. */
         static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint) {
-            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, false, false, WHITE_BITS);
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, false, false, WHITE_BITS, null);
         }
 
         /** A definition-time box that is tinted by the component-entity colour and/or drawn translucent. */
         static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                          boolean tint, boolean translucent) {
-            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, tint, translucent, WHITE_BITS);
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, tint, translucent, WHITE_BITS, null);
+        }
+
+        /** A definition-time box with a TRACE decal printed on its top face. */
+        static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
+                         Trace trace) {
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, false, false, WHITE_BITS, trace);
         }
 
         /** A box loaded from a model JSON: no paint, sprite name per face already resolved by the generator. */
         static Box loaded(float cx, float cy, float cz, float sx, float sy, float sz, String[] faceSprites,
                           boolean tint, boolean translucent) {
-            return new Box(cx, cy, cz, sx, sy, sz, null, cx, cy, cz, faceSprites, tint, translucent, WHITE_BITS);
+            return new Box(cx, cy, cz, sx, sy, sz, null, cx, cy, cz, faceSprites, tint, translucent, WHITE_BITS, null);
         }
 
         /** The atlas sprite for face {@code f}: the loaded name if present, else derived from the paint. */
