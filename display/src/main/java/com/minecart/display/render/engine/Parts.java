@@ -67,6 +67,7 @@ final class Parts {
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
+    final ComponentModel[] diodes = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] leds = new ComponentModel[PLASTIC_HSV.length];
 
     // Paint factories — plastic is per-colour; the rest are shared across colours.
@@ -120,6 +121,7 @@ final class Parts {
             switches[c] = buildSwitch(pal);
             pressSwitches[c] = buildPressSwitch(pal);
             resistors[c] = buildResistor(pal);
+            diodes[c] = buildDiode(pal);
             leds[c] = buildLed(pal);
         }
     }
@@ -141,10 +143,12 @@ final class Parts {
         return base(id, pal, null);
     }
 
-    // Printed-trace decals (flat, baked into the top-face texture). White by default, red for the resistor.
-    private static PartMesh.Trace whiteTrace() { return new PartMesh.Trace(TRACE_WHITE, false); }
-    private static PartMesh.Trace redTrace() { return new PartMesh.Trace(TRACE_RED, false); }
-    private static PartMesh.Trace capTrace() { return new PartMesh.Trace(TRACE_WHITE, true); }
+    // Printed-trace decals (flat, baked into the top-face texture). White by default, red for the resistor;
+    // the diode's red line grows an arrowhead pointing in its flow direction (+x).
+    private static PartMesh.Trace whiteTrace() { return new PartMesh.Trace(TRACE_WHITE, false, false); }
+    private static PartMesh.Trace redTrace() { return new PartMesh.Trace(TRACE_RED, false, false); }
+    private static PartMesh.Trace capTrace() { return new PartMesh.Trace(TRACE_WHITE, true, false); }
+    private static PartMesh.Trace diodeTrace() { return new PartMesh.Trace(TRACE_RED, false, true); }
 
     /**
      * The two snap studs, at the part's ENDS (x = ±12), + the matching two underside female <b>sockets</b>.
@@ -194,6 +198,24 @@ final class Parts {
                 .quad(new Vector3(5.5f, 6f, -0.5f), new Vector3(5.5f + s5, 4f, -0.5f),
                         new Vector3(5.5f + s5, 4f, 0.5f), new Vector3(5.5f, 6f, 0.5f), fence(905L), 3, 1)
                 // -X lead (mirror)
+                .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
+                        new Vector3(-5.5f - s5, 4f, -0.5f), new Vector3(-5.5f, 6f, -0.5f), fence(905L), 3, 1)
+                .build();
+    }
+
+    /**
+     * Diode: the resistor's one-way sibling — the same standard base and the same two tilted metal lead-plates,
+     * but the banded tan body is replaced by a single <b>black blob</b> (11×3×3, y4..7). Direction is printed on
+     * the base: the red trace line carries an arrowhead (see {@code diodeTrace()}) pointing in the flow
+     * direction (+x, toward the lead the current exits). Lead quads reuse the resistor's exact geometry + paint
+     * (seed 905) so their sprites dedupe.
+     */
+    private ComponentModel buildDiode(Color[] pal) {
+        float s5 = (float) Math.sqrt(5.0);
+        return base("diode", pal, diodeTrace())
+                .box(0f, 5.5f, 0f, 11f, 3f, 3f, plastic(921L, CAP_BODY))   // black blob x -5.5..5.5, y4..7
+                .quad(new Vector3(5.5f, 6f, -0.5f), new Vector3(5.5f + s5, 4f, -0.5f),
+                        new Vector3(5.5f + s5, 4f, 0.5f), new Vector3(5.5f, 6f, 0.5f), fence(905L), 3, 1)
                 .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
                         new Vector3(-5.5f - s5, 4f, -0.5f), new Vector3(-5.5f, 6f, -0.5f), fence(905L), 3, 1)
                 .build();
@@ -289,6 +311,7 @@ final class Parts {
             m.put("switch_" + PLASTIC_NAME[c], switches[c]);
             m.put("press_" + PLASTIC_NAME[c], pressSwitches[c]);
             m.put("resistor_" + PLASTIC_NAME[c], resistors[c]);
+            m.put("diode_" + PLASTIC_NAME[c], diodes[c]);
             m.put("led_" + PLASTIC_NAME[c], leds[c]);
         }
         return m;
