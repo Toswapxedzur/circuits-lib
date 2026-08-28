@@ -97,6 +97,36 @@ final class PaletteDither {
                 p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed);
     }
 
+    /** Stable atlas name for an oriented {@link PartMesh.Quad} (its object corners + size determine the pixels). */
+    static String quadName(PartMesh.Quad q) {
+        Paint p = q.paint();
+        Vector3[] corners = {q.o00(), q.o10(), q.o11(), q.o01()};
+        long h = 1125899906842597L;
+        h = h * 31 + p.seedBase(); h = h * 31 + 6; // 6 = quad marker (past the 6 box faces)
+        h = h * 31 + p.grainMax(); h = h * 31 + Float.floatToIntBits(p.zeroWeight());
+        h = h * 31 + (p.ordered() ? 1 : 0);
+        for (Color c : p.palette()) h = h * 31 + Color.rgba8888(c);
+        h = h * 31 + Color.rgba8888(p.diffuse());
+        for (Vector3 v : corners) {
+            h = h * 31 + Math.round((v.x - p.scx()) * 2f);
+            h = h * 31 + Math.round((v.y - p.scy()) * 2f);
+            h = h * 31 + Math.round((v.z - p.scz()) * 2f);
+        }
+        return "qd" + Long.toHexString(h & 0x7fffffffffffffffL) + "_" + q.pw() + "x" + q.ph();
+    }
+
+    /** Draws an oriented quad's sprite: litFace over its object corners × the studio light for its normal. */
+    static Pixmap drawQuad(PartMesh.Quad q) {
+        Paint p = q.paint();
+        long seed = 0x9E370000L + (p.seedBase() + 6 + 1) * 2654435761L;
+        Vector3 e1 = new Vector3(q.o10()).sub(q.o00());
+        Vector3 e2 = new Vector3(q.o01()).sub(q.o00());
+        Vector3 n = e2.crs(e1).nor(); // up-out face normal (matches the p00,p10,p11,p01 winding)
+        Vector3 mul = faceMul(n.x, n.y, n.z, p.diffuse());
+        return litFace(p.palette(), q.o00(), q.o10(), q.o11(), q.o01(), q.pw(), q.ph(),
+                p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed);
+    }
+
     // ---- palettes (verbatim from PreviewTextures) ----
 
     static Color[] ramp(Color base) {
@@ -195,7 +225,11 @@ final class PaletteDither {
     }
 
     private static Vector3 faceMul(int[] n, Color diffuse) {
-        float ndl = Math.max(0f, n[0] * DIR_TO_LIGHT.x + n[1] * DIR_TO_LIGHT.y + n[2] * DIR_TO_LIGHT.z);
+        return faceMul(n[0], n[1], n[2], diffuse);
+    }
+
+    private static Vector3 faceMul(float nx, float ny, float nz, Color diffuse) {
+        float ndl = Math.max(0f, nx * DIR_TO_LIGHT.x + ny * DIR_TO_LIGHT.y + nz * DIR_TO_LIGHT.z);
         return new Vector3(clamp((AMBIENT.x + DIR_COLOR.x * ndl) * diffuse.r),
                 clamp((AMBIENT.y + DIR_COLOR.y * ndl) * diffuse.g),
                 clamp((AMBIENT.z + DIR_COLOR.z * ndl) * diffuse.b));

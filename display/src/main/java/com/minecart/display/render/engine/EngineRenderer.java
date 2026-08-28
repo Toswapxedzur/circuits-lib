@@ -60,22 +60,25 @@ final class EngineRenderer implements Disposable {
         disposeMeshes();
 
         List<PartMesh.Box> all = new ArrayList<>(extraStatic);
+        List<PartMesh.Quad> allQuads = new ArrayList<>();
         for (ComponentInstance c : components) {
             c.collectStatic(all);
+            c.collectQuads(allQuads);
         }
 
-        // Every sprite any face can request: static boxes + every movable part-type's local boxes.
+        // Every sprite any face can request: static boxes + quads + every movable part-type's local boxes.
         List<PartMesh.Box> forAtlas = new ArrayList<>(all);
         for (PartType type : movableBuckets.keySet()) {
             forAtlas.addAll(type.boxes());
         }
         Set<String> names = new LinkedHashSet<>();
-        PartMesh.collectSpriteNames(forAtlas, names);
+        PartMesh.collectSpriteNames(forAtlas, allQuads, names);
         atlas = new PartAtlas(names);
 
-        staticMesh = PartMesh.of(all, 1, atlas);
+        staticMesh = PartMesh.of(all, allQuads, 1, atlas);
         for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
-            movableMeshes.put(e.getKey(), PartMesh.of(e.getKey().boxes(), Math.max(1, e.getValue().size()), atlas));
+            movableMeshes.put(e.getKey(),
+                    PartMesh.of(e.getKey().boxes(), List.of(), Math.max(1, e.getValue().size()), atlas));
         }
     }
 

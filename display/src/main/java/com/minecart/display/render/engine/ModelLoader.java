@@ -2,6 +2,7 @@ package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.google.gson.Gson;
 
@@ -30,6 +31,9 @@ final class ModelLoader {
         List<PartMesh.Box> boxes = new ArrayList<>();
         collectBoxes(j, boxes);
         for (PartMesh.Box box : boxes) b.box(box);
+        List<PartMesh.Quad> quads = new ArrayList<>();
+        collectQuads(j, quads);
+        for (PartMesh.Quad q : quads) b.quad(q);
         if (j.movables != null) {
             for (ModelJson.Movable mv : j.movables) {
                 b.movable(partType(mv.part), mv.at[0], mv.at[1], mv.at[2],
@@ -60,6 +64,19 @@ final class ModelLoader {
             String[] faces = new String[6];
             if (e.faces != null) e.faces.forEach((k, v) -> faces[ModelJson.faceId(k)] = v);
             out.add(PartMesh.Box.loaded(cx, cy, cz, sx, sy, sz, faces));
+        }
+    }
+
+    /** Appends this model's oriented quads (prepending any parent's first). */
+    private void collectQuads(ModelJson j, List<PartMesh.Quad> out) {
+        if (j.parent != null) collectQuads(read(j.parent), out);
+        if (j.quads == null) return;
+        for (ModelJson.Quad q : j.quads) {
+            float[][] c = q.corners;
+            out.add(PartMesh.Quad.loaded(
+                    new Vector3(c[0][0], c[0][1], c[0][2]), new Vector3(c[1][0], c[1][1], c[1][2]),
+                    new Vector3(c[2][0], c[2][1], c[2][2]), new Vector3(c[3][0], c[3][1], c[3][2]),
+                    q.w, q.h, q.sprite));
         }
     }
 

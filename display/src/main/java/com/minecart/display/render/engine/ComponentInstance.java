@@ -1,6 +1,7 @@
 package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,18 @@ final class ComponentInstance {
             // identical for every instance (and instances share one sprite).
             out.add(new PartMesh.Box(b.cx() + tx, b.cy() + ty, b.cz() + tz, b.sx(), b.sy(), b.sz(), b.paint(),
                     b.ocx(), b.ocy(), b.ocz(), b.faceSprites()));
+        }
+    }
+
+    /** Adds this component's oriented quads, translated to world space (object corners kept for shading). */
+    void collectQuads(List<PartMesh.Quad> out) {
+        float tx = world.val[Matrix4.M03], ty = world.val[Matrix4.M13], tz = world.val[Matrix4.M23];
+        for (PartMesh.Quad q : model.staticQuads) {
+            out.add(new PartMesh.Quad(
+                    new Vector3(q.p00()).add(tx, ty, tz), new Vector3(q.p10()).add(tx, ty, tz),
+                    new Vector3(q.p11()).add(tx, ty, tz), new Vector3(q.p01()).add(tx, ty, tz),
+                    q.o00(), q.o10(), q.o11(), q.o01(),
+                    q.paint(), q.pw(), q.ph(), q.bakedSprite()));
         }
     }
 }

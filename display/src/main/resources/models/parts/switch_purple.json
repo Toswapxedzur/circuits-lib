@@ -454,6 +454,7 @@
       }
     }
   ],
+  "quads": [],
   "movables": [
     {
       "part": "slider",

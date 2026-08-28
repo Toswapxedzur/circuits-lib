@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.VertexAttribute;
 import com.badlogic.gdx.graphics.VertexAttributes.Usage;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.FloatArray;
 import com.badlogic.gdx.utils.ShortArray;
@@ -66,6 +67,34 @@ final class PartMesh implements Disposable {
         }
     }
 
+    /**
+     * A flat, <b>oriented</b> (non-axis-aligned) quad — the engine's one non-box primitive, for a tilted plate
+     * like a resistor's leads. Corners are ordered {@code p00,p10,p11,p01} (== litFace's, so U runs p00→p10, V
+     * runs p00→p01); {@code o00..} are the ORIGINAL object-space corners (shading is identical for every
+     * instance, so the sprite bakes once and instances). {@code pw×ph} is its sprite size in texels. Rendered
+     * double-sided (both windings) so it reads from either face under {@code GL_BACK}.
+     */
+    record Quad(Vector3 p00, Vector3 p10, Vector3 p11, Vector3 p01,
+                Vector3 o00, Vector3 o10, Vector3 o11, Vector3 o01,
+                PaletteDither.Paint paint, int pw, int ph, String bakedSprite) {
+
+        /** A quad defined in object space (object corners == world corners). Sprite derived from paint. */
+        static Quad local(Vector3 p00, Vector3 p10, Vector3 p11, Vector3 p01, PaletteDither.Paint paint,
+                          int pw, int ph) {
+            return new Quad(p00, p10, p11, p01, p00, p10, p11, p01, paint, pw, ph, null);
+        }
+
+        /** A quad loaded from JSON: no paint, sprite name already resolved by the generator. */
+        static Quad loaded(Vector3 p00, Vector3 p10, Vector3 p11, Vector3 p01, int pw, int ph, String sprite) {
+            return new Quad(p00, p10, p11, p01, p00, p10, p11, p01, null, pw, ph, sprite);
+        }
+
+        /** The atlas sprite: the loaded name if present, else derived from the paint + object corners. */
+        String sprite() {
+            return bakedSprite != null ? bakedSprite : PaletteDither.quadName(this);
+        }
+    }
+
     private static final int FLOATS_PER_VERTEX = 3 + 2; // position, atlas uv
     private static final int FLOATS_PER_INSTANCE = 16;  // a mat4 (4 vec4 columns)
     private static final float EPS = 1e-4f;
@@ -84,7 +113,7 @@ final class PartMesh implements Disposable {
         this.instanceData = new float[maxInstances * FLOATS_PER_INSTANCE];
     }
 
-    static PartMesh of(List<Box> boxes, int maxInstances, PartAtlas atlas) {
+    static PartMesh of(List<Box> boxes, List<Quad> quads, int maxInstances, PartAtlas atlas) {
         FloatArray v = new FloatArray();
         ShortArray idx = new ShortArray();
         for (Box b : boxes) {
@@ -115,6 +144,21 @@ final class PartMesh implements Disposable {
                 face(v, idx, 5, atlas.region(b.faceSprite(5)),
                         x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);   // -Z
         }
+        // Oriented quads: a flat tilted plate, DOUBLE-SIDED. Emit the 4 corners ONCE (UVs p00→p10 = U, p00→p01
+        // = V) and add both triangle windings — reversing the WINDING (not the corner order) keeps each vertex's
+        // UV, so the sprite isn't transposed on the back face.
+        for (Quad q : quads) {
+            PartAtlas.Region r = atlas.region(q.sprite());
+            short base = (short) (v.size / FLOATS_PER_VERTEX);
+            vertex(v, q.p00().x, q.p00().y, q.p00().z, r, CORNER_UV[0], CORNER_UV[1]);
+            vertex(v, q.p10().x, q.p10().y, q.p10().z, r, CORNER_UV[2], CORNER_UV[3]);
+            vertex(v, q.p11().x, q.p11().y, q.p11().z, r, CORNER_UV[4], CORNER_UV[5]);
+            vertex(v, q.p01().x, q.p01().y, q.p01().z, r, CORNER_UV[6], CORNER_UV[7]);
+            idx.add(base); idx.add((short) (base + 1)); idx.add((short) (base + 2));  // front
+            idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 3));
+            idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 1));  // back (reversed winding)
+            idx.add(base); idx.add((short) (base + 3)); idx.add((short) (base + 2));
+        }
 
         Mesh mesh = new Mesh(true, v.size / FLOATS_PER_VERTEX, idx.size,
                 new VertexAttribute(Usage.Position, 3, "a_position"),
@@ -129,14 +173,15 @@ final class PartMesh implements Disposable {
         return new PartMesh(mesh, maxInstances);
     }
 
-    /** Every atlas sprite the given boxes can request (all non-degenerate faces) — for pre-building the atlas. */
-    static void collectSpriteNames(List<Box> boxes, java.util.Set<String> out) {
+    /** Every atlas sprite the given boxes + quads can request — for pre-building the atlas. */
+    static void collectSpriteNames(List<Box> boxes, List<Quad> quads, java.util.Set<String> out) {
         for (Box b : boxes) {
             for (int f = 0; f < 6; f++) {
                 int[] wh = PaletteDither.size(b, f);
                 if (wh[0] > 0 && wh[1] > 0) out.add(b.faceSprite(f));
             }
         }
+        for (Quad q : quads) out.add(q.sprite());
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,11 +22,14 @@ final class ComponentModel {
 
     final String id;
     final List<PartMesh.Box> staticBoxes;
+    final List<PartMesh.Quad> staticQuads;
     final List<MovablePart> movableParts;
 
-    private ComponentModel(String id, List<PartMesh.Box> staticBoxes, List<MovablePart> movableParts) {
+    private ComponentModel(String id, List<PartMesh.Box> staticBoxes, List<PartMesh.Quad> staticQuads,
+                           List<MovablePart> movableParts) {
         this.id = id;
         this.staticBoxes = staticBoxes;
+        this.staticQuads = staticQuads;
         this.movableParts = movableParts;
     }
 
@@ -36,6 +40,7 @@ final class ComponentModel {
     static final class Builder {
         private final String id;
         private final List<PartMesh.Box> statics = new ArrayList<>();
+        private final List<PartMesh.Quad> quads = new ArrayList<>();
         private final List<MovablePart> movables = new ArrayList<>();
 
         private Builder(String id) {
@@ -70,8 +75,20 @@ final class ComponentModel {
             return this;
         }
 
+        /** Adds an oriented (tilted) flat quad — corners p00,p10,p11,p01, sprite drawn from {@code paint}. */
+        Builder quad(Vector3 p00, Vector3 p10, Vector3 p11, Vector3 p01, PaletteDither.Paint paint, int pw, int ph) {
+            quads.add(PartMesh.Quad.local(p00, p10, p11, p01, paint, pw, ph));
+            return this;
+        }
+
+        /** Adds a pre-built quad (used by {@link ModelLoader}). */
+        Builder quad(PartMesh.Quad q) {
+            quads.add(q);
+            return this;
+        }
+
         ComponentModel build() {
-            return new ComponentModel(id, List.copyOf(statics), List.copyOf(movables));
+            return new ComponentModel(id, List.copyOf(statics), List.copyOf(quads), List.copyOf(movables));
         }
     }
 }
