@@ -93,6 +93,7 @@ final class Parts {
     final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];         // blank base board, one per colour
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel lamp;                                                     // white-encased bulb (single)
+    final ComponentModel tee;                                                      // T-base barebones (triangular 4-port)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
@@ -176,6 +177,7 @@ final class Parts {
         Color[] azure = PaletteDither.rampHsv(
                 PLASTIC_HSV[WIRE_COLOR][0], PLASTIC_HSV[WIRE_COLOR][1], PLASTIC_HSV[WIRE_COLOR][2]);
         lamp = buildLamp(WHITE_PLASTIC);
+        tee = buildTee(PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2])); // lime, demo
         for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
             wires[n - WIRE_MIN] = buildWire(n, azure);
         }
@@ -252,11 +254,43 @@ final class Parts {
      * stud of the part below. Snap-Circuits female snap. Seeds are shared across both ends → the sockets dedupe.
      */
     private ComponentModel.Builder socket(ComponentModel.Builder b, float x) {
-        return b.box(x - 2f, -0.5f, 0f, 1f, 1f, 5f, fence(501L)) // fence: left wall  (full depth)
-                .box(x + 2f, -0.5f, 0f, 1f, 1f, 5f, fence(501L)) // fence: right wall
-                .box(x, -0.5f, -2f, 3f, 1f, 1f, fence(502L))     // fence: front wall (fills the gap)
-                .box(x, -0.5f, 2f, 3f, 1f, 1f, fence(502L))      // fence: back wall
-                .box(x, 0f, 0f, 3f, 0f, 3f, fence(503L));        // recessed metal floor (down-facing skin at y0)
+        return socket(b, x, 0f);
+    }
+
+    /** The underside socket at an arbitrary grid point (x,z) — used by the T-base's stem-tip port, which sits
+     *  off the z=0 line. Same 5×5 fence → inner 3×3 hollow → recessed metal floor as {@link #socket(ComponentModel.Builder, float)}. */
+    private ComponentModel.Builder socket(ComponentModel.Builder b, float x, float z) {
+        return b.box(x - 2f, -0.5f, z, 1f, 1f, 5f, fence(501L)) // fence: left wall  (full depth)
+                .box(x + 2f, -0.5f, z, 1f, 1f, 5f, fence(501L)) // fence: right wall
+                .box(x, -0.5f, z - 2f, 3f, 1f, 1f, fence(502L)) // fence: front wall (fills the gap)
+                .box(x, -0.5f, z + 2f, 3f, 1f, 1f, fence(502L)) // fence: back wall
+                .box(x, 0f, z, 3f, 0f, 3f, fence(503L));        // recessed metal floor (down-facing skin at y0)
+    }
+
+    /**
+     * The <b>T-base</b> barebones — the shared body for the triangular 4-port parts (transistor, some switches,
+     * …). Built exactly as the owner specified: the standard 3-cell bar (33×9), a <b>9×9 stem</b> extruded from
+     * the centre toward the front (−z) to occupy a 4th cell, and <b>two 3×3 corner squares</b> stepping the
+     * stem→bar notch so the T reads as an (approximate, no-diagonal) triangle. Ports (stud 3×3 + underside
+     * socket) at the two bar ends (±12) and the stem tip (0,−12); the centre (0,0) is covered but unstudded by
+     * default (like the bar's middle). Every box uses the shared rim/band/steel DNA so it recolours + dithers
+     * like the rest of the series. The stem tip stud sits at z=−12 (footprint −13.5..−10.5), so the stem body
+     * reaches z=−13.5 (length 9 from the bar's front edge at −4.5).
+     */
+    private ComponentModel buildTee(Color[] pal) {
+        ComponentModel.Builder b = rims(ComponentModel.of("tee"), pal, null); // the 33×9 bar (3 layers)
+        // stem: a 9×9 arm from the centre out to the front, same 3-layer rim/band/rim profile, centre z=−9
+        b = b.box(0f, 0.5f, -9f, 9f, 1f, 9f, plastic(111L, pal))   // stem bottom rim y0..1
+                .box(0f, 3.5f, -9f, 9f, 1f, 9f, plastic(212L, pal)) // stem top rim y3..4
+                .box(0f, 2f, -9f, 9f, 2f, 9f, band(313L));          // stem white band y1..3
+        for (float sx : new float[]{-6f, 6f}) {                     // two 3×3 corner squares (front notch, both sides)
+            b = b.box(sx, 0.5f, -6f, 3f, 1f, 3f, plastic(121L, pal))
+                    .box(sx, 3.5f, -6f, 3f, 1f, 3f, plastic(222L, pal))
+                    .box(sx, 2f, -6f, 3f, 2f, 3f, band(323L));
+        }
+        b = studs(b);                                               // bar-end ports (±12,0)
+        b = b.box(0f, 4.5f, -12f, 3f, 1f, 3f, stud(404L, 0f, 4.5f, -12f)); // stem-tip stud
+        return socket(b, 0f, -12f).build();                         // stem-tip socket
     }
 
     /**
@@ -320,22 +354,22 @@ final class Parts {
     }
 
     /**
-     * Lamp (Snap-Circuits L1, the white-encased variant): the standard base + a <b>tall white-plastic tube</b>
-     * enclosing the light. The tube is a 7×7 fence (1px walls → inner 5×5 hollow), 7px tall (y4..11). There is
-     * <b>no solid core</b> — a single <b>thin film</b> (5×5×1) sits at <b>y5..6, 5px above the board</b>, and
-     * that film <b>is the light</b> (it lights up when the lamp is on — that on/off mechanism is not yet wired,
-     * so it renders as a static translucent disc). A <b>7×7 translucent top cover</b> (y11..12) caps the tube.
-     * Walls are opaque white plastic; the film + cover are translucent (drawn in the blended pass). All
-     * features odd-width, centred on 0.
+     * Lamp (Snap-Circuits L1, the white-encased variant): the standard base + a <b>white-plastic tube</b>
+     * enclosing the light. The whole enclosure is <b>5px tall</b> (owner spec — the visible white tube+cap):
+     * a 7×7 fence (1px walls → inner 5×5 hollow) <b>4px tall (y4..8)</b> capped by a <b>7×7 translucent top
+     * cover 1px tall (y8..9)</b> → top at y9, 5px above the base top. There is <b>no solid core</b> — a single
+     * <b>thin film</b> (5×5×1, y5..6) sits low inside and <b>is the light</b> (it lights up when the lamp is on;
+     * that on/off mechanism is not yet wired, so it renders as a static translucent disc). Walls are opaque
+     * white plastic; the film + cover are translucent (blended pass). All features odd-width, centred on 0.
      */
     private ComponentModel buildLamp(Color[] pal) {
         return base("lamp", pal, whiteTrace())
-                .box(-3f, 7.5f, 0f, 1f, 7f, 7f, lampWall(931L))   // fence: left wall  x -3.5..-2.5 (full depth)
-                .box(3f, 7.5f, 0f, 1f, 7f, 7f, lampWall(931L))    // fence: right wall x  2.5.. 3.5
-                .box(0f, 7.5f, -3f, 5f, 7f, 1f, lampWall(932L))   // fence: front wall z -3.5..-2.5 (fills the gap)
-                .box(0f, 7.5f, 3f, 5f, 7f, 1f, lampWall(932L))    // fence: back wall  z  2.5.. 3.5
-                .box(0f, 5.5f, 0f, 5f, 1f, 5f, lampGlass(934L), false, true)  // thin film (the light) y5..6, 5px above board
-                .box(0f, 11.5f, 0f, 7f, 1f, 7f, lampGlass(935L), false, true) // 7×7 translucent top cover y11..12
+                .box(-3f, 6f, 0f, 1f, 4f, 7f, lampWall(931L))   // fence: left wall  x -3.5..-2.5, y4..8 (4px)
+                .box(3f, 6f, 0f, 1f, 4f, 7f, lampWall(931L))    // fence: right wall x  2.5.. 3.5
+                .box(0f, 6f, -3f, 5f, 4f, 1f, lampWall(932L))   // fence: front wall z -3.5..-2.5 (fills the gap)
+                .box(0f, 6f, 3f, 5f, 4f, 1f, lampWall(932L))    // fence: back wall  z  2.5.. 3.5
+                .box(0f, 5.5f, 0f, 5f, 1f, 5f, lampGlass(934L), false, true)  // thin film (the light) y5..6
+                .box(0f, 8.5f, 0f, 7f, 1f, 7f, lampGlass(935L), false, true)  // 7×7 translucent top cover y8..9 → top y9 = 5px tall
                 .build();
     }
 
@@ -412,6 +446,7 @@ final class Parts {
         String[] cap = {"big", "medium", "small"};
         for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
         m.put("lamp", lamp); // single white-encased bulb
+        m.put("tee", tee);   // T-base barebones (triangular 4-port shape)
         for (int c = 0; c < PLASTIC_NAME.length; c++) {
             m.put("switch_" + PLASTIC_NAME[c], switches[c]);
             m.put("press_" + PLASTIC_NAME[c], pressSwitches[c]);
