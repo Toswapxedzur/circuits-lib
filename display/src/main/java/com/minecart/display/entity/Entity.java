@@ -1,6 +1,7 @@
 package com.minecart.display.entity;
 
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.physics.bullet.dynamics.btRigidBody;
 
 /**
@@ -23,5 +24,20 @@ public final class Entity {
     public Matrix4 pose() {
         body.getWorldTransform(pose);
         return pose;
+    }
+
+    /** The body's world position (centre). */
+    public Vector3 position(Vector3 out) {
+        return pose().getTranslation(out);
+    }
+
+    /** Gives the freshly-spawned entity a launch velocity (the "pop out of the socket" kick). */
+    public void launch(Vector3 velocity) {
+        body.activate(true);
+        body.setLinearVelocity(velocity);
+    }
+
+    btRigidBody body() {
+        return body;
     }
 }

@@ -81,6 +81,13 @@ public final class EntityWorld implements Disposable {
         return entities;
     }
 
+    /** Removes a dynamic entity from the simulation (e.g. the battery being re-socketed → back to box data). */
+    public void despawn(Entity e) {
+        world.removeRigidBody(e.body());
+        entities.remove(e);
+        // JNI body/motion/shape stay in the keep-arrays and are freed in dispose() (fine for short-lived demos).
+    }
+
     /** Advances the simulation, sub-stepping at a fixed 1/120 s for stability. */
     public void step(float dt) {
         world.stepSimulation(dt, 5, 1f / 120f);

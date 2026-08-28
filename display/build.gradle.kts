@@ -54,6 +54,17 @@ tasks.register<JavaExec>("entityproof") {
     }
 }
 
+// Entity lifecycle demo — battery: box-data <-> physical entity (E eject / Q insert / R reset).
+tasks.register<JavaExec>("entitydemo") {
+    group = "application"
+    description = "World-entity lifecycle demo — a battery ejects into a physics entity and re-sockets"
+    mainClass = "com.minecart.display.entity.EntityDemoApp"
+    classpath = sourceSets["main"].runtimeClasspath
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 val gdxVersion = "1.14.0"
 
 dependencies {

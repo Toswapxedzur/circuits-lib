@@ -70,8 +70,7 @@ final class Parts {
     private static final Color[] BULB_GLASS = PaletteDither.grays(6, 0.70f, 1.00f); // greyscale glass (TINTED + translucent)
     // White plastic body — the band's grays (0.85–1.0), so the white piece + lamp walls are seamlessly white.
     private static final Color[] WHITE_PLASTIC = PaletteDither.grays(7, 0.85f, 1.0f);
-    private static final Color[] LAMP_GLOW = PaletteDither.ramp(new Color(1.0f, 0.88f, 0.55f, 1f)); // warm filament glow
-    private static final Color[] LAMP_GLASS = PaletteDither.grays(6, 0.72f, 1.00f); // translucent warm-white cap
+    private static final Color[] LAMP_GLASS = PaletteDither.grays(6, 0.72f, 1.00f); // translucent warm-white film/cap
     private static final Color WARM = new Color(1.0f, 0.95f, 0.82f, 1f);            // warm diffuse tint for the lamp
     private static final Color TRACE_WHITE = new Color(0.95f, 0.95f, 0.95f, 1f);    // printed trace (default)
     private static final Color TRACE_RED = new Color(0.86f, 0.13f, 0.13f, 1f);      // printed trace (resistor)
@@ -144,11 +143,7 @@ final class Parts {
         return new PaletteDither.Paint(WHITE_PLASTIC, BAND_WHITE, 1, 0.3f, false, seed, 0f, 7.5f, 0f, SHADE_R, 1f);
     }
 
-    private static PaletteDither.Paint lampEmitter(long seed) {
-        return new PaletteDither.Paint(LAMP_GLOW, WARM, 2, 0.3f, false, seed, 0f, 6.5f, 0f, SHADE_R, 1f);
-    }
-
-    private static PaletteDither.Paint lampGlass(long seed) { // translucent warm cap (alpha 0.45)
+    private static PaletteDither.Paint lampGlass(long seed) { // translucent warm film/cap (alpha 0.45)
         return new PaletteDither.Paint(LAMP_GLASS, WARM, 1, 0.3f, false, seed, 0f, 10f, 0f, SHADE_R, 0.45f);
     }
 
@@ -326,11 +321,12 @@ final class Parts {
 
     /**
      * Lamp (Snap-Circuits L1, the white-encased variant): the standard base + a <b>tall white-plastic tube</b>
-     * that fully encloses a warm light. The tube is a 7×7 fence (1px walls → inner 5×5 hollow), 7px tall
-     * (y4..11). Inside, a warm <b>emitter</b> (3×3×5, y4..9) sits on the base; a <b>thin translucent glass
-     * layer</b> (5×5×1, y9..10) seals the light chamber ~5px above the base top; a <b>7×7 translucent top
-     * cover</b> (y11..12) caps the tube and glows as the light shines up through it. Walls are opaque white
-     * plastic; both caps are translucent (drawn in the blended pass). All features odd-width, centred on 0.
+     * enclosing the light. The tube is a 7×7 fence (1px walls → inner 5×5 hollow), 7px tall (y4..11). There is
+     * <b>no solid core</b> — a single <b>thin film</b> (5×5×1) sits at <b>y5..6, 5px above the board</b>, and
+     * that film <b>is the light</b> (it lights up when the lamp is on — that on/off mechanism is not yet wired,
+     * so it renders as a static translucent disc). A <b>7×7 translucent top cover</b> (y11..12) caps the tube.
+     * Walls are opaque white plastic; the film + cover are translucent (drawn in the blended pass). All
+     * features odd-width, centred on 0.
      */
     private ComponentModel buildLamp(Color[] pal) {
         return base("lamp", pal, whiteTrace())
@@ -338,8 +334,7 @@ final class Parts {
                 .box(3f, 7.5f, 0f, 1f, 7f, 7f, lampWall(931L))    // fence: right wall x  2.5.. 3.5
                 .box(0f, 7.5f, -3f, 5f, 7f, 1f, lampWall(932L))   // fence: front wall z -3.5..-2.5 (fills the gap)
                 .box(0f, 7.5f, 3f, 5f, 7f, 1f, lampWall(932L))    // fence: back wall  z  2.5.. 3.5
-                .box(0f, 6.5f, 0f, 3f, 5f, 3f, lampEmitter(933L)) // warm light emitter y4..9, inside the hollow
-                .box(0f, 9.5f, 0f, 5f, 1f, 5f, lampGlass(934L), false, true)  // thin glass enclosing layer y9..10
+                .box(0f, 5.5f, 0f, 5f, 1f, 5f, lampGlass(934L), false, true)  // thin film (the light) y5..6, 5px above board
                 .box(0f, 11.5f, 0f, 7f, 1f, 7f, lampGlass(935L), false, true) // 7×7 translucent top cover y11..12
                 .build();
     }
