@@ -192,7 +192,7 @@ final class Parts {
     private ComponentModel buildLed(Color[] pal) {
         return base("led", pal)
                 .box(0f, 5f, 0f, 5f, 2f, 5f, tube(913L))                       // metal tube (screw base) y4..6
-                .box(0f, 9.5f, 0f, 5f, 5f, 5f, bulbCore(914L), true, false)    // solid inner core y7..12 (tinted)
+                .box(0f, 9f, 0f, 5f, 6f, 5f, bulbCore(914L), true, false)      // solid inner core y6..12, ON the tube (tinted)
                 .box(0f, 9.5f, 0f, 7f, 7f, 7f, bulbGlass(915L), true, true)    // translucent outer core y6..13 (tinted)
                 .build();
     }

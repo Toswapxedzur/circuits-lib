@@ -348,7 +348,7 @@
     {
       "from": [
         -2.5,
-        7.0,
+        6.0,
         -2.5
       ],
       "to": [
@@ -357,12 +357,12 @@
         2.5
       ],
       "faces": {
-        "east": "spd522d5a9850a754_5x5",
-        "west": "sp246b66ea077cfeb3_5x5",
+        "east": "spd4c5a756e874194_6x5",
+        "west": "sp24659404ddb398f3_6x5",
         "up": "sp3f278ebdb02a5692_5x5",
-        "down": "sp59a88122300c0cf1_5x5",
-        "south": "sp74487333c87743d0_5x5",
-        "north": "sp126d2d5099cb5a2f_5x5"
+        "down": "sp59a2ae3036641e71_5x5",
+        "south": "sp7442a041ceeb8490_5x6",
+        "north": "sp12675a5ea03f9aef_5x6"
       },
       "tint": true,
       "translucent": false
