@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +32,9 @@ public final class EngineDemoApp extends ApplicationAdapter {
     private EngineRenderer engine;
     private final List<ComponentInstance> switches = new ArrayList<>();
     private final List<ComponentInstance> pressers = new ArrayList<>();
+    private EngineRenderer.DynamicEntity floater;                 // a free entity drawn at an arbitrary tumbling pose
+    private final Matrix4 floaterPose = new Matrix4();
+    private static final Vector3 TUMBLE_AXIS = new Vector3(1f, 1f, 0.4f).nor();
     private float clock;
 
     /** Total row length of the appended wire family (each wire body + its 13px gap). */
@@ -104,6 +108,12 @@ public final class EngineDemoApp extends ApplicationAdapter {
             wx += w / 2f;
         }
 
+        // A free-moving world ENTITY: a whole part model drawn at an arbitrary per-frame transform (rotation
+        // included) via the engine's dynamic-entity path — the render path the physics entities use. It tumbles
+        // above the catalogue to show the third path works (static + movable + entity).
+        floater = new EngineRenderer.DynamicEntity(loader.model("resistor_yellow"));
+        engine.addEntity(floater);
+
         engine.addStatic(List.of(boardBox()));
         engine.build();
 
@@ -134,6 +144,10 @@ public final class EngineDemoApp extends ApplicationAdapter {
             p.anim.target("press", pressTarget);
         }
         engine.update(dt);
+
+        // Tumble the free entity above the row (scale it up so it reads at the overview distance).
+        floaterPose.setToTranslation(wireSpan() / 2f, 60f, 0f).rotate(TUMBLE_AXIS, clock * 55f).scale(3f, 3f, 3f);
+        floater.pose(floaterPose);
 
         Gdx.gl.glClearColor(0.11f, 0.12f, 0.15f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
