@@ -38,7 +38,7 @@ final class PartMesh implements Disposable {
 
     /** A flat TRACE decal PRINTED onto a box's top (+Y) face at bake time — the conductive line between the
      *  studs, and (for the capacitor) the two-plate symbol. Gen-time only; the runtime just loads the sprite. */
-    record Trace(Color color, boolean capacitor) {}
+    record Trace(Color color, boolean capacitor, boolean arrow) {}
 
     record Box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                float ocx, float ocy, float ocz, String[] faceSprites,
