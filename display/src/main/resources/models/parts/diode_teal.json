@@ -37,7 +37,7 @@
       "faces": {
         "east": "sp34f998c60ec85c73_1x9",
         "west": "sp56f68613d23887f4_1x9",
-        "up": "spd00850220fac2b_33x9",
+        "up": "spd00850220fac2a_33x9",
         "down": "sp49776b2dcfad2076_33x9",
         "south": "sp2ba4d703953bb77_33x1",
         "north": "sp533f5c8c29aaddf8_33x1"
@@ -330,17 +330,39 @@
         -1.5
       ],
       "to": [
+        2.5,
+        7.0,
+        1.5
+      ],
+      "faces": {
+        "east": "sp46cc8d50bfe5c784_3x3",
+        "west": "sp7a69f49760825885_3x3",
+        "up": "sp33bcab17c1a350c6_8x3",
+        "down": "sp6cebd36061c08247_8x3",
+        "south": "sp262d9510dd636748_8x3",
+        "north": "sp651277c685f907c9_8x3"
+      },
+      "tint": false,
+      "translucent": false
+    },
+    {
+      "from": [
+        2.5,
+        4.0,
+        -1.5
+      ],
+      "to": [
         5.5,
         7.0,
         1.5
       ],
       "faces": {
-        "east": "sp3ae6a01476a8ef04_3x3",
-        "west": "sp6c6665736543db85_3x3",
-        "up": "sp25b9209b4a3c8186_11x3",
-        "down": "sp5ee848e3ea59b307_11x3",
-        "south": "sp182a0a9465fc9808_11x3",
-        "north": "sp592c85e2b8e48189_11x3"
+        "east": "sp1827791c09d0a09b_3x3",
+        "west": "sp30a969154aebdafa_3x3",
+        "up": "sp4b59e804482148d9_3x3",
+        "down": "sp65e6e07d600fbc38_3x3",
+        "south": "sp86725e5383e317_3x3",
+        "north": "sp1d427c4602b6f676_3x3"
       },
       "tint": false,
       "translucent": false

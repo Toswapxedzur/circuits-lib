@@ -55,6 +55,8 @@ final class Parts {
     private static final Color[] RES_B1 = PaletteDither.ramp(new Color(0.35f, 0.20f, 0.10f, 1f));   // band: brown
     private static final Color[] RES_B2 = PaletteDither.ramp(new Color(0.72f, 0.10f, 0.10f, 1f));   // band: red
     private static final Color[] RES_B3 = PaletteDither.ramp(new Color(0.82f, 0.62f, 0.18f, 1f));   // band: gold
+    // Diode blob: charcoal, NOT the 0.07 void-black — bright enough that the lighting + palette noise read.
+    private static final Color[] DIODE_BODY = PaletteDither.ramp(new Color(0.19f, 0.19f, 0.22f, 1f));
     private static final Color[] BULB_CORE = PaletteDither.grays(6, 0.60f, 1.00f);  // greyscale inner glow (TINTED)
     private static final Color[] BULB_GLASS = PaletteDither.grays(6, 0.70f, 1.00f); // greyscale glass (TINTED + translucent)
     private static final Color TRACE_WHITE = new Color(0.95f, 0.95f, 0.95f, 1f);    // printed trace (default)
@@ -175,7 +177,6 @@ final class Parts {
     private static PartMesh.Trace whiteTrace() { return new PartMesh.Trace(TRACE_WHITE, false, false); }
     private static PartMesh.Trace redTrace() { return new PartMesh.Trace(TRACE_RED, false, false); }
     private static PartMesh.Trace capTrace() { return new PartMesh.Trace(TRACE_WHITE, true, false); }
-    private static PartMesh.Trace diodeTrace() { return new PartMesh.Trace(TRACE_RED, false, true); }
 
     /** The wire's printed line: stud-to-stud across the whole family, span = outer stud offset − 1.5. */
     private static PartMesh.Trace wireTrace(float span) {
@@ -261,15 +262,16 @@ final class Parts {
 
     /**
      * Diode: the resistor's one-way sibling — the same standard base and the same two tilted metal lead-plates,
-     * but the banded tan body is replaced by a single <b>black blob</b> (11×3×3, y4..7). Direction is printed on
-     * the base: the red trace line carries an arrowhead (see {@code diodeTrace()}) pointing in the flow
-     * direction (+x, toward the lead the current exits). Lead quads reuse the resistor's exact geometry + paint
-     * (seed 905) so their sprites dedupe.
+     * but the banded tan body is replaced by a <b>charcoal blob</b> (11×3×3, y4..7) whose <b>+x 3×3×3 end is
+     * white</b> — the flow-direction mark (like a real diode's cathode band; current exits the white end). The
+     * trace stays the plain red line. Lead quads reuse the resistor's exact geometry + paint (seed 905) so
+     * their sprites dedupe.
      */
     private ComponentModel buildDiode(Color[] pal) {
         float s5 = (float) Math.sqrt(5.0);
-        return base("diode", pal, diodeTrace())
-                .box(0f, 5.5f, 0f, 11f, 3f, 3f, plastic(921L, CAP_BODY))   // black blob x -5.5..5.5, y4..7
+        return base("diode", pal, redTrace())
+                .box(-1.5f, 5.5f, 0f, 8f, 3f, 3f, plastic(921L, DIODE_BODY)) // charcoal blob x -5.5..2.5, y4..7
+                .box(4f, 5.5f, 0f, 3f, 3f, 3f, band(922L))                   // white 3×3×3 end x 2.5..5.5 (flow mark)
                 .quad(new Vector3(5.5f, 6f, -0.5f), new Vector3(5.5f + s5, 4f, -0.5f),
                         new Vector3(5.5f + s5, 4f, 0.5f), new Vector3(5.5f, 6f, 0.5f), fence(905L), 3, 1)
                 .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
