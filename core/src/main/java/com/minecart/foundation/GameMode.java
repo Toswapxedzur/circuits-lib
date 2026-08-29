@@ -25,7 +25,15 @@ public enum GameMode {
      * connect through shared grid posts rather than free wires; the electrical graph is derived from
      * board geometry. Rendered with a perspective camera.
      */
-    SNAP_3D("snap_3d", "3D Snap");
+    SNAP_3D("snap_3d", "3D Snap"),
+
+    /**
+     * A client-side <b>debug</b> mode: instead of an editable board, the screen lays out EVERY committed part
+     * model in a square grid (the merged in-game "texture displayer"). It creates an empty save like the 2D
+     * default (no board is seeded) and needs no server — joining it opens the model gallery directly. For
+     * eyeballing the whole part catalogue at a glance; not a building paradigm.
+     */
+    DEBUG_MODELS("debug_models", "Debug");
 
     private final String id;
     private final String displayName;
