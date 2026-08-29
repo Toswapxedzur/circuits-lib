@@ -38,6 +38,7 @@ tasks.register<JavaExec>("enginedemo") {
     description = "Launch the instanced component renderer engine demo"
     mainClass = "com.minecart.display.render.engine.EngineDemoApp"
     classpath = sourceSets["main"].runtimeClasspath
+    (project.findProperty("shadows") as String?)?.let { systemProperty("snap.shadows", it) }
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
     }
@@ -49,6 +50,7 @@ tasks.register<JavaExec>("boarddemo") {
     description = "Render a real SnapBoard through the instanced engine (SnapModelBridge bridge demo)"
     mainClass = "com.minecart.display.render.engine.BoardDemoApp"
     classpath = sourceSets["main"].runtimeClasspath
+    (project.findProperty("shadows") as String?)?.let { systemProperty("snap.shadows", it) }
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
     }
