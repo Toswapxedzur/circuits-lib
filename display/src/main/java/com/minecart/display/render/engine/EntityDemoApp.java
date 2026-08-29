@@ -31,7 +31,6 @@ public final class EntityDemoApp extends ApplicationAdapter {
 
     private static final Vector3 SOCKET = new Vector3(0f, 8f, 0f);   // where an ejected battery spawns
     private static final float INSERT_REACH = 16f;                   // re-seat range around the box
-    private static final Vector3 BATTERY_HALF = new Vector3(9f, 3f, 3f); // matches the battery_cell model (18×6×6)
     private static final Matrix4 SOCKETED_POSE = new Matrix4().setToTranslation(0f, 7f, 0f); // resting on the box
 
     private EntityWorld physics;
@@ -85,7 +84,10 @@ public final class EntityDemoApp extends ApplicationAdapter {
 
     private void eject() {
         if (!socketed || battery != null) return;
-        battery = physics.spawn("battery_cell", new btBoxShape(BATTERY_HALF), 1.2f,
+        // The collider is the model's DATAGEN'd axis-aligned box — bbox = appearance, generated separately.
+        ComponentModel.Collision c = batteryEntity.model.collision;
+        btBoxShape shape = new btBoxShape(new Vector3(c.hx(), c.hy(), c.hz()));
+        battery = physics.spawn("battery_cell", shape, 1.2f,
                 new Matrix4().setToTranslation(SOCKET.x, SOCKET.y, SOCKET.z));
         battery.launch(new Vector3(13f, 9f, 0f)); // pop up and out onto the ramp
         socketed = false;

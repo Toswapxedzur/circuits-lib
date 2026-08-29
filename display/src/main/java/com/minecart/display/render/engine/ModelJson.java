@@ -24,6 +24,29 @@ final class ModelJson {
     List<Element> elements = new ArrayList<>();
     List<Quad> quads = new ArrayList<>();   // oriented (tilted) flat plates — non-axis-aligned
     List<Movable> movables = new ArrayList<>();
+    Collision collision;                    // a single axis-aligned collision box (physics); generated separately
+
+    /**
+     * The part's <b>collision</b> shape: a single <b>axis-aligned</b> box over the model's visible extent — the
+     * cheapest accurate Bullet collider (box-box SAT, no compound/hull cost), ≈ the appearance. Carries a default
+     * material and optional per-face overrides (the "configurable per-face collision material" feature; default =
+     * all faces rigid, i.e. the box-level material). Generated at datagen from the geometry (owner: bbox generated
+     * SEPARATELY, axis-aligned), so the runtime never derives it live.
+     */
+    static final class Collision {
+        float[] from;                      // AABB min corner (object space)
+        float[] to;                        // AABB max corner
+        float friction = 0.9f;             // default surface friction
+        float restitution = 0f;            // default bounciness (0 = no bounce)
+        Face[] faces;                      // optional per-face overrides, index = faceId (0..5); null = all rigid
+    }
+
+    /** A per-face collision-material override (null fields fall back to the box defaults). */
+    static final class Face {
+        Float friction;
+        Float restitution;
+        Boolean solid;                     // false = that face doesn't collide (pass-through)
+    }
 
     /** One axis-aligned cuboid: object-space {@code from}/{@code to} corners + a sprite per present face. */
     static final class Element {
@@ -93,7 +116,34 @@ final class ModelJson {
             mv.axis = m.binding().axis();
             j.movables.add(mv);
         }
+        j.collision = aabb(boxes, quads); // the single axis-aligned collision box over the visible extent
         return j;
+    }
+
+    /** The tight axis-aligned box over every box + quad corner (object space), or null if the model is empty. */
+    private static Collision aabb(List<PartMesh.Box> boxes, List<PartMesh.Quad> quads) {
+        float[] min = {Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE};
+        float[] max = {-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
+        boolean any = false;
+        for (PartMesh.Box b : boxes) {
+            any = true;
+            min[0] = Math.min(min[0], b.cx() - b.sx() / 2f); max[0] = Math.max(max[0], b.cx() + b.sx() / 2f);
+            min[1] = Math.min(min[1], b.cy() - b.sy() / 2f); max[1] = Math.max(max[1], b.cy() + b.sy() / 2f);
+            min[2] = Math.min(min[2], b.cz() - b.sz() / 2f); max[2] = Math.max(max[2], b.cz() + b.sz() / 2f);
+        }
+        for (PartMesh.Quad q : quads) {
+            for (com.badlogic.gdx.math.Vector3 c : new com.badlogic.gdx.math.Vector3[]{q.o00(), q.o10(), q.o11(), q.o01()}) {
+                any = true;
+                min[0] = Math.min(min[0], c.x); max[0] = Math.max(max[0], c.x);
+                min[1] = Math.min(min[1], c.y); max[1] = Math.max(max[1], c.y);
+                min[2] = Math.min(min[2], c.z); max[2] = Math.max(max[2], c.z);
+            }
+        }
+        if (!any) return null;
+        Collision col = new Collision();
+        col.from = min;
+        col.to = max;
+        return col;
     }
 
     /** Every sprite name any element or quad references — the texture dependencies of this model. */

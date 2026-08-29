@@ -391,5 +391,19 @@
     }
   ],
   "quads": [],
-  "movables": []
+  "movables": [],
+  "collision": {
+    "from": [
+      -28.5,
+      -1.0,
+      -4.5
+    ],
+    "to": [
+      28.5,
+      5.0,
+      4.5
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  }
 }

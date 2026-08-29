@@ -424,5 +424,19 @@
       "sprite": "qd25be7093b2369e6d_3x1"
     }
   ],
-  "movables": []
+  "movables": [],
+  "collision": {
+    "from": [
+      -16.5,
+      -1.0,
+      -4.5
+    ],
+    "to": [
+      16.5,
+      7.0,
+      4.5
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  }
 }
