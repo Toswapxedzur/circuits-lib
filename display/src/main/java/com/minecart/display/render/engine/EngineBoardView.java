@@ -1,8 +1,13 @@
 package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.graphics.Camera;
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.utils.Disposable;
+import com.minecart.display.snap.SnapModelBridge;
 import com.minecart.snap.SnapPlacement;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The public seam that lets the app's {@code SnapScreen} render a {@link com.minecart.snap.SnapBoard} through the
@@ -42,6 +47,27 @@ public final class EngineBoardView implements Disposable {
         if (built) {
             engine.render(cam);
         }
+    }
+
+    /** A placed part's static collider: an axis-aligned box (half-extents from the model's datagen collision box)
+     *  at a world transform (the placement's transform, shifted to the box centre). {@code world} may be yawed —
+     *  the box is axis-aligned in the part's local frame, oriented in world. */
+    public record PartCollider(float hx, float hy, float hz, Matrix4 world) {}
+
+    /** The static colliders for a board snapshot — one axis-aligned box per placement that has a collision box.
+     *  The physics world adds these as static bodies so entities rest on/against the board parts. */
+    public List<PartCollider> colliders(Iterable<SnapPlacement> placements) {
+        List<PartCollider> out = new ArrayList<>();
+        for (SnapPlacement p : placements) {
+            ComponentModel m = loader.model(SnapModelBridge.modelId(p));
+            ComponentModel.Collision c = m.collision;
+            if (c == null) {
+                continue;
+            }
+            Matrix4 world = SnapModelBridge.world(p).translate(c.cx(), c.cy(), c.cz()); // to the AABB centre
+            out.add(new PartCollider(c.hx(), c.hy(), c.hz(), world));
+        }
+        return out;
     }
 
     @Override
