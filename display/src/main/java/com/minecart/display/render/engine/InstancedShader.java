@@ -93,6 +93,7 @@ final class InstancedShader {
             uniform sampler2D u_shadowMap;
             uniform mat4 u_lightViewProj;
             uniform float u_shadowStrength;   // 0 = shadows off (map/depth still fine); 1 = full
+            uniform float u_shadowBias;       // depth-compare bias, scaled to the shadow texel world size
             float unpackDepth(vec4 c) {
                 return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0));
             }
@@ -103,7 +104,7 @@ final class InstancedShader {
                 vec2 suv = ndc.xy * 0.5 + 0.5;
                 if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) return 1.0;
                 float fragDepth = ndc.z * 0.5 + 0.5;
-                float bias = max(0.0025 * (1.0 - ndl), 0.0008);
+                float bias = u_shadowBias * (2.0 - ndl); // more at grazing angles (projective aliasing)
                 float stored = unpackDepth(texture2D(u_shadowMap, suv));
                 return (fragDepth - bias > stored) ? 0.4 : 1.0;
             }
