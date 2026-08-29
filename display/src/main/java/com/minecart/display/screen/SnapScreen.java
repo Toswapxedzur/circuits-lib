@@ -129,6 +129,8 @@ public final class SnapScreen extends ScreenAdapter {
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
         boardView = new EngineBoardView(); // the board's real part models, via the instanced engine (GL20 path)
+        // The base board the parts sit on: tiled from committed cell + stud sprites, top surface at y=0.
+        boardView.setBaseBoard(board.width(), board.height(), 0f);
         editor = new SnapEditor(board);
         refreshScene();
         initPhysics();

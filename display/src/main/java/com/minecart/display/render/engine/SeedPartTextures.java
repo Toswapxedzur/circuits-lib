@@ -39,6 +39,7 @@ public final class SeedPartTextures extends ApplicationAdapter {
         boxes.addAll(parts.button.boxes());
         boxes.addAll(parts.pointer.boxes());
         boxes.add(EngineDemoApp.boardBox());
+        boxes.addAll(SnapBaseBoard.seedBoxes()); // the 3D snap base board's tiled cell + stud sprites
 
         FileHandle dir = Gdx.files.local(OUT_DIR);
         dir.mkdirs();
