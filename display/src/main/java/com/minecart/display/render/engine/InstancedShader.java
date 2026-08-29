@@ -97,20 +97,12 @@ final class InstancedShader {
             float unpackDepth(vec4 c) {
                 return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0));
             }
-            float shadowFactor(vec3 worldPos, float ndl) {
-                if (u_shadowStrength < 0.5) return 1.0;
-                vec4 lp = u_lightViewProj * vec4(worldPos, 1.0);
-                vec3 ndc = lp.xyz / lp.w;
-                vec2 suv = ndc.xy * 0.5 + 0.5;
-                if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) return 1.0;
-                float fragDepth = ndc.z * 0.5 + 0.5;
-                float bias = u_shadowBias * (2.0 - ndl); // more at grazing angles (projective aliasing)
-                float stored = unpackDepth(texture2D(u_shadowMap, suv));
-                return (fragDepth - bias > stored) ? 0.4 : 1.0;
-            }
-            vec3 shade(vec3 N, vec3 worldPos) {
+            // Shading takes the shadow factor as a PARAMETER — the shadow map is sampled in main(), not here.
+            // (A driver quirk: the same texture2D sample reads black when done inside this function but works in
+            // main(); keeping all sampling in main() sidesteps it.)
+            vec3 shade(vec3 N, vec3 worldPos, float sf) {
                 float ndl = max(dot(N, u_lightDir), 0.0);
-                vec3 lit = u_ambient + u_lightColor * (ndl * shadowFactor(worldPos, ndl));
+                vec3 lit = u_ambient + u_lightColor * (ndl * sf);
                 for (int i = 0; i < NUM_LIGHTS; i++) {
                     if (i >= u_numLights) break;
                     vec3 d = u_lightPos[i] - worldPos;
@@ -124,7 +116,21 @@ final class InstancedShader {
             }
             void main() {
                 vec4 texel = texture2D(u_atlas, v_uv) * v_color;
-                gl_FragColor = vec4(texel.rgb * shade(normalize(v_normal), v_worldPos), texel.a);
+                vec3 N = normalize(v_normal);
+                float ndl = max(dot(N, u_lightDir), 0.0);
+                float sf = 1.0;
+                if (u_shadowStrength >= 0.5) {
+                    vec4 lp = u_lightViewProj * vec4(v_worldPos, 1.0);
+                    vec3 ndc = lp.xyz / lp.w;
+                    vec2 suv = ndc.xy * 0.5 + 0.5;
+                    if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
+                        float fragDepth = ndc.z * 0.5 + 0.5;
+                        float bias = u_shadowBias * (2.0 - ndl);
+                        float stored = unpackDepth(texture2D(u_shadowMap, suv));
+                        if (fragDepth - bias > stored) sf = 0.45;
+                    }
+                }
+                gl_FragColor = vec4(texel.rgb * shade(N, v_worldPos, sf), texel.a);
             }
             """;
 
