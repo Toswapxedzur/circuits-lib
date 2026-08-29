@@ -52,7 +52,9 @@ final class EngineRenderer implements Disposable {
         }
     }
 
-    private final ShaderProgram shader = InstancedShader.create();
+    // GL3+ core context → hardware instancing; the live app's GL2.0 context → one draw per instance (u_world).
+    private final boolean instanced = Gdx.gl30 != null;
+    private final ShaderProgram shader = InstancedShader.create(instanced);
     private final Matrix4 identity = new Matrix4();
 
     private final List<ComponentInstance> components = new ArrayList<>();
@@ -125,17 +127,17 @@ final class EngineRenderer implements Disposable {
         List<PartMesh.Box> opaque = new ArrayList<>();
         List<PartMesh.Box> translucent = new ArrayList<>();
         for (PartMesh.Box b : all) (b.translucent() ? translucent : opaque).add(b);
-        staticOpaque = PartMesh.of(opaque, allQuads, 1, atlas);
-        staticTranslucent = PartMesh.of(translucent, List.of(), 1, atlas);
+        staticOpaque = PartMesh.of(opaque, allQuads, 1, atlas, instanced);
+        staticTranslucent = PartMesh.of(translucent, List.of(), 1, atlas, instanced);
         for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
             movableMeshes.put(e.getKey(),
-                    PartMesh.of(e.getKey().boxes(), List.of(), Math.max(1, e.getValue().size()), atlas));
+                    PartMesh.of(e.getKey().boxes(), List.of(), Math.max(1, e.getValue().size()), atlas, instanced));
         }
         // One single-instance mesh per entity (its whole model, object space). Rendered in the opaque pass at its
         // pose. (Entities are assumed opaque — the battery cell is; a translucent-boxed entity would need the same
         // opaque/translucent split as the scene mesh, added when one exists.)
         for (DynamicEntity e : entities) {
-            entityMeshes.put(e, PartMesh.of(e.model.staticBoxes, e.model.staticQuads, 1, atlas));
+            entityMeshes.put(e, PartMesh.of(e.model.staticBoxes, e.model.staticQuads, 1, atlas, instanced));
         }
     }
 
