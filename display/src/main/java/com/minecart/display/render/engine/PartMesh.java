@@ -142,15 +142,18 @@ final class PartMesh implements Disposable {
     private static final float[] CORNER_UV = {0, 0, 1, 0, 1, 1, 0, 1};
 
     private final Mesh mesh;
+    private final boolean instanced;               // true = one instanced draw; false = one draw per instance (GL20)
     private final float[] instanceData;
+    private final Matrix4 world = new Matrix4();    // scratch for the GL20 per-instance u_world uniform
     private int instanceCount;
 
-    private PartMesh(Mesh mesh, int maxInstances) {
+    private PartMesh(Mesh mesh, int maxInstances, boolean instanced) {
         this.mesh = mesh;
+        this.instanced = instanced;
         this.instanceData = new float[maxInstances * FLOATS_PER_INSTANCE];
     }
 
-    static PartMesh of(List<Box> boxes, List<Quad> quads, int maxInstances, PartAtlas atlas) {
+    static PartMesh of(List<Box> boxes, List<Quad> quads, int maxInstances, PartAtlas atlas, boolean instanced) {
         FloatArray v = new FloatArray();
         ShortArray idx = new ShortArray();
         for (Box b : boxes) {
@@ -203,12 +206,15 @@ final class PartMesh implements Disposable {
                 new VertexAttribute(Usage.ColorPacked, 4, "a_color"));
         mesh.setVertices(v.items, 0, v.size);
         mesh.setIndices(idx.items, 0, idx.size);
-        mesh.enableInstancedRendering(false, maxInstances,
-                new VertexAttribute(Usage.Generic, 4, "i_w0"),
-                new VertexAttribute(Usage.Generic, 4, "i_w1"),
-                new VertexAttribute(Usage.Generic, 4, "i_w2"),
-                new VertexAttribute(Usage.Generic, 4, "i_w3"));
-        return new PartMesh(mesh, maxInstances);
+        if (instanced) {
+            // GL3+ hardware instancing: one draw call, per-instance world matrix as four vec4 attributes.
+            mesh.enableInstancedRendering(false, maxInstances,
+                    new VertexAttribute(Usage.Generic, 4, "i_w0"),
+                    new VertexAttribute(Usage.Generic, 4, "i_w1"),
+                    new VertexAttribute(Usage.Generic, 4, "i_w2"),
+                    new VertexAttribute(Usage.Generic, 4, "i_w3"));
+        } // else GL2.0: the same mesh, drawn once per instance with a u_world uniform (see render()).
+        return new PartMesh(mesh, maxInstances, instanced);
     }
 
     /** Every atlas sprite the given boxes + quads can request — for pre-building the atlas. */
@@ -277,8 +283,17 @@ final class PartMesh implements Disposable {
         if (instanceCount == 0) {
             return;
         }
-        mesh.setInstanceData(instanceData, 0, instanceCount * FLOATS_PER_INSTANCE);
-        mesh.render(shader, GL20.GL_TRIANGLES);
+        if (instanced) {
+            mesh.setInstanceData(instanceData, 0, instanceCount * FLOATS_PER_INSTANCE);
+            mesh.render(shader, GL20.GL_TRIANGLES);
+        } else {
+            // GL2.0 fallback: one draw per instance, its world matrix pushed as the u_world uniform.
+            for (int i = 0; i < instanceCount; i++) {
+                System.arraycopy(instanceData, i * FLOATS_PER_INSTANCE, world.val, 0, 16);
+                shader.setUniformMatrix("u_world", world);
+                mesh.render(shader, GL20.GL_TRIANGLES);
+            }
+        }
     }
 
     @Override
