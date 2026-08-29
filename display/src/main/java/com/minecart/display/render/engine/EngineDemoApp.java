@@ -129,7 +129,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
         cam.lookAt(wireSpan() / 2f, 4f, 0f);
         cam.up.set(0f, 1f, 0f);
         cam.update();
-        fly = new FlyController(cam, reach * 0.9f);
+        fly = new FlyController(cam, reach * 0.09f); // slow default so parts are inspectable (scroll to speed up)
         Gdx.input.setInputProcessor(fly);
     }
 
