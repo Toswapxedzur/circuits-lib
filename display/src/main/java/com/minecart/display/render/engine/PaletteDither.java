@@ -63,6 +63,9 @@ final class PaletteDither {
             if (b.trace().span() != PartMesh.Trace.DEFAULT_SPAN) { // folded in only when non-default, so every
                 h = h * 31 + Float.floatToIntBits(b.trace().span()); // pre-span sprite name stays byte-stable
             }
+            if (b.trace().branch() != 0f) { // transistor T-branch — folded only when present (name-stable otherwise)
+                h = h * 31 + Float.floatToIntBits(b.trace().branch());
+            }
         }
         return "sp" + Long.toHexString(h & 0x7fffffffffffffffL) + "_" + wh[0] + "x" + wh[1];
     }
@@ -141,6 +144,8 @@ final class PaletteDither {
     private static boolean onTrace(float x, float z, PartMesh.Trace t) {
         float span = t.span();
         boolean line = Math.abs(z) <= 0.5f && Math.abs(x) <= span;
+        // transistor T-branch: a 1-wide line at x=0 running back in −z from the centre to the stem-tip stud
+        if (t.branch() != 0f && Math.abs(x) <= 0.5f && z <= 0f && z >= -t.branch()) return true;
         if (t.arrow() && Math.abs(z) >= 0.5f && Math.abs(z) <= 3.5f
                 && Math.abs(x - (span - 0.5f - Math.abs(z))) <= 0.5f) return true;
         if (!t.capacitor()) return line;

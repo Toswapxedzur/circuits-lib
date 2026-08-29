@@ -25,7 +25,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
     private static final int GREEN = 3;      // lime — the switches' colour
     private static final float SPACING = 34f; // X spacing between listed parts
     private static final int[] LED_COLORS = {0, 2, 3, 5, 7, 8}; // LED bulb colours: red, yellow, lime, cyan, blue, violet
-    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 6 + LED_COLORS.length; // bases + 3 caps + slide/press/resistor/diode/lamp/tee + LEDs
+    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 8 + LED_COLORS.length; // bases + 3 caps + slide/press/resistor/diode/lamp/tee/npn/pnp + LEDs
 
     private PerspectiveCamera cam;
     private FlyController fly;
@@ -91,6 +91,10 @@ public final class EngineDemoApp extends ApplicationAdapter {
         engine.add(new ComponentInstance(loader.model("lamp"), world));
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // T-base barebones (triangular 4-port shape)
         engine.add(new ComponentInstance(loader.model("tee"), world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // NPN transistor (red, cube top-black)
+        engine.add(new ComponentInstance(loader.model("transistor_npn"), world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // PNP transistor (dark green, cube top-white)
+        engine.add(new ComponentInstance(loader.model("transistor_pnp"), world));
         for (int c : LED_COLORS) {                                       // LEDs: ONE greyscale bulb, many entity colours
             world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
             Color tint = new Color().fromHsv(Parts.PLASTIC_HSV[c][0], Parts.PLASTIC_HSV[c][1], Parts.PLASTIC_HSV[c][2]);

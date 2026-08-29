@@ -94,6 +94,8 @@ final class Parts {
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel lamp;                                                     // white-encased bulb (single)
     final ComponentModel tee;                                                      // T-base barebones (triangular 4-port)
+    final ComponentModel transistorNpn;                                            // red base, cube top-black/bottom-white
+    final ComponentModel transistorPnp;                                            // dark-green base, cube top-white/bottom-black
     final ComponentModel batteryCell;                                              // loose battery entity (orange+black cell)
     final ComponentModel slab;                                                     // neutral grey unit slab (scenery, scaled via pose)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
@@ -180,6 +182,10 @@ final class Parts {
                 PLASTIC_HSV[WIRE_COLOR][0], PLASTIC_HSV[WIRE_COLOR][1], PLASTIC_HSV[WIRE_COLOR][2]);
         lamp = buildLamp(WHITE_PLASTIC);
         tee = buildTee(PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2])); // lime, demo
+        transistorNpn = buildTransistor("transistor_npn",
+                PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2]), true);   // red
+        transistorPnp = buildTransistor("transistor_pnp",
+                PaletteDither.rampHsv(PLASTIC_HSV[11][0], PLASTIC_HSV[11][1], PLASTIC_HSV[11][2]), false); // deep green
         batteryCell = buildBatteryCell();
         slab = ComponentModel.of("slab").box(0f, 0f, 0f, 1f, 1f, 1f,
                 new PaletteDither.Paint(PaletteDither.grays(4, 0.32f, 0.48f), Color.WHITE, 1, 0.3f, false, 701L, 0f, 0f, 0f, 1f, 1f)).build();
@@ -283,20 +289,54 @@ final class Parts {
      * reaches z=−13.5 (length 9 from the bar's front edge at −4.5).
      */
     private ComponentModel buildTee(Color[] pal) {
-        ComponentModel.Builder b = rims(ComponentModel.of("tee"), pal, null); // the 33×9 bar (3 layers)
-        // stem: a 9-wide × 12-deep arm from the centre out to the front (centre z=−10.5). Depth is 12 (not 9)
-        // so the stem-tip stud at z=−12 gets the same 3px buffer the bar ends have (stem front reaches −16.5).
-        b = b.box(0f, 0.5f, -10.5f, 9f, 1f, 12f, plastic(111L, pal))   // stem bottom rim y0..1
-                .box(0f, 3.5f, -10.5f, 9f, 1f, 12f, plastic(212L, pal)) // stem top rim y3..4
-                .box(0f, 2f, -10.5f, 9f, 2f, 12f, band(313L));          // stem white band y1..3
-        for (float sx : new float[]{-7.5f, 7.5f}) {                     // two 6×6 corner squares against the stem
-            b = b.box(sx, 0.5f, -7.5f, 6f, 1f, 6f, plastic(121L, pal))  // walls, on the bar front (z −4.5..−10.5)
+        return teeBuilder("tee", pal, null).build();
+    }
+
+    /**
+     * The T-base builder (returns the {@link ComponentModel.Builder} so callers like {@link #buildTransistor}
+     * can add a mechanism before {@code build()}). Bar + 9-wide×12-deep stem (3px tip buffer) + two 6×6 corner
+     * squares + 3 studs/sockets (bar ends ±12 + stem tip 0,−12). An optional {@code trace} is applied to BOTH
+     * the bar's top rim and the stem's top rim, so each draws its portion of the printed line (the transistor's
+     * T-trace: the bar line at z=0 lives on the bar rim, the −z branch spans both rims).
+     */
+    private ComponentModel.Builder teeBuilder(String id, Color[] pal, PartMesh.Trace trace) {
+        ComponentModel.Builder b = rims(ComponentModel.of(id), pal, trace); // bar (33×9, trace on its top rim)
+        // stem: 9-wide × 12-deep arm from the centre out to the front (centre z=−10.5) — depth 12 so the
+        // stem-tip stud at z=−12 gets the same 3px buffer the bar ends have (stem front reaches −16.5).
+        b = b.box(0f, 0.5f, -10.5f, 9f, 1f, 12f, plastic(111L, pal))        // stem bottom rim y0..1
+                .box(0f, 3.5f, -10.5f, 9f, 1f, 12f, plastic(212L, pal), trace) // stem top rim y3..4 (trace branch)
+                .box(0f, 2f, -10.5f, 9f, 2f, 12f, band(313L));              // stem white band y1..3
+        for (float sx : new float[]{-7.5f, 7.5f}) {                         // two 6×6 corner squares against the stem
+            b = b.box(sx, 0.5f, -7.5f, 6f, 1f, 6f, plastic(121L, pal))      // walls, on the bar front (z −4.5..−10.5)
                     .box(sx, 3.5f, -7.5f, 6f, 1f, 6f, plastic(222L, pal))
-                    .box(sx, 2f, -7.5f, 6f, 2f, 6f, band(323L));        // → two-step slope 33→21→9 ≈ triangle
+                    .box(sx, 2f, -7.5f, 6f, 2f, 6f, band(323L));            // → two-step slope 33→21→9 ≈ triangle
         }
-        b = studs(b);                                               // bar-end ports (±12,0)
-        b = b.box(0f, 4.5f, -12f, 3f, 1f, 3f, stud(404L, 0f, 4.5f, -12f)); // stem-tip stud
-        return socket(b, 0f, -12f).build();                         // stem-tip socket
+        b = studs(b);                                                       // bar-end ports (±12,0)
+        b = b.box(0f, 4.5f, -12f, 3f, 1f, 3f, stud(404L, 0f, 4.5f, -12f));  // stem-tip stud
+        return socket(b, 0f, -12f);                                         // stem-tip socket
+    }
+
+    /** The transistor's white T-trace: the bar line between the ±12 studs + a −z branch out to the stem tip. */
+    private static PartMesh.Trace transistorTrace() {
+        return new PartMesh.Trace(TRACE_WHITE, false, false, 10.5f, 10.5f);
+    }
+
+    /**
+     * A transistor on the T-base (NPN = red base, PNP = dark-green base). A <b>5×5×5 cube</b> sits centred on the
+     * base top (y4..9), split 40/60 by height at y7: PNP = top WHITE (2px) + bottom BLACK (3px); <b>NPN reverses
+     * it</b> (top black, bottom white). Three flat metal <b>legs</b> (1×3×0, TO-92 style) hang from the cube
+     * front (z=−2.5) down into the base. The white T-trace connects the three studs.
+     */
+    private ComponentModel buildTransistor(String id, Color[] pal, boolean npn) {
+        Color[] topPal = npn ? SERIES_BLACK : WHITE_PLASTIC;  // NPN top black / PNP top white
+        Color[] botPal = npn ? WHITE_PLASTIC : SERIES_BLACK;  // NPN bottom white / PNP bottom black
+        ComponentModel.Builder b = teeBuilder(id, pal, transistorTrace())
+                .box(0f, 5.5f, 0f, 5f, 3f, 5f, plastic(931L, botPal))   // cube bottom 3px (60%) y4..7
+                .box(0f, 8f, 0f, 5f, 2f, 5f, plastic(932L, topPal));    // cube top 2px (40%) y7..9
+        for (float lx : new float[]{-2f, 0f, 2f}) {                     // 3 legs: flat metal tabs on the front
+            b = b.box(lx, 2.5f, -2.5f, 1f, 3f, 0f, fence(940L));        // 1×3×0, y1..4, z=−2.5 (into the base)
+        }
+        return b.build();
     }
 
     /**
@@ -474,6 +514,8 @@ final class Parts {
         for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
         m.put("lamp", lamp); // single white-encased bulb
         m.put("tee", tee);   // T-base barebones (triangular 4-port shape)
+        m.put("transistor_npn", transistorNpn); // red, cube top-black/bottom-white
+        m.put("transistor_pnp", transistorPnp); // dark-green, cube top-white/bottom-black
         m.put("battery_cell", batteryCell); // loose battery entity (orange+black cell)
         m.put("slab", slab); // neutral grey scenery slab (unit box, scaled via pose)
         for (int c = 0; c < PLASTIC_NAME.length; c++) {

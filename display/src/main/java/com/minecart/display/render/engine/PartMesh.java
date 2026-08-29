@@ -39,14 +39,19 @@ final class PartMesh implements Disposable {
     /** A flat TRACE decal PRINTED onto a box's top (+Y) face at bake time — the conductive line between the
      *  studs, and (for the capacitor) the two-plate symbol. {@code span} is the line's half-length: it runs
      *  x∈[−span, span], i.e. outer stud offset − 1.5 (the wire family spans more than the standard ±12 studs).
-     *  Gen-time only; the runtime just loads the sprite. */
-    record Trace(Color color, boolean capacitor, boolean arrow, float span) {
+     *  {@code branch} (0 = none) adds a perpendicular −z branch at x=0 running z∈[−branch, 0] — the transistor
+     *  T-trace's line out to the stem-tip stud. Gen-time only; the runtime just loads the sprite. */
+    record Trace(Color color, boolean capacitor, boolean arrow, float span, float branch) {
 
         /** Stud-to-stud half-length on the standard 33-wide body (studs at ±12). */
         static final float DEFAULT_SPAN = 10.5f;
 
+        Trace(Color color, boolean capacitor, boolean arrow, float span) {
+            this(color, capacitor, arrow, span, 0f);
+        }
+
         Trace(Color color, boolean capacitor, boolean arrow) {
-            this(color, capacitor, arrow, DEFAULT_SPAN);
+            this(color, capacitor, arrow, DEFAULT_SPAN, 0f);
         }
     }
 
