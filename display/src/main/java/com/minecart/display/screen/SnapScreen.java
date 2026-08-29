@@ -85,6 +85,7 @@ public final class SnapScreen extends ScreenAdapter {
     private TextButton[] hotbarButtons;
     private int lastRevision = Integer.MIN_VALUE;
     private boolean cursorCaught;
+    private final boolean fixedCam = "1".equals(System.getProperty("snap.fixedcam")); // dev: freeze camera for shots
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -136,7 +137,8 @@ public final class SnapScreen extends ScreenAdapter {
         String sky = System.getProperty("snap.skylight");
         if (sky != null) {
             float sx = sky.contains("w") ? -0.5f : 0.5f, sz = sky.contains("s") ? -0.5f : 0.5f;
-            boardView.setLightDir(sx, 0.7071f, sz);
+            float sy = sky.contains("low") ? 0.35f : 0.7071f; // "low" = a shallow sun for long, visible shadows
+            boardView.setLightDir(sx, sy, sz);
         }
         // The base board the parts sit on: tiled from committed cell + stud sprites, top surface at y=0.
         boardView.setBaseBoard(board.width(), board.height(), 0f);
@@ -349,7 +351,7 @@ public final class SnapScreen extends ScreenAdapter {
         cursorCaught = caught;
         Gdx.input.setCursorCatched(caught);
         if (flyCam != null) {
-            flyCam.setLookEnabled(caught);
+            flyCam.setLookEnabled(caught && !fixedCam); // fixedCam: keep the deterministic init view (dev shots)
         }
     }
 

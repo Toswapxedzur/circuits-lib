@@ -274,6 +274,7 @@ final class EngineRenderer implements Disposable {
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
         Gdx.gl.glCullFace(GL20.GL_BACK);
+        Gdx.gl.glDisable(GL20.GL_DITHER); // dithering would corrupt the GL2.0 path's RGBA-packed shadow depth
 
         // --- Shadow pass: render the opaque scene's depth from the light's ortho POV into the shadow map. ---
         if (shadowMap != null && SHADOWS) {

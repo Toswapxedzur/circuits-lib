@@ -139,6 +139,7 @@ tasks.register<JavaExec>("runsnap") {
     systemProperty("snap.autojoin", (project.findProperty("world") as String?) ?: "snap3d")
     (project.findProperty("testplace") as String?)?.let { systemProperty("snap.testplace", it) }
     (project.findProperty("skylight") as String?)?.let { systemProperty("snap.skylight", it) }
+    (project.findProperty("fixedcam") as String?)?.let { systemProperty("snap.fixedcam", it) }
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
     }

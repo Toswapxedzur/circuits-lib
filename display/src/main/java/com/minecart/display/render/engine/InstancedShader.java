@@ -89,11 +89,15 @@ final class InstancedShader {
             uniform vec3 u_lightPos[NUM_LIGHTS];
             uniform vec3 u_lightColor2[NUM_LIGHTS];
             uniform float u_lightRange[NUM_LIGHTS];
-            uniform sampler2D u_shadowMap;    // hardware DEPTH texture (24-bit); sample .r for stored depth
+            uniform sampler2D u_shadowMap;    // GL3.0: hardware DEPTH texture (.r). GL2.0: RGBA-packed depth.
             uniform mat4 u_lightViewProj;
             uniform float u_shadowStrength;   // 0 = shadows off (map/depth still fine); 1 = full
             uniform float u_shadowBias;       // depth-compare bias, scaled to the shadow texel world size
             uniform float u_shadowTexel;      // 1.0 / shadow map size, for PCF tap spacing
+            // GL2.0 path only: reverse DepthShader.packDepth (a [0,1] depth packed into RGBA8).
+            float unpackDepth(vec4 c) {
+                return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0));
+            }
             // Shading takes the shadow factor as a PARAMETER — the shadow map is sampled in main(), not here.
             // (A driver quirk: the same sample reads black when done inside this function but works in main(); keep
             // all sampling in main() to sidestep it.)
@@ -129,7 +133,11 @@ final class InstancedShader {
                         for (int x = -1; x <= 1; x++) {
                             for (int y = -1; y <= 1; y++) {
                                 vec2 off = vec2(float(x), float(y)) * u_shadowTexel;
+                                #ifdef PACKED_SHADOW
+                                float stored = unpackDepth(texture2D(u_shadowMap, suv + off));
+                                #else
                                 float stored = texture2D(u_shadowMap, suv + off).r;
+                                #endif
                                 lit += (fragDepth - bias > stored) ? 0.0 : 1.0;
                             }
                         }
@@ -141,7 +149,9 @@ final class InstancedShader {
             """;
 
     private static String frag20() {
-        return "#ifdef GL_ES\nprecision mediump float;\n#endif\n#define NUM_LIGHTS " + MAX_LIGHTS + "\n" + FRAG_BODY;
+        // highp for the RGBA depth-unpack precision; PACKED_SHADOW selects the unpack branch (GL2.0 has no depth tex).
+        return "#ifdef GL_ES\nprecision highp float;\n#endif\n#define NUM_LIGHTS " + MAX_LIGHTS
+                + "\n#define PACKED_SHADOW\n" + FRAG_BODY;
     }
 
     private static String frag150() {
