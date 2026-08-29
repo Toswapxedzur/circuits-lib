@@ -92,10 +92,12 @@ final class Parts {
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
     final PartType pointer;                             // clock/roulette spinning red pointer (rotates about Y)
-    final ComponentModel base;                                                     // blank base board (one canonical colour — NO colour variants)
+    // ⛔ BLANK BOARDS come in ALL colours (the palette showcase / recolourable substrate) — the only per-colour
+    // arrays left; every FUNCTIONAL component is a single canonical colour. See [[snap-part-art-style]].
+    final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];          // blank rectangular board, every colour
+    final ComponentModel[] teeBlanks = new ComponentModel[PLASTIC_HSV.length];      // blank triangular board, every colour
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel lamp;                                                     // white-encased bulb (single)
-    final ComponentModel tee;                                                      // T-base barebones (triangular 4-port)
     final ComponentModel ic;                                                       // integrated circuit — 2×3 base + big red blob
     final ComponentModel transistorNpn;                                            // red base, cube top-black/bottom-white
     final ComponentModel transistorPnp;                                            // dark-green base, cube top-white/bottom-black
@@ -200,7 +202,13 @@ final class Parts {
         // ⛔ NO COLOUR VARIANTS (owner 2026-08-29): each component is built ONCE in its canonical colour.
         Color[] green = PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2]);  // lime
         Color[] yellow = PaletteDither.rampHsv(PLASTIC_HSV[2][0], PLASTIC_HSV[2][1], PLASTIC_HSV[2][2]); // yellow
-        base = base("base", teal).build();   // blank base = teal (the neutral tile)
+        // Blank boards (rectangular + triangular) in ALL colours — the palette showcase.
+        for (int c = 0; c < PLASTIC_HSV.length; c++) {
+            Color[] pal = WHITE_NAME.equals(PLASTIC_NAME[c]) ? WHITE_PLASTIC
+                    : PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
+            bases[c] = base("base", pal).build();
+            teeBlanks[c] = buildTee(pal);
+        }
         slideSwitch = buildSwitch(green);
         pressSwitch = buildPressSwitch(green);
         resistor = buildResistor(yellow);
@@ -209,7 +217,6 @@ final class Parts {
         Color[] azure = PaletteDither.rampHsv(
                 PLASTIC_HSV[WIRE_COLOR][0], PLASTIC_HSV[WIRE_COLOR][1], PLASTIC_HSV[WIRE_COLOR][2]);
         lamp = buildLamp(WHITE_PLASTIC);
-        tee = buildTee(PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2])); // lime, demo
         transistorNpn = buildTransistor("transistor_npn",
                 PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2]), true);   // red
         transistorPnp = buildTransistor("transistor_pnp",
@@ -609,11 +616,14 @@ final class Parts {
     /** Every component model by its unique datagen id (the JSON file name). Movables reference {@link #partTypes}. */
     Map<String, ComponentModel> registry() {
         Map<String, ComponentModel> m = new LinkedHashMap<>();
-        m.put("base", base); // ⛔ ONE base (no colour variants)
+        // ⛔ blank boards in ALL colours (rectangular + triangular) — the palette showcase
+        for (int c = 0; c < PLASTIC_NAME.length; c++) {
+            m.put("base_" + PLASTIC_NAME[c], bases[c]);
+            m.put("tee_" + PLASTIC_NAME[c], teeBlanks[c]);
+        }
         String[] cap = {"big", "medium", "small"};
         for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
         m.put("lamp", lamp); // single white-encased bulb
-        m.put("tee", tee);   // T-base barebones (triangular 4-port shape)
         m.put("ic", ic);     // integrated circuit — 2×3 base + big red blob
         m.put("transistor_npn", transistorNpn); // red, cube top-black/bottom-white
         m.put("transistor_pnp", transistorPnp); // dark-green, cube top-white/bottom-black

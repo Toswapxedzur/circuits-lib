@@ -42,7 +42,7 @@ public final class ModelGalleryScreen extends ScreenAdapter {
         camera = new PerspectiveCamera(60f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         camera.near = 1f;
         camera.far = Math.max(8000f, reach * 12f);
-        Vector3 start = new Vector3(0f, reach * 1.05f, reach * 1.05f);
+        Vector3 start = new Vector3(0f, reach * 0.62f, reach * 0.78f); // high 3/4 view that frames the whole grid
         flyCam = new FreeCameraController(camera, start, new Vector3(0f, 0f, 0f), reach);
         flyCam.setLookEnabled(true);
 

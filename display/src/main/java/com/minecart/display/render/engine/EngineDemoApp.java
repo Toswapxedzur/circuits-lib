@@ -66,8 +66,8 @@ public final class EngineDemoApp extends ApplicationAdapter {
         float mid = (COUNT - 1) / 2f;
         Matrix4 world = new Matrix4();
         int i = 0;
-        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // the blank base (one colour — no variants)
-        engine.add(new ComponentInstance(loader.model("base"), world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // a blank base (the boards come in all colours; show one)
+        engine.add(new ComponentInstance(loader.model("base_teal"), world));
         for (String size : capNames) {                                   // capacitor, the 3 sizes (teal)
             world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
             engine.add(new ComponentInstance(loader.model("capacitor_" + size), world));
@@ -89,7 +89,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // lamp (white-encased warm bulb)
         engine.add(new ComponentInstance(loader.model("lamp"), world));
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // T-base barebones (triangular 4-port shape)
-        engine.add(new ComponentInstance(loader.model("tee"), world));
+        engine.add(new ComponentInstance(loader.model("tee_lime"), world));
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // NPN transistor (red, cube top-black)
         engine.add(new ComponentInstance(loader.model("transistor_npn"), world));
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // PNP transistor (dark green, cube top-white)
