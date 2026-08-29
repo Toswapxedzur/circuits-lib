@@ -132,9 +132,13 @@ final class PartMesh implements Disposable {
         }
     }
 
-    private static final int FLOATS_PER_VERTEX = 3 + 2 + 1; // position, atlas uv, packed tint colour
+    private static final int FLOATS_PER_VERTEX = 3 + 3 + 2 + 1; // position, normal, atlas uv, packed tint colour
     private static final int FLOATS_PER_INSTANCE = 16;  // a mat4 (4 vec4 columns)
     private static final float EPS = 1e-4f;
+
+    /** Object-space face normals by faceId (0 +X, 1 −X, 2 +Y, 3 −Y, 4 +Z, 5 −Z). */
+    private static final float[][] FACE_NORMAL = {
+            {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
     // The face's 4 emitted corners (a,b,c,d) ARE litFace's (p00,p10,p11,p01), so their UVs are the fixed
     // (0,0),(1,0),(1,1),(0,1) — identical for every face. This makes the baked sprite line up with the geometry
@@ -189,11 +193,12 @@ final class PartMesh implements Disposable {
         // UV, so the sprite isn't transposed on the back face.
         for (Quad q : quads) {
             PartAtlas.Region r = atlas.region(q.sprite());
+            Vector3 nrm = new Vector3(q.p10()).sub(q.p00()).crs(new Vector3(q.p01()).sub(q.p00())).nor(); // face normal
             short base = (short) (v.size / FLOATS_PER_VERTEX);
-            vertex(v, q.p00().x, q.p00().y, q.p00().z, r, CORNER_UV[0], CORNER_UV[1], WHITE_BITS);
-            vertex(v, q.p10().x, q.p10().y, q.p10().z, r, CORNER_UV[2], CORNER_UV[3], WHITE_BITS);
-            vertex(v, q.p11().x, q.p11().y, q.p11().z, r, CORNER_UV[4], CORNER_UV[5], WHITE_BITS);
-            vertex(v, q.p01().x, q.p01().y, q.p01().z, r, CORNER_UV[6], CORNER_UV[7], WHITE_BITS);
+            vertex(v, q.p00().x, q.p00().y, q.p00().z, nrm.x, nrm.y, nrm.z, r, CORNER_UV[0], CORNER_UV[1], WHITE_BITS);
+            vertex(v, q.p10().x, q.p10().y, q.p10().z, nrm.x, nrm.y, nrm.z, r, CORNER_UV[2], CORNER_UV[3], WHITE_BITS);
+            vertex(v, q.p11().x, q.p11().y, q.p11().z, nrm.x, nrm.y, nrm.z, r, CORNER_UV[4], CORNER_UV[5], WHITE_BITS);
+            vertex(v, q.p01().x, q.p01().y, q.p01().z, nrm.x, nrm.y, nrm.z, r, CORNER_UV[6], CORNER_UV[7], WHITE_BITS);
             idx.add(base); idx.add((short) (base + 1)); idx.add((short) (base + 2));  // front
             idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 3));
             idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 1));  // back (reversed winding)
@@ -202,6 +207,7 @@ final class PartMesh implements Disposable {
 
         Mesh mesh = new Mesh(true, v.size / FLOATS_PER_VERTEX, idx.size,
                 new VertexAttribute(Usage.Position, 3, "a_position"),
+                new VertexAttribute(Usage.Normal, 3, "a_normal"),
                 new VertexAttribute(Usage.TextureCoordinates, 2, "a_uv"),
                 new VertexAttribute(Usage.ColorPacked, 4, "a_color"));
         mesh.setVertices(v.items, 0, v.size);
@@ -252,19 +258,21 @@ final class PartMesh implements Disposable {
                              float ax, float ay, float az, float bx, float by, float bz,
                              float cx, float cy, float cz, float dx, float dy, float dz) {
         float[] uv = CORNER_UV; // a,b,c,d == p00,p10,p11,p01 → fixed UVs for every face
+        float[] n = FACE_NORMAL[faceId];
         short base = (short) (v.size / FLOATS_PER_VERTEX);
-        vertex(v, ax, ay, az, r, uv[0], uv[1], tintBits);
-        vertex(v, bx, by, bz, r, uv[2], uv[3], tintBits);
-        vertex(v, cx, cy, cz, r, uv[4], uv[5], tintBits);
-        vertex(v, dx, dy, dz, r, uv[6], uv[7], tintBits);
+        vertex(v, ax, ay, az, n[0], n[1], n[2], r, uv[0], uv[1], tintBits);
+        vertex(v, bx, by, bz, n[0], n[1], n[2], r, uv[2], uv[3], tintBits);
+        vertex(v, cx, cy, cz, n[0], n[1], n[2], r, uv[4], uv[5], tintBits);
+        vertex(v, dx, dy, dz, n[0], n[1], n[2], r, uv[6], uv[7], tintBits);
         idx.add(base); idx.add((short) (base + 1)); idx.add((short) (base + 2));
         idx.add(base); idx.add((short) (base + 2)); idx.add((short) (base + 3));
     }
 
-    /** Appends one vertex: position, the corner's face UV mapped into the sprite's atlas region, packed tint. */
-    private static void vertex(FloatArray v, float x, float y, float z, PartAtlas.Region r, float u, float w,
-                               float tintBits) {
+    /** Appends one vertex: position, normal, the corner's face UV mapped into the sprite's atlas region, packed tint. */
+    private static void vertex(FloatArray v, float x, float y, float z, float nx, float ny, float nz,
+                               PartAtlas.Region r, float u, float w, float tintBits) {
         v.add(x); v.add(y); v.add(z);
+        v.add(nx); v.add(ny); v.add(nz);
         v.add(r.u0() + u * (r.u1() - r.u0()));
         v.add(r.v0() + w * (r.v1() - r.v0()));
         v.add(tintBits);

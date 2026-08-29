@@ -158,6 +158,14 @@ final class EngineRenderer implements Disposable {
         atlas.texture().bind(0);
         shader.setUniformi("u_atlas", 0);
 
+        // Milestone 5a lighting: a moderate ambient + a soft directional key light from above-front, so parts
+        // read with gentle shading (top faces brighter) instead of flat fullbright. Point lights (LEDs) fill the
+        // arrays in 5b; here u_numLights = 0.
+        shader.setUniformf("u_ambient", 0.60f, 0.60f, 0.62f);
+        shader.setUniformf("u_lightDir", 0.337f, 0.842f, 0.421f);   // normalized, TO the light
+        shader.setUniformf("u_lightColor", 0.45f, 0.45f, 0.42f);
+        shader.setUniformi("u_numLights", 0);
+
         // --- Opaque pass: scene mesh (world space) + every movable type, depth-written. ---
         if (staticOpaque != null) {
             staticOpaque.begin();
