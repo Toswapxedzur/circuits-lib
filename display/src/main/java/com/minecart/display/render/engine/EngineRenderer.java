@@ -74,6 +74,18 @@ final class EngineRenderer implements Disposable {
     private final float[] lightRng = new float[InstancedShader.MAX_LIGHTS];
     private final Vector3 tmpEmit = new Vector3();
 
+    // Shadow map (the directional key light casts real shadows). Depth pass uses the depth shader; the main
+    // shader samples the map. Aimed at the scene's bounds (computed at build()).
+    private static final Vector3 LIGHT_DIR = new Vector3(0.337f, 0.842f, 0.421f); // normalized, TO the light
+    // The shadow-map depth pass is built + wired, but the depth comparison currently over-shadows the whole
+    // scene (a systematic offset not yet pinned). Gated OFF until fixed — lighting (ambient + directional + LED
+    // point lights) works fully without it. Flip to true to resume debugging the shadow depth.
+    private static final boolean SHADOWS = false;
+    private final ShaderProgram depthShader = DepthShader.create(instanced);
+    private ShadowMap shadowMap;
+    private final Vector3 sceneCentre = new Vector3();
+    private float sceneRadius = 100f;
+
     private final List<ComponentInstance> components = new ArrayList<>();
     private final List<PartMesh.Box> extraStatic = new ArrayList<>();
     private final Map<PartType, List<ComponentInstance.PartInstance>> movableBuckets = new LinkedHashMap<>();
@@ -156,6 +168,29 @@ final class EngineRenderer implements Disposable {
         for (DynamicEntity e : entities) {
             entityMeshes.put(e, PartMesh.of(e.model.staticBoxes, e.model.staticQuads, 1, atlas, instanced));
         }
+
+        // Bounds for the shadow-map light camera (over the static world boxes; movables/entities live within).
+        computeSceneBounds(all);
+        if (shadowMap == null) {
+            shadowMap = new ShadowMap(2048);
+        }
+    }
+
+    private void computeSceneBounds(List<PartMesh.Box> worldBoxes) {
+        if (worldBoxes.isEmpty()) {
+            sceneCentre.set(0f, 0f, 0f);
+            sceneRadius = 100f;
+            return;
+        }
+        float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
+        for (PartMesh.Box b : worldBoxes) {
+            minx = Math.min(minx, b.cx() - b.sx() / 2f); maxx = Math.max(maxx, b.cx() + b.sx() / 2f);
+            miny = Math.min(miny, b.cy() - b.sy() / 2f); maxy = Math.max(maxy, b.cy() + b.sy() / 2f);
+            minz = Math.min(minz, b.cz() - b.sz() / 2f); maxz = Math.max(maxz, b.cz() + b.sz() / 2f);
+        }
+        sceneCentre.set((minx + maxx) / 2f, (miny + maxy) / 2f, (minz + maxz) / 2f);
+        float dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
+        sceneRadius = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.15f; // enclosing sphere + pad
     }
 
     /** Eases every component's animation and recomputes its movable parts' world matrices. */
@@ -169,40 +204,41 @@ final class EngineRenderer implements Disposable {
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
         Gdx.gl.glCullFace(GL20.GL_BACK);
+        Gdx.gl.glDisable(GL20.GL_DITHER); // dithering would corrupt the RGBA-packed shadow depth
+
+        // --- Shadow pass: render the opaque scene's depth from the light's ortho POV into the shadow map. ---
+        if (shadowMap != null && SHADOWS) {
+            shadowMap.begin(sceneCentre, sceneRadius, LIGHT_DIR);
+            depthShader.bind();
+            depthShader.setUniformMatrix("u_projView", shadowMap.viewProj());
+            renderOpaqueMeshes(depthShader);
+            shadowMap.end();
+            Gdx.gl.glViewport(0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+        }
 
         shader.bind();
         shader.setUniformMatrix("u_projView", cam.combined);
+
+        // Lighting: a moderate ambient + a soft directional key light (which casts the shadow map), plus the
+        // point lights (LEDs) collected below.
+        shader.setUniformf("u_ambient", 0.60f, 0.60f, 0.62f);
+        shader.setUniformf("u_lightDir", LIGHT_DIR.x, LIGHT_DIR.y, LIGHT_DIR.z);
+        shader.setUniformf("u_lightColor", 0.45f, 0.45f, 0.42f);
+        applyPointLights();
+        if (shadowMap != null && SHADOWS) {
+            shader.setUniformMatrix("u_lightViewProj", shadowMap.viewProj());
+            shadowMap.texture().bind(1);
+            shader.setUniformi("u_shadowMap", 1);
+            shader.setUniformf("u_shadowStrength", 1f);
+        } else {
+            shader.setUniformf("u_shadowStrength", 0f);
+        }
+        // Bind the atlas LAST so the active texture unit ends at 0 — some drivers mis-sample otherwise.
         atlas.texture().bind(0);
         shader.setUniformi("u_atlas", 0);
 
-        // Milestone 5a lighting: a moderate ambient + a soft directional key light from above-front, so parts
-        // read with gentle shading (top faces brighter) instead of flat fullbright. Point lights (LEDs) fill the
-        // arrays in 5b; here u_numLights = 0.
-        shader.setUniformf("u_ambient", 0.60f, 0.60f, 0.62f);
-        shader.setUniformf("u_lightDir", 0.337f, 0.842f, 0.421f);   // normalized, TO the light
-        shader.setUniformf("u_lightColor", 0.45f, 0.45f, 0.42f);
-        applyPointLights();
-
-        // --- Opaque pass: scene mesh (world space) + every movable type, depth-written. ---
-        if (staticOpaque != null) {
-            staticOpaque.begin();
-            staticOpaque.add(identity);
-            staticOpaque.render(shader);
-        }
-        for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
-            PartMesh mesh = movableMeshes.get(e.getKey());
-            mesh.begin();
-            for (ComponentInstance.PartInstance p : e.getValue()) {
-                mesh.add(p.world);
-            }
-            mesh.render(shader);
-        }
-        for (DynamicEntity e : entities) {                       // free-moving entities at their physics pose
-            PartMesh mesh = entityMeshes.get(e);
-            mesh.begin();
-            mesh.add(e.pose);
-            mesh.render(shader);
-        }
+        // --- Opaque pass: scene mesh (world space) + every movable type + entities, depth-written, lit + shadowed. ---
+        renderOpaqueMeshes(shader);
 
         // --- Translucent pass: alpha-blended, depth-TESTED but not depth-WRITTEN (glass over the opaque cores). ---
         if (staticTranslucent != null) {
@@ -214,6 +250,30 @@ final class EngineRenderer implements Disposable {
             staticTranslucent.render(shader);
             Gdx.gl.glDepthMask(true);
             Gdx.gl.glDisable(GL20.GL_BLEND);
+        }
+    }
+
+    /** Renders the opaque geometry (scene mesh + movables + entities) with {@code sh} — used by both the shadow
+     *  depth pass and the lit main pass. */
+    private void renderOpaqueMeshes(ShaderProgram sh) {
+        if (staticOpaque != null) {
+            staticOpaque.begin();
+            staticOpaque.add(identity);
+            staticOpaque.render(sh);
+        }
+        for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
+            PartMesh mesh = movableMeshes.get(e.getKey());
+            mesh.begin();
+            for (ComponentInstance.PartInstance p : e.getValue()) {
+                mesh.add(p.world);
+            }
+            mesh.render(sh);
+        }
+        for (DynamicEntity e : entities) {                       // free-moving entities at their physics pose
+            PartMesh mesh = entityMeshes.get(e);
+            mesh.begin();
+            mesh.add(e.pose);
+            mesh.render(sh);
         }
     }
 
@@ -276,6 +336,10 @@ final class EngineRenderer implements Disposable {
     @Override
     public void dispose() {
         shader.dispose();
+        depthShader.dispose();
+        if (shadowMap != null) {
+            shadowMap.dispose();
+        }
         disposeMeshes();
     }
 }
