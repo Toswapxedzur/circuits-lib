@@ -28,15 +28,17 @@ final class DepthShader {
             attribute vec3 a_position;
             uniform mat4 u_projView;
             uniform mat4 u_world;
+            varying float v_depth;
             void main() {
                 gl_Position = u_projView * u_world * vec4(a_position, 1.0);
+                v_depth = gl_Position.z / gl_Position.w * 0.5 + 0.5; // SAME formula the main shader compares against
             }
             """;
 
     private static String frag20() {
-        return "#ifdef GL_ES\nprecision highp float;\n#endif\n"
+        return "#ifdef GL_ES\nprecision highp float;\n#endif\nvarying float v_depth;\n"
                 + PACK
-                + "void main() { gl_FragColor = packDepth(gl_FragCoord.z); }\n";
+                + "void main() { gl_FragColor = packDepth(v_depth); }\n";
     }
 
     private static final String VERT = """
@@ -47,15 +49,17 @@ final class DepthShader {
             in vec4 i_w2;
             in vec4 i_w3;
             uniform mat4 u_projView;
+            out float v_depth;
             void main() {
                 mat4 world = mat4(i_w0, i_w1, i_w2, i_w3);
                 gl_Position = u_projView * world * vec4(a_position, 1.0);
+                v_depth = gl_Position.z / gl_Position.w * 0.5 + 0.5;
             }
             """;
 
     private static String frag150() {
-        return "#version 150\n" + PACK + "out vec4 fragColor;\n"
-                + "void main() { fragColor = packDepth(gl_FragCoord.z); }\n";
+        return "#version 150\nin float v_depth;\n" + PACK + "out vec4 fragColor;\n"
+                + "void main() { fragColor = packDepth(v_depth); }\n";
     }
 
     static ShaderProgram create(boolean instanced) {

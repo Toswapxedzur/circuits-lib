@@ -77,14 +77,22 @@ final class EngineRenderer implements Disposable {
     // Shadow map (the directional key light casts real shadows). Depth pass uses the depth shader; the main
     // shader samples the map. Aimed at the scene's bounds (computed at build()).
     private static final Vector3 LIGHT_DIR = new Vector3(0.337f, 0.842f, 0.421f); // normalized, TO the light
-    // The shadow-map depth pass is built + wired, but the depth comparison currently over-shadows the whole
-    // scene (a systematic offset not yet pinned). Gated OFF until fixed — lighting (ambient + directional + LED
-    // point lights) works fully without it. Flip to true to resume debugging the shadow depth.
+    // Directional shadow map. PROGRESS this pass: the black-screen root cause was found + fixed — the light
+    // camera aimed at default (0,0,0) bounds while parts render on the ENTITY path, so they fell outside the
+    // frustum (fragDepth>1 → shadowed everywhere). Now updateFrameBounds() recomputes the bounds each frame from
+    // the actual entities/movables (+ a radius cap for precision). REMAINING (why still gated OFF): a residual
+    // constant depth-offset still acnes FLAT RECEIVERS (a board slab) to black — a large bias (~0.05) only
+    // peter-pans it. Tried + ruled out: gl_FragCoord.z vs a v_depth varying, radius-scaled bias, radius cap,
+    // GL_DITHER off. Next suspect: the RGBA8 depth pack precision / FBO depth format. Flip to true to resume.
     private static final boolean SHADOWS = false;
     private final ShaderProgram depthShader = DepthShader.create(instanced);
     private ShadowMap shadowMap;
     private final Vector3 sceneCentre = new Vector3();
     private float sceneRadius = 100f;
+    private final Vector3 staticMin = new Vector3(), staticMax = new Vector3(); // static-box bounds (from build)
+    private boolean hasStaticBounds;
+    private final Vector3 tmpPos = new Vector3();
+    private static final float PART_MARGIN = 30f; // pad around each movable/entity position (covers a part's size)
 
     private final List<ComponentInstance> components = new ArrayList<>();
     private final List<PartMesh.Box> extraStatic = new ArrayList<>();
@@ -176,10 +184,10 @@ final class EngineRenderer implements Disposable {
         }
     }
 
+    /** Stores the STATIC world-box bounds at build time (may be empty — the board/game render parts as entities). */
     private void computeSceneBounds(List<PartMesh.Box> worldBoxes) {
+        hasStaticBounds = false;
         if (worldBoxes.isEmpty()) {
-            sceneCentre.set(0f, 0f, 0f);
-            sceneRadius = 100f;
             return;
         }
         float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
@@ -188,9 +196,50 @@ final class EngineRenderer implements Disposable {
             miny = Math.min(miny, b.cy() - b.sy() / 2f); maxy = Math.max(maxy, b.cy() + b.sy() / 2f);
             minz = Math.min(minz, b.cz() - b.sz() / 2f); maxz = Math.max(maxz, b.cz() + b.sz() / 2f);
         }
+        staticMin.set(minx, miny, minz);
+        staticMax.set(maxx, maxy, maxz);
+        hasStaticBounds = true;
+    }
+
+    /** Recomputes the shadow bounds this frame — the static boxes PLUS every movable/entity's CURRENT position
+     *  (padded by a part's size), so the light camera always covers what's actually rendered (parts live on the
+     *  entity/movable paths, so build-time static bounds alone miss them). */
+    private void updateFrameBounds() {
+        boolean any = hasStaticBounds;
+        float minx, miny, minz, maxx, maxy, maxz;
+        if (hasStaticBounds) {
+            minx = staticMin.x; miny = staticMin.y; minz = staticMin.z;
+            maxx = staticMax.x; maxy = staticMax.y; maxz = staticMax.z;
+        } else {
+            minx = miny = minz = Float.MAX_VALUE;
+            maxx = maxy = maxz = -Float.MAX_VALUE;
+        }
+        for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
+            for (ComponentInstance.PartInstance p : e.getValue()) {
+                p.world.getTranslation(tmpPos);
+                any = true;
+                minx = Math.min(minx, tmpPos.x - PART_MARGIN); maxx = Math.max(maxx, tmpPos.x + PART_MARGIN);
+                miny = Math.min(miny, tmpPos.y - PART_MARGIN); maxy = Math.max(maxy, tmpPos.y + PART_MARGIN);
+                minz = Math.min(minz, tmpPos.z - PART_MARGIN); maxz = Math.max(maxz, tmpPos.z + PART_MARGIN);
+            }
+        }
+        for (DynamicEntity en : entities) {
+            en.pose.getTranslation(tmpPos);
+            any = true;
+            minx = Math.min(minx, tmpPos.x - PART_MARGIN); maxx = Math.max(maxx, tmpPos.x + PART_MARGIN);
+            miny = Math.min(miny, tmpPos.y - PART_MARGIN); maxy = Math.max(maxy, tmpPos.y + PART_MARGIN);
+            minz = Math.min(minz, tmpPos.z - PART_MARGIN); maxz = Math.max(maxz, tmpPos.z + PART_MARGIN);
+        }
+        if (!any) {
+            sceneCentre.set(0f, 0f, 0f);
+            sceneRadius = 100f;
+            return;
+        }
         sceneCentre.set((minx + maxx) / 2f, (miny + maxy) / 2f, (minz + maxz) / 2f);
         float dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
-        sceneRadius = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.15f; // enclosing sphere + pad
+        // Cap the radius so the fixed-res map keeps fine texels (a game board fits well under it); geometry beyond
+        // the cap falls outside the light frustum and simply renders unshadowed (bright), never acne-black.
+        sceneRadius = Math.min(300f, Math.max(20f, 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.1f));
     }
 
     /** Eases every component's animation and recomputes its movable parts' world matrices. */
@@ -208,6 +257,7 @@ final class EngineRenderer implements Disposable {
 
         // --- Shadow pass: render the opaque scene's depth from the light's ortho POV into the shadow map. ---
         if (shadowMap != null && SHADOWS) {
+            updateFrameBounds(); // cover the parts (entities/movables), which build-time static bounds miss
             shadowMap.begin(sceneCentre, sceneRadius, LIGHT_DIR);
             depthShader.bind();
             depthShader.setUniformMatrix("u_projView", shadowMap.viewProj());
@@ -230,6 +280,8 @@ final class EngineRenderer implements Disposable {
             shadowMap.texture().bind(1);
             shader.setUniformi("u_shadowMap", 1);
             shader.setUniformf("u_shadowStrength", 1f);
+            // Bias scales with the shadow texel's world size (≈ 2·radius/2048), so wide scenes don't self-shadow.
+            shader.setUniformf("u_shadowBias", Math.max(0.0012f, sceneRadius * 3.0e-5f));
         } else {
             shader.setUniformf("u_shadowStrength", 0f);
         }
