@@ -1,0 +1,29 @@
+{
+  "id": "slab",
+  "elements": [
+    {
+      "from": [
+        -0.5,
+        -0.5,
+        -0.5
+      ],
+      "to": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "faces": {
+        "east": "sp308c461748bf9f1e_1x1",
+        "west": "sp7b204641e64de83d_1x1",
+        "up": "sp466e7613c28f97dc_1x1",
+        "down": "sp11b0ce68fd0ef3fb_1x1",
+        "south": "sp5cf959e0d610369a_1x1",
+        "north": "sp28f60d5aeda672b9_1x1"
+      },
+      "tint": false,
+      "translucent": false
+    }
+  ],
+  "quads": [],
+  "movables": []
+}

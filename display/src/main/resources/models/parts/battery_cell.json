@@ -1,0 +1,73 @@
+{
+  "id": "battery_cell",
+  "elements": [
+    {
+      "from": [
+        -9.0,
+        -3.0,
+        -3.0
+      ],
+      "to": [
+        3.0,
+        3.0,
+        3.0
+      ],
+      "faces": {
+        "east": "sp4fdd2ebf25ad7a_6x6",
+        "west": "sp311ba7896986087b_6x6",
+        "up": "sp6a7fdcedf7cd6efc_12x6",
+        "down": "sp239cfc17b3d784fd_12x6",
+        "south": "sp5cdf4e1126ed01fe_12x6",
+        "north": "sp1e95c1496624e9ff_12x6"
+      },
+      "tint": false,
+      "translucent": false
+    },
+    {
+      "from": [
+        3.0,
+        -3.0,
+        -3.0
+      ],
+      "to": [
+        9.0,
+        3.0,
+        3.0
+      ],
+      "faces": {
+        "east": "sp70e113af9a08f699_6x6",
+        "west": "sp25e821d9a86c9a9a_6x6",
+        "up": "sp5f4c4def2f04a59b_6x6",
+        "down": "sp18696d18eb0ebb9c_6x6",
+        "south": "sp51abbf125e24389d_6x6",
+        "north": "spf27011948b78e9e_6x6"
+      },
+      "tint": false,
+      "translucent": false
+    },
+    {
+      "from": [
+        9.0,
+        -1.0,
+        -1.0
+      ],
+      "to": [
+        10.0,
+        1.0,
+        1.0
+      ],
+      "faces": {
+        "east": "sp209f476cd68328cb_2x2",
+        "west": "sp3dae2ce18a1bc08c_2x2",
+        "up": "sp5b7ce4ca53d2b48d_1x2",
+        "down": "sp7933ef4705f790ce_1x2",
+        "south": "sp16f76008f5203a0f_1x2",
+        "north": "sp356e989c7e021350_1x2"
+      },
+      "tint": false,
+      "translucent": false
+    }
+  ],
+  "quads": [],
+  "movables": []
+}
