@@ -71,6 +71,8 @@ public final class SnapScreen extends ScreenAdapter {
     private SnapScene scene;             // pickable snapshot for the editor (renderer-agnostic geometry)
     private SnapEditor editor;
     private InputMultiplexer input;
+    private com.badlogic.gdx.graphics.glutils.ShapeRenderer ghostShapes; // wireframe placement preview
+    private final com.badlogic.gdx.math.Matrix4 ghostPose = new com.badlogic.gdx.math.Matrix4();
 
     // The world PHYSICS — its own fixed-timestep clock, SEPARATE from the electrical tick (the server-side
     // circuit solve). Static colliders come from each placed part's datagen collision box; entities (a loose
@@ -129,9 +131,18 @@ public final class SnapScreen extends ScreenAdapter {
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
         boardView = new EngineBoardView(); // the board's real part models, via the instanced engine (GL20 path)
+        ghostShapes = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
         // The base board the parts sit on: tiled from committed cell + stud sprites, top surface at y=0.
         boardView.setBaseBoard(board.width(), board.height(), 0f);
         editor = new SnapEditor(board);
+        // DEV: -Dsnap.testplace places a few parts on boot to screenshot-verify the place path + grid alignment.
+        if ("1".equals(System.getProperty("snap.testplace")) && serverWorld != null) {
+            SnapBoard b = serverWorld.getSnapBoard();
+            boolean r1 = b.place(com.minecart.snap.AllSnapParts.SNAP_WIRE, 2, 2, 0, com.minecart.snap.Facing.EAST);
+            boolean r2 = b.place(com.minecart.snap.AllSnapParts.SNAP_WIRE, 2, 4, 0, com.minecart.snap.Facing.NORTH);
+            boolean r3 = b.place(com.minecart.snap.AllSnapParts.SNAP_RESISTOR, 4, 3, 0, com.minecart.snap.Facing.EAST);
+            log.info("snap.testplace: wire(2,2,E)={} wire(2,4,N)={} resistor(4,3,E)={}", r1, r2, r3);
+        }
         refreshScene();
         initPhysics();
     }
@@ -284,6 +295,25 @@ public final class SnapScreen extends ScreenAdapter {
         });
     }
 
+    /** Draws the placement ghost as a wireframe outline (green = valid target, red = blocked), so the player sees
+     *  where the current tool will land. Uses the perspective camera + depth test so it occludes behind parts. */
+    private void drawGhost() {
+        if (editor == null || editor.ghost() == null || !cursorCaught) {
+            return;
+        }
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        ghostShapes.setProjectionMatrix(camera.combined);
+        ghostShapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
+        ghostShapes.setColor(editor.ghostValid() ? Color.LIME : new Color(1f, 0.35f, 0.3f, 1f));
+        for (com.minecart.display.render.snap.OrientedBox b : editor.ghostRender()) {
+            ghostPose.idt().translate(b.cx(), b.cy(), b.cz()).rotate(0f, 1f, 0f, -b.yawDeg());
+            ghostShapes.setTransformMatrix(ghostPose);
+            ghostShapes.box(-b.sizeX() / 2f, -b.sizeY() / 2f, b.sizeZ() / 2f, b.sizeX(), b.sizeY(), b.sizeZ());
+        }
+        ghostShapes.end();
+        ghostShapes.identity();
+    }
+
     /** Rebuilds the drawable/pickable scene from the current board and records its revision. */
     private void refreshScene() {
         // Read the revision BEFORE snapshotting. If an edit lands in the gap, the snapshot includes it
@@ -343,6 +373,7 @@ public final class SnapScreen extends ScreenAdapter {
 
         if (ready) {
             boardView.render(camera); // the board's real part models, via the instanced engine (GL20 path)
+            drawGhost();              // wireframe preview of where the current tool would place
         }
 
         // The engine leaves GL_CULL_FACE + depth test enabled; scene2d assumes them off, so its HUD quads
@@ -501,6 +532,9 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.input.setCursorCatched(false);
         if (boardView != null) {
             boardView.dispose();
+        }
+        if (ghostShapes != null) {
+            ghostShapes.dispose();
         }
         if (physics != null) {
             physics.dispose();
