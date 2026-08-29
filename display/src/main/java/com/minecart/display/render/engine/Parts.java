@@ -92,7 +92,7 @@ final class Parts {
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
     final PartType pointer;                             // clock/roulette spinning red pointer (rotates about Y)
-    final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];         // blank base board, one per colour
+    final ComponentModel base;                                                     // blank base board (one canonical colour — NO colour variants)
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel lamp;                                                     // white-encased bulb (single)
     final ComponentModel tee;                                                      // T-base barebones (triangular 4-port)
@@ -104,12 +104,13 @@ final class Parts {
     final ComponentModel varresTee;                                                // T-shaped variable resistor (tee + wide switch)
     final ComponentModel varresBar;                                                // resistor-style variable resistor (red base + switch)
     final ComponentModel varresClock;                                              // clock/roulette variable resistor (spinning pointer)
-    final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
-    final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
-    final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
-    final ComponentModel[] diodes = new ComponentModel[PLASTIC_HSV.length];
-    final ComponentModel[] leds = new ComponentModel[PLASTIC_HSV.length];
-    final ComponentModel[] wires = new ComponentModel[WIRE_MAX - WIRE_MIN + 1]; // azure, indexed n − WIRE_MIN
+    // ⛔ NO COLOUR VARIANTS — each of these is built ONCE in its canonical colour, not per PLASTIC_HSV hue.
+    final ComponentModel slideSwitch;   // green
+    final ComponentModel pressSwitch;    // green
+    final ComponentModel resistor;       // yellow
+    final ComponentModel diode;          // yellow
+    final ComponentModel led;            // greyscale bulb (colour is a per-instance ComponentEntity tint, NOT a model variant)
+    final ComponentModel[] wires = new ComponentModel[WIRE_MAX - WIRE_MIN + 1]; // azure length family (a size STATE, not colour)
 
     // Paint factories — plastic is per-colour; the rest are shared across colours.
     private static PaletteDither.Paint plastic(long seed, Color[] pal) {
@@ -196,17 +197,15 @@ final class Parts {
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
         }
-        for (int c = 0; c < PLASTIC_HSV.length; c++) {
-            // The white piece uses the band's grays for its rims too, so the whole body is one seamless white.
-            Color[] pal = WHITE_NAME.equals(PLASTIC_NAME[c]) ? WHITE_PLASTIC
-                    : PaletteDither.rampHsv(PLASTIC_HSV[c][0], PLASTIC_HSV[c][1], PLASTIC_HSV[c][2]);
-            bases[c] = base("base", pal).build(); // the blank snap base board, in every plastic colour
-            switches[c] = buildSwitch(pal);
-            pressSwitches[c] = buildPressSwitch(pal);
-            resistors[c] = buildResistor(pal);
-            diodes[c] = buildDiode(pal);
-            leds[c] = buildLed(pal);
-        }
+        // ⛔ NO COLOUR VARIANTS (owner 2026-08-29): each component is built ONCE in its canonical colour.
+        Color[] green = PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2]);  // lime
+        Color[] yellow = PaletteDither.rampHsv(PLASTIC_HSV[2][0], PLASTIC_HSV[2][1], PLASTIC_HSV[2][2]); // yellow
+        base = base("base", teal).build();   // blank base = teal (the neutral tile)
+        slideSwitch = buildSwitch(green);
+        pressSwitch = buildPressSwitch(green);
+        resistor = buildResistor(yellow);
+        diode = buildDiode(yellow);
+        led = buildLed(WHITE_PLASTIC);        // white base; bulb is greyscale, tinted per-instance at runtime
         Color[] azure = PaletteDither.rampHsv(
                 PLASTIC_HSV[WIRE_COLOR][0], PLASTIC_HSV[WIRE_COLOR][1], PLASTIC_HSV[WIRE_COLOR][2]);
         lamp = buildLamp(WHITE_PLASTIC);
@@ -610,7 +609,7 @@ final class Parts {
     /** Every component model by its unique datagen id (the JSON file name). Movables reference {@link #partTypes}. */
     Map<String, ComponentModel> registry() {
         Map<String, ComponentModel> m = new LinkedHashMap<>();
-        for (int c = 0; c < PLASTIC_NAME.length; c++) m.put("base_" + PLASTIC_NAME[c], bases[c]);
+        m.put("base", base); // ⛔ ONE base (no colour variants)
         String[] cap = {"big", "medium", "small"};
         for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
         m.put("lamp", lamp); // single white-encased bulb
@@ -623,13 +622,11 @@ final class Parts {
         m.put("varres_tee", varresTee);     // Type 1 variable resistor — T-shaped + wide switch
         m.put("varres_bar", varresBar);     // Type 2 variable resistor — resistor-style + switch
         m.put("varres_clock", varresClock); // Type 3 variable resistor — clock + spinning pointer
-        for (int c = 0; c < PLASTIC_NAME.length; c++) {
-            m.put("switch_" + PLASTIC_NAME[c], switches[c]);
-            m.put("press_" + PLASTIC_NAME[c], pressSwitches[c]);
-            m.put("resistor_" + PLASTIC_NAME[c], resistors[c]);
-            m.put("diode_" + PLASTIC_NAME[c], diodes[c]);
-            m.put("led_" + PLASTIC_NAME[c], leds[c]);
-        }
+        m.put("switch", slideSwitch); // ⛔ one canonical colour each — no per-hue variants
+        m.put("press", pressSwitch);
+        m.put("resistor", resistor);
+        m.put("diode", diode);
+        m.put("led", led);
         for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
             m.put("wire_" + n, wires[n - WIRE_MIN]); // one type, size = component state → wire_<n>
         }

@@ -25,7 +25,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
     private static final int GREEN = 3;      // lime — the switches' colour
     private static final float SPACING = 34f; // X spacing between listed parts
     private static final int[] LED_COLORS = {0, 2, 3, 5, 7, 8}; // LED bulb colours: red, yellow, lime, cyan, blue, violet
-    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 12 + LED_COLORS.length; // bases + 3 caps + slide/press/resistor/diode/lamp/tee/npn/pnp/ic/varres×3 + LEDs
+    private static final int COUNT = 1 + Parts.CAP_SIZES.length + 12 + LED_COLORS.length; // 1 base + 3 caps + slide/press/resistor/diode/lamp/tee/npn/pnp/ic/varres×3 + LED tints (no colour variants)
 
     private PerspectiveCamera cam;
     private FlyController fly;
@@ -66,28 +66,26 @@ public final class EngineDemoApp extends ApplicationAdapter {
         float mid = (COUNT - 1) / 2f;
         Matrix4 world = new Matrix4();
         int i = 0;
-        for (String name : Parts.PLASTIC_NAME) {                          // blank base board in every colour
-            world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
-            engine.add(new ComponentInstance(loader.model("base_" + name), world));
-        }
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // the blank base (one colour — no variants)
+        engine.add(new ComponentInstance(loader.model("base"), world));
         for (String size : capNames) {                                   // capacitor, the 3 sizes (teal)
             world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
             engine.add(new ComponentInstance(loader.model("capacitor_" + size), world));
         }
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // green slide switch
-        ComponentInstance sw = new ComponentInstance(loader.model("switch_" + green), world);
+        ComponentInstance sw = new ComponentInstance(loader.model("switch"), world);
         sw.anim.channel("slide", 0f, 1f, 6f);
         switches.add(sw);
         engine.add(sw);
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // green press switch
-        ComponentInstance ps = new ComponentInstance(loader.model("press_" + green), world);
+        ComponentInstance ps = new ComponentInstance(loader.model("press"), world);
         ps.anim.channel("press", 0f, 1f, 9f);
         pressers.add(ps);
         engine.add(ps);
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // yellow resistor (raised, tilted leads)
-        engine.add(new ComponentInstance(loader.model("resistor_yellow"), world));
-        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // yellow diode (black blob, arrowed red trace)
-        engine.add(new ComponentInstance(loader.model("diode_yellow"), world));
+        engine.add(new ComponentInstance(loader.model("resistor"), world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // diode (black blob, white flow-end)
+        engine.add(new ComponentInstance(loader.model("diode"), world));
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // lamp (white-encased warm bulb)
         engine.add(new ComponentInstance(loader.model("lamp"), world));
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // T-base barebones (triangular 4-port shape)
@@ -112,7 +110,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
             Color tint = new Color().fromHsv(Parts.PLASTIC_HSV[c][0], Parts.PLASTIC_HSV[c][1], Parts.PLASTIC_HSV[c][2]);
             tint.a = 1f;
             // The LED both tints its greyscale bulb AND emits a point light of that colour onto its neighbours.
-            engine.add(new ComponentInstance(loader.model("led_" + Parts.PLASTIC_NAME[c]), world,
+            engine.add(new ComponentInstance(loader.model("led"), world,      // ONE greyscale led model, tinted per instance
                     new ComponentEntity(tint).emit(tint, 55f)));
         }
 
@@ -128,7 +126,7 @@ public final class EngineDemoApp extends ApplicationAdapter {
         // A free-moving world ENTITY: a whole part model drawn at an arbitrary per-frame transform (rotation
         // included) via the engine's dynamic-entity path — the render path the physics entities use. It tumbles
         // above the catalogue to show the third path works (static + movable + entity).
-        floater = new EngineRenderer.DynamicEntity(loader.model("resistor_yellow"));
+        floater = new EngineRenderer.DynamicEntity(loader.model("resistor"));
         engine.addEntity(floater);
 
         engine.addStatic(List.of(boardBox()));
