@@ -44,6 +44,18 @@ tasks.register<JavaExec>("enginedemo") {
     }
 }
 
+// Model test world: discover EVERY model and lay them in a square grid (robust to concurrent datagen).
+// ./gradlew :display:modelworld   (press R in-window to re-scan)
+tasks.register<JavaExec>("modelworld") {
+    group = "application"
+    description = "Lay out every committed model in a square grid (skips any not-yet-ready model)"
+    mainClass = "com.minecart.display.render.engine.ModelWorldApp"
+    classpath = sourceSets["main"].runtimeClasspath
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 // Pivot Phase-B keystone: render a real SnapBoard in 3D via SnapModelBridge + the engine. ./gradlew :display:boarddemo
 tasks.register<JavaExec>("boarddemo") {
     group = "application"
@@ -125,6 +137,7 @@ tasks.register<JavaExec>("runsnap") {
     classpath = sourceSets["main"].runtimeClasspath
     workingDir = projectDir
     systemProperty("snap.autojoin", (project.findProperty("world") as String?) ?: "snap3d")
+    (project.findProperty("testplace") as String?)?.let { systemProperty("snap.testplace", it) }
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
     }
