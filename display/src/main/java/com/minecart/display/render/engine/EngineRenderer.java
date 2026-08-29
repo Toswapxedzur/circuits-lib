@@ -76,25 +76,24 @@ final class EngineRenderer implements Disposable {
 
     // Shadow map (the directional key light casts real shadows). Depth pass uses the depth shader; the main
     // shader samples the map. Aimed at the scene's bounds (computed at build()).
-    private static final Vector3 LIGHT_DIR = new Vector3(0.337f, 0.842f, 0.421f); // normalized, TO the light
-    // Directional shadow map — the depth pass, aim, sample + compare are all wired; the shadow is sampled in
-    // main() and passed into shade(). FIXED this work: the black-screen bounds bug (light aimed at default
-    // (0,0,0) while parts render on the ENTITY path → outside the frustum) — updateFrameBounds() now recomputes
-    // the bounds each frame from the real geometry. STILL GATED OFF: flat receivers over-shadow to black (acne),
-    // and it's fragile. Two concrete causes to fix in a focused pass: (1) a tall outlier (the demo's floating
-    // resistor at y60) blows up the bounds' vertical extent → the flat parts get almost no depth precision →
-    // acne — clamp/ignore vertical outliers or use a tight AABB not a bounding SPHERE; (2) the RGBA8-packed depth
-    // is coarse — switch to a hardware DEPTH TEXTURE (sampler2DShadow + PCF) instead of colour-packing. Flip to
-    // true to resume. Lighting (ambient + directional + LED point lights) is fully working without it.
-    private static final boolean SHADOWS = false;
+    private static final Vector3 LIGHT_DIR = new Vector3(0.52f, 0.62f, 0.59f).nor(); // ~38° sun, TO the light — angled so parts cast readable shadows
+    // Directional shadow map — WORKING (verified: parts cast soft shadows on the board slab, no acne, in both the
+    // GL3.2 demo and the GL2.0 app). A hardware 24-bit DEPTH TEXTURE (see ShadowMap/DepthShader), sampled .r with a
+    // 3x3 PCF in the main shader. The light ortho is fit to a TIGHT world AABB each frame (updateFrameBounds →
+    // sceneCentre/sceneHalf) with vertical outliers clamped, so the limited depth range is spent on the parts (this
+    // + the depth texture fixed the old self-shadow acne). DepthShader must declare the SAME vertex attributes as
+    // the main shader — omitting them left stale VAO arrays enabled → GL_INVALID_OPERATION that blanked the scene.
+    // On by default; -Dsnap.shadows=off disables (also the fail-safe path if a driver rejects the depth-texture FBO).
+    private static final boolean SHADOWS = !"off".equals(System.getProperty("snap.shadows"));
     private final ShaderProgram depthShader = DepthShader.create(instanced);
     private ShadowMap shadowMap;
     private final Vector3 sceneCentre = new Vector3();
-    private float sceneRadius = 100f;
+    private final Vector3 sceneHalf = new Vector3(100f, 100f, 100f); // tight AABB half-extents for the light ortho
     private final Vector3 staticMin = new Vector3(), staticMax = new Vector3(); // static-box bounds (from build)
     private boolean hasStaticBounds;
     private final Vector3 tmpPos = new Vector3();
     private static final float PART_MARGIN = 30f; // pad around each movable/entity position (covers a part's size)
+    private static final float MAX_SHADOW_HEIGHT = 80f; // clamp vertical extent so a tall floater can't starve depth
 
     private final List<ComponentInstance> components = new ArrayList<>();
     private final List<PartMesh.Box> extraStatic = new ArrayList<>();
@@ -181,8 +180,14 @@ final class EngineRenderer implements Disposable {
 
         // Bounds for the shadow-map light camera (over the static world boxes; movables/entities live within).
         computeSceneBounds(all);
-        if (shadowMap == null) {
-            shadowMap = new ShadowMap(2048);
+        if (shadowMap == null && SHADOWS) {
+            try {
+                shadowMap = new ShadowMap(2048);
+            } catch (RuntimeException e) {
+                // A driver that rejects the depth-texture FBO (some GL2.0 contexts): degrade to no shadows.
+                com.badlogic.gdx.Gdx.app.error("EngineRenderer", "shadow map unavailable, shadows off: " + e.getMessage());
+                shadowMap = null;
+            }
         }
     }
 
@@ -234,14 +239,21 @@ final class EngineRenderer implements Disposable {
         }
         if (!any) {
             sceneCentre.set(0f, 0f, 0f);
-            sceneRadius = 100f;
+            sceneHalf.set(100f, 100f, 100f);
             return;
         }
-        sceneCentre.set((minx + maxx) / 2f, (miny + maxy) / 2f, (minz + maxz) / 2f);
-        float dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
-        // Cap the radius so the fixed-res map keeps fine texels (a game board fits well under it); geometry beyond
-        // the cap falls outside the light frustum and simply renders unshadowed (bright), never acne-black.
-        sceneRadius = Math.min(300f, Math.max(20f, 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.1f));
+        // Clamp the vertical extent: parts sit near the board plane, so a lone floater must not stretch the depth
+        // range and starve the flat parts of precision (the old acne). Keep the box centred on the bulk (min side).
+        if (maxy - miny > MAX_SHADOW_HEIGHT) {
+            maxy = miny + MAX_SHADOW_HEIGHT;
+        }
+        // Cap the horizontal span so the fixed-res map keeps fine texels; geometry beyond simply renders unshadowed.
+        float cx = (minx + maxx) / 2f, cz = (minz + maxz) / 2f;
+        float hx = Math.min(300f, Math.max(20f, (maxx - minx) / 2f + 5f));
+        float hz = Math.min(300f, Math.max(20f, (maxz - minz) / 2f + 5f));
+        float hy = Math.max(20f, (maxy - miny) / 2f + 5f);
+        sceneCentre.set(cx, (miny + maxy) / 2f, cz);
+        sceneHalf.set(hx, hy, hz);
     }
 
     /** Eases every component's animation and recomputes its movable parts' world matrices. */
@@ -255,12 +267,11 @@ final class EngineRenderer implements Disposable {
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
         Gdx.gl.glCullFace(GL20.GL_BACK);
-        Gdx.gl.glDisable(GL20.GL_DITHER); // dithering would corrupt the RGBA-packed shadow depth
 
         // --- Shadow pass: render the opaque scene's depth from the light's ortho POV into the shadow map. ---
         if (shadowMap != null && SHADOWS) {
             updateFrameBounds(); // cover the parts (entities/movables), which build-time static bounds miss
-            shadowMap.begin(sceneCentre, sceneRadius, LIGHT_DIR);
+            shadowMap.begin(sceneCentre, sceneHalf, LIGHT_DIR);
             depthShader.bind();
             depthShader.setUniformMatrix("u_projView", shadowMap.viewProj());
             renderOpaqueMeshes(depthShader);
@@ -282,8 +293,9 @@ final class EngineRenderer implements Disposable {
             shadowMap.texture().bind(1);
             shader.setUniformi("u_shadowMap", 1);
             shader.setUniformf("u_shadowStrength", 1f);
-            // Bias scales with the shadow texel's world size (≈ 2·radius/2048), so wide scenes don't self-shadow.
-            shader.setUniformf("u_shadowBias", Math.max(0.0012f, sceneRadius * 3.0e-5f));
+            shader.setUniformf("u_shadowTexel", 1f / 2048f);
+            // Small depth-space bias; a hardware 24-bit depth texture over a tight AABB needs little slope offset.
+            shader.setUniformf("u_shadowBias", 0.0016f);
         } else {
             shader.setUniformf("u_shadowStrength", 0f);
         }

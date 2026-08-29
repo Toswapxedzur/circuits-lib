@@ -90,16 +90,14 @@ final class InstancedShader {
             uniform vec3 u_lightPos[NUM_LIGHTS];
             uniform vec3 u_lightColor2[NUM_LIGHTS];
             uniform float u_lightRange[NUM_LIGHTS];
-            uniform sampler2D u_shadowMap;
+            uniform sampler2D u_shadowMap;    // hardware DEPTH texture (24-bit); sample .r for stored depth
             uniform mat4 u_lightViewProj;
             uniform float u_shadowStrength;   // 0 = shadows off (map/depth still fine); 1 = full
             uniform float u_shadowBias;       // depth-compare bias, scaled to the shadow texel world size
-            float unpackDepth(vec4 c) {
-                return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0));
-            }
+            uniform float u_shadowTexel;      // 1.0 / shadow map size, for PCF tap spacing
             // Shading takes the shadow factor as a PARAMETER — the shadow map is sampled in main(), not here.
-            // (A driver quirk: the same texture2D sample reads black when done inside this function but works in
-            // main(); keeping all sampling in main() sidesteps it.)
+            // (A driver quirk: the same sample reads black when done inside this function but works in main(); keep
+            // all sampling in main() to sidestep it.)
             vec3 shade(vec3 N, vec3 worldPos, float sf) {
                 float ndl = max(dot(N, u_lightDir), 0.0);
                 vec3 lit = u_ambient + u_lightColor * (ndl * sf);
@@ -123,11 +121,18 @@ final class InstancedShader {
                     vec4 lp = u_lightViewProj * vec4(v_worldPos, 1.0);
                     vec3 ndc = lp.xyz / lp.w;
                     vec2 suv = ndc.xy * 0.5 + 0.5;
-                    if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-                        float fragDepth = ndc.z * 0.5 + 0.5;
+                    float fragDepth = ndc.z * 0.5 + 0.5;
+                    if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0 && fragDepth <= 1.0) {
                         float bias = u_shadowBias * (2.0 - ndl);
-                        float stored = unpackDepth(texture2D(u_shadowMap, suv));
-                        if (fragDepth - bias > stored) sf = 0.45;
+                        float lit = 0.0;                       // 3x3 PCF
+                        for (int x = -1; x <= 1; x++) {
+                            for (int y = -1; y <= 1; y++) {
+                                vec2 off = vec2(float(x), float(y)) * u_shadowTexel;
+                                float stored = texture2D(u_shadowMap, suv + off).r;
+                                lit += (fragDepth - bias > stored) ? 0.0 : 1.0;
+                            }
+                        }
+                        sf = 0.45 + 0.55 * (lit / 9.0);        // 0.45 in full shadow → 1.0 fully lit
                     }
                 }
                 gl_FragColor = vec4(texel.rgb * shade(N, v_worldPos, sf), texel.a);
