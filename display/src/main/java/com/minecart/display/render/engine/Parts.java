@@ -330,11 +330,13 @@ final class Parts {
     private ComponentModel buildTransistor(String id, Color[] pal, boolean npn) {
         Color[] topPal = npn ? SERIES_BLACK : WHITE_PLASTIC;  // NPN top black / PNP top white
         Color[] botPal = npn ? WHITE_PLASTIC : SERIES_BLACK;  // NPN bottom white / PNP bottom black
+        // Cube RAISED 3px off the base (bottom at y7) so its 3 legs show in the gap below (like a real
+        // transistor standing on its legs). Cube y7..12, still split 40/60 by height at y10.
         ComponentModel.Builder b = teeBuilder(id, pal, transistorTrace())
-                .box(0f, 5.5f, 0f, 5f, 3f, 5f, plastic(931L, botPal))   // cube bottom 3px (60%) y4..7
-                .box(0f, 8f, 0f, 5f, 2f, 5f, plastic(932L, topPal));    // cube top 2px (40%) y7..9
-        for (float lx : new float[]{-2f, 0f, 2f}) {                     // 3 legs: flat metal tabs on the front
-            b = b.box(lx, 2.5f, -2.5f, 1f, 3f, 0f, fence(940L));        // 1×3×0, y1..4, z=−2.5 (into the base)
+                .box(0f, 8.5f, 0f, 5f, 3f, 5f, plastic(931L, botPal))   // cube bottom 3px (60%) y7..10
+                .box(0f, 11f, 0f, 5f, 2f, 5f, plastic(932L, topPal));   // cube top 2px (40%) y10..12
+        for (float lx : new float[]{-2f, 0f, 2f}) {                     // 3 legs in the 3px gap under the cube
+            b = b.box(lx, 5.5f, -2.5f, 1f, 3f, 0f, fence(940L));        // 1×3×0 metal tab, y4..7, z=−2.5 (front)
         }
         return b.build();
     }
