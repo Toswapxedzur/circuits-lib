@@ -25,13 +25,14 @@ public final class EngineDemoApp extends ApplicationAdapter {
     private static final int GREEN = 3;      // lime — the switches' colour
     private static final float SPACING = 34f; // X spacing between listed parts
     private static final int[] LED_COLORS = {0, 2, 3, 5, 7, 8}; // LED bulb colours: red, yellow, lime, cyan, blue, violet
-    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 8 + LED_COLORS.length; // bases + 3 caps + slide/press/resistor/diode/lamp/tee/npn/pnp + LEDs
+    private static final int COUNT = Parts.PLASTIC_HSV.length + Parts.CAP_SIZES.length + 12 + LED_COLORS.length; // bases + 3 caps + slide/press/resistor/diode/lamp/tee/npn/pnp/ic/varres×3 + LEDs
 
     private PerspectiveCamera cam;
     private FlyController fly;
     private EngineRenderer engine;
     private final List<ComponentInstance> switches = new ArrayList<>();
     private final List<ComponentInstance> pressers = new ArrayList<>();
+    private final List<ComponentInstance> spinners = new ArrayList<>();           // clock var-resistors (spin channel)
     private EngineRenderer.DynamicEntity floater;                 // a free entity drawn at an arbitrary tumbling pose
     private final Matrix4 floaterPose = new Matrix4();
     private static final Vector3 TUMBLE_AXIS = new Vector3(1f, 1f, 0.4f).nor();
@@ -95,6 +96,17 @@ public final class EngineDemoApp extends ApplicationAdapter {
         engine.add(new ComponentInstance(loader.model("transistor_npn"), world));
         world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // PNP transistor (dark green, cube top-white)
         engine.add(new ComponentInstance(loader.model("transistor_pnp"), world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // integrated circuit (red, 2×3 + big blob)
+        engine.add(new ComponentInstance(loader.model("ic"), world));
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // variable resistor 1: T-shaped + wide switch
+        ComponentInstance vt = new ComponentInstance(loader.model("varres_tee"), world);
+        vt.anim.channel("slide", 0f, 1f, 6f); switches.add(vt); engine.add(vt);
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // variable resistor 2: resistor-style + switch
+        ComponentInstance vb = new ComponentInstance(loader.model("varres_bar"), world);
+        vb.anim.channel("slide", 0f, 1f, 6f); switches.add(vb); engine.add(vb);
+        world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);           // variable resistor 3: clock + spinning pointer
+        ComponentInstance vc = new ComponentInstance(loader.model("varres_clock"), world);
+        vc.anim.channel("spin", 0f, 1f, 3f); spinners.add(vc); engine.add(vc);
         for (int c : LED_COLORS) {                                       // LEDs: ONE greyscale bulb, many entity colours
             world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
             Color tint = new Color().fromHsv(Parts.PLASTIC_HSV[c][0], Parts.PLASTIC_HSV[c][1], Parts.PLASTIC_HSV[c][2]);
@@ -124,10 +136,10 @@ public final class EngineDemoApp extends ApplicationAdapter {
 
         float reach = (COUNT * SPACING + wireSpan()) / 2f;
         cam = new PerspectiveCamera(60f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        cam.position.set(wireSpan() / 2f, reach * 0.62f, reach * 0.95f); // overview of the full row incl. wires
+        cam.position.set(300f, 78f, 150f); // elevated 3/4 view over the row — shows the parts + their cast shadows
         cam.near = 0.5f;
         cam.far = 8000f;
-        cam.lookAt(wireSpan() / 2f, 4f, 0f);
+        cam.lookAt(345f, 4f, -6f);
         cam.up.set(0f, 1f, 0f);
         cam.update();
         fly = new FlyController(cam, reach * 0.09f); // slow default so parts are inspectable (scroll to speed up)
@@ -147,6 +159,10 @@ public final class EngineDemoApp extends ApplicationAdapter {
         float pressTarget = ((int) (clock / 1.1f) % 2 == 0) ? 1f : 0f;
         for (ComponentInstance p : pressers) {
             p.anim.target("press", pressTarget);
+        }
+        float spinTarget = ((int) (clock / 1.3f) % 2 == 0) ? 1f : -1f;
+        for (ComponentInstance s : spinners) {
+            s.anim.target("spin", spinTarget);
         }
         engine.update(dt);
 
