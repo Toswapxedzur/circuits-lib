@@ -31,6 +31,12 @@ public final class EngineBoardView implements Disposable {
     public EngineBoardView() {
     }
 
+    /** Sets the skylight direction (TO the light; default 45°/45°). Call before the first {@link #setBoard} so the
+     *  baked octant variant is chosen at atlas build. See {@link EngineRenderer#setLightDir}. */
+    public void setLightDir(float x, float y, float z) {
+        engine.setLightDir(x, y, z);
+    }
+
     /**
      * Adds the <b>base board</b> the parts sit on — a {@code cols}×{@code rows} grid tiled from the committed
      * (datagen) board-cell + stud sprites (see {@link SnapBaseBoard}), top surface at {@code topY}. Call ONCE

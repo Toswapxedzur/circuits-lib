@@ -23,10 +23,34 @@ final class PaletteDither {
     // Series light + gradient (ModelPreviewApp.SHADING + PreviewPart's object-space frame).
     private static final Vector3 LIGHT = new Vector3(0.5f, 0.7f, 0.4f).nor();
     private static final float SHIFT = 3.5f;
-    // ModelPreviewApp's Environment, baked per face as a constant multiplier (× the material diffuse tint).
-    private static final Vector3 AMBIENT = new Vector3(0.93f, 0.93f, 0.96f);
-    private static final Vector3 DIR_COLOR = new Vector3(0.14f, 0.14f, 0.15f);
-    private static final Vector3 DIR_TO_LIGHT = new Vector3(0.45f, 0.5f, 0.55f).nor(); // -(-0.45,-0.5,-0.55)
+    // The SKYLIGHT baked per face as a constant N·L multiplier (× the material diffuse tint). This is now the
+    // PRIMARY directional — the runtime shader no longer adds its own (it passes the baked base through + stacks
+    // point lights), so the directional term is stronger than the old studio light. See {@link Octant}.
+    private static final Vector3 AMBIENT = new Vector3(0.66f, 0.66f, 0.69f);
+    private static final Vector3 DIR_COLOR = new Vector3(0.40f, 0.40f, 0.42f);
+
+    /**
+     * The four upper-diagonal <b>skylight octants</b> a part is baked from (light from above, one per yaw
+     * quadrant). At datagen every sprite is drawn 4×, once per octant, and committed as {@code <name>_<suffix>.png};
+     * the runtime {@link PartAtlas} loads the variant for the current skylight direction ({@link #of}). The exact
+     * direction doesn't matter — only which octant, so a user-configured skylight snaps to the nearest of these.
+     */
+    enum Octant {
+        NE(0.5f, 0.7071f, 0.5f, ""),      // +x (east), +z (north) — the DEFAULT skylight; keeps the base filename
+        NW(-0.5f, 0.7071f, 0.5f, "_nw"),  // (so regenerating overwrites the base PNG, no orphaned files)
+        SE(0.5f, 0.7071f, -0.5f, "_se"),
+        SW(-0.5f, 0.7071f, -0.5f, "_sw");
+        final Vector3 dir;
+        final String suffix; // appended to the base sprite name → the committed PNG for this octant
+        Octant(float x, float y, float z, String s) {
+            this.dir = new Vector3(x, y, z).nor();
+            this.suffix = s;
+        }
+        /** The octant a skylight direction (TO the light) falls in — by the sign of its horizontal x/z. */
+        static Octant of(float x, float z) {
+            return z >= 0f ? (x >= 0f ? NE : NW) : (x >= 0f ? SE : SW);
+        }
+    }
 
     private static final int[] BAYER4 = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
     private static final int[][] NRM = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
@@ -99,13 +123,13 @@ final class PaletteDither {
         };
     }
 
-    /** Draws one face sprite exactly as PreviewPart did: litFace over the object corners × the studio light. */
-    static Pixmap drawFace(PartMesh.Box b, int f) {
+    /** Draws one face sprite, lit from skylight {@code o}: litFace over the object corners × the octant's N·L. */
+    static Pixmap drawFace(PartMesh.Box b, int f, Octant o) {
         Paint p = b.paint();
         int[] wh = size(b, f);
         Vector3[] q = objCorners(b, f); // p00,p10,p11,p01 — same order PreviewPart passes to litFace
         long seed = 0x9E370000L + (p.seedBase() + f + 1) * 2654435761L;
-        Vector3 mul = faceMul(NRM[f], p.diffuse());
+        Vector3 mul = faceMul(NRM[f], p.diffuse(), o.dir);
         Pixmap pm = litFace(p.palette(), q[0], q[1], q[2], q[3], wh[0], wh[1],
                 p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed, p.alpha());
         if (f == 2 && b.trace() != null) { // print the trace on top — dithered like the plastics, never flat
@@ -172,14 +196,14 @@ final class PaletteDither {
         return "qd" + Long.toHexString(h & 0x7fffffffffffffffL) + "_" + q.pw() + "x" + q.ph();
     }
 
-    /** Draws an oriented quad's sprite: litFace over its object corners × the studio light for its normal. */
-    static Pixmap drawQuad(PartMesh.Quad q) {
+    /** Draws an oriented quad's sprite, lit from skylight {@code o}: litFace over its object corners × the N·L. */
+    static Pixmap drawQuad(PartMesh.Quad q, Octant o) {
         Paint p = q.paint();
         long seed = 0x9E370000L + (p.seedBase() + 6 + 1) * 2654435761L;
         Vector3 e1 = new Vector3(q.o10()).sub(q.o00());
         Vector3 e2 = new Vector3(q.o01()).sub(q.o00());
         Vector3 n = e2.crs(e1).nor(); // up-out face normal (matches the p00,p10,p11,p01 winding)
-        Vector3 mul = faceMul(n.x, n.y, n.z, p.diffuse());
+        Vector3 mul = faceMul(n.x, n.y, n.z, p.diffuse(), o.dir);
         return litFace(p.palette(), q.o00(), q.o10(), q.o11(), q.o01(), q.pw(), q.ph(),
                 p.scx(), p.scy(), p.scz(), p.radius(), p.grainMax(), p.zeroWeight(), p.ordered(), mul, seed, p.alpha());
     }
@@ -281,12 +305,12 @@ final class PaletteDither {
         };
     }
 
-    private static Vector3 faceMul(int[] n, Color diffuse) {
-        return faceMul(n[0], n[1], n[2], diffuse);
+    private static Vector3 faceMul(int[] n, Color diffuse, Vector3 light) {
+        return faceMul(n[0], n[1], n[2], diffuse, light);
     }
 
-    private static Vector3 faceMul(float nx, float ny, float nz, Color diffuse) {
-        float ndl = Math.max(0f, nx * DIR_TO_LIGHT.x + ny * DIR_TO_LIGHT.y + nz * DIR_TO_LIGHT.z);
+    private static Vector3 faceMul(float nx, float ny, float nz, Color diffuse, Vector3 light) {
+        float ndl = Math.max(0f, nx * light.x + ny * light.y + nz * light.z);
         return new Vector3(clamp((AMBIENT.x + DIR_COLOR.x * ndl) * diffuse.r),
                 clamp((AMBIENT.y + DIR_COLOR.y * ndl) * diffuse.g),
                 clamp((AMBIENT.z + DIR_COLOR.z * ndl) * diffuse.b));
