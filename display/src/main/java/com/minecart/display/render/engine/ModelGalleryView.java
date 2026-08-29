@@ -28,7 +28,7 @@ import java.util.Set;
  */
 public final class ModelGalleryView implements Disposable {
 
-    private static final float SPACING = 44f; // grid pitch (parts are ~33 wide; leaves a clear gap)
+    private static final float GAP = 12f; // clear gap between adjacent models (parts vary widely in footprint)
     private static final Set<String> EXCLUDED = Set.of("slider", "button", "pointer", "slab");
 
     private EngineRenderer engine;
@@ -58,14 +58,7 @@ public final class ModelGalleryView implements Disposable {
                 // not loadable this pass (partial JSON, missing dep) — skip, never fatal
             }
         }
-        int cols = Math.max(1, (int) Math.ceil(Math.sqrt(ready.size())));
-        Matrix4 world = new Matrix4();
-        for (int i = 0; i < ready.size(); i++) {
-            int c = i % cols, r = i / cols;
-            world.setToTranslation((c - (cols - 1) / 2f) * SPACING, 0f, (r - (cols - 1) / 2f) * SPACING);
-            engine.add(new ComponentInstance(ready.get(i), world));
-        }
-        gridReach = Math.max(120f, cols * SPACING);
+        layout(ready);
         try {
             engine.build();
         } catch (Exception e) {   // last-resort guard — a torn sprite that slipped past the existence check
@@ -75,7 +68,57 @@ public final class ModelGalleryView implements Disposable {
             engine.setLightDir(lx, ly, lz);
             engine.build();
         }
-        Gdx.app.log("gallery", "laid out " + ready.size() + " models in a " + cols + "×grid");
+        Gdx.app.log("gallery", "laid out " + ready.size() + " models (footprint-packed, no overlap)");
+    }
+
+    /**
+     * Lays the models out row-by-row (≈ square) at their ACTUAL footprints — NEVER a constant pitch, so a wide
+     * part (a long wire is up to ~69 wide) doesn't overlap its neighbours. Within a row X advances by each
+     * model's width + {@link #GAP}; rows advance in Z by the row's max depth + GAP; rows are centred. Each model
+     * is shifted by its collision-box centre so its footprint (not its origin) lands in the cell.
+     */
+    private void layout(List<ComponentModel> ready) {
+        int n = ready.size();
+        int cols = Math.max(1, (int) Math.ceil(Math.sqrt(n)));
+        int rows = (int) Math.ceil(n / (float) cols);
+        float[] rowW = new float[rows];   // total width of each row (incl. gaps)
+        float[] rowD = new float[rows];   // max depth in each row
+        for (int i = 0; i < n; i++) {
+            int r = i / cols;
+            rowW[r] += footprintW(ready.get(i)) + GAP;
+            rowD[r] = Math.max(rowD[r], footprintD(ready.get(i)));
+        }
+        float totalD = 0f, maxW = 0f;
+        for (int r = 0; r < rows; r++) { totalD += rowD[r] + GAP; maxW = Math.max(maxW, rowW[r]); }
+
+        Matrix4 world = new Matrix4();
+        float z = -totalD / 2f;
+        int i = 0;
+        for (int r = 0; r < rows; r++) {
+            float rz = z + rowD[r] / 2f;              // this row's centre line in Z
+            float x = -(rowW[r] - GAP) / 2f;          // left edge of the (centred) row
+            for (int c = 0; c < cols && i < n; c++, i++) {
+                ComponentModel m = ready.get(i);
+                float w = footprintW(m);
+                float cx = m.collision != null ? m.collision.cx() : 0f;
+                float cz = m.collision != null ? m.collision.cz() : 0f;
+                world.setToTranslation(x + w / 2f - cx, 0f, rz - cz); // centre the model's BBOX in its cell
+                engine.add(new ComponentInstance(m, world));
+                x += w + GAP;
+            }
+            z += rowD[r] + GAP;
+        }
+        gridReach = Math.max(120f, Math.max(maxW, totalD));
+        Gdx.app.log("gallery", "grid extent maxW=" + (int) maxW + " totalD=" + (int) totalD
+                + " reach=" + (int) gridReach + " (" + cols + " cols × " + rows + " rows)");
+    }
+
+    private static float footprintW(ComponentModel m) {
+        return m.collision != null ? 2f * m.collision.hx() : 33f;
+    }
+
+    private static float footprintD(ComponentModel m) {
+        return m.collision != null ? 2f * m.collision.hz() : 9f;
     }
 
     /** Half-extent of the grid — a good camera distance / fly speed. */

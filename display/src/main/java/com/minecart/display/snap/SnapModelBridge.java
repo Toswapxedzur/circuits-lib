@@ -42,7 +42,7 @@ public final class SnapModelBridge {
             case "snap_wire" -> "wire_2";
             case "snap_resistor" -> DEFAULT_RESISTOR;
             case "snap_battery" -> "battery_cell"; // the loose battery cell model
-            default -> "base";                    // unknown type → the neutral base tile
+            default -> "base_teal";               // unknown type → a neutral base tile
         };
     }
 
