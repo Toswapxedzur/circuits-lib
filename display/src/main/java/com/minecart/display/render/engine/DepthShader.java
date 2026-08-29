@@ -25,6 +25,18 @@ final class DepthShader {
     // Keeps a_normal/a_uv/a_color from being optimised out, so the mesh's VAO layout matches the main shader's.
     private static final String KEEP = "gl_Position.z += 0.0 * (a_normal.x + a_uv.x + a_color.r);";
 
+    /** Packs a [0,1] depth into RGBA8 (≈32-bit); the main shader's {@code unpackDepth} reverses it (GL2.0 path). */
+    static final String PACK = """
+            vec4 packDepth(float d) {
+                vec4 enc = vec4(1.0, 255.0, 65025.0, 16581375.0) * d;
+                enc = fract(enc);
+                enc -= enc.yzww * vec4(1.0/255.0, 1.0/255.0, 1.0/255.0, 0.0);
+                return enc;
+            }
+            """;
+
+    // GL2.0 path: no depth texture, so the fragment PACKS light-space depth into the colour target. v_depth uses
+    // the SAME formula the main shader compares against (ndc.z*0.5+0.5).
     private static final String VERT20 = """
             attribute vec3 a_position;
             attribute vec3 a_normal;
@@ -32,15 +44,17 @@ final class DepthShader {
             attribute vec4 a_color;
             uniform mat4 u_projView;
             uniform mat4 u_world;
+            varying float v_depth;
             void main() {
                 gl_Position = u_projView * u_world * vec4(a_position, 1.0);
                 """ + KEEP + """
+                v_depth = gl_Position.z / gl_Position.w * 0.5 + 0.5;
             }
             """;
 
     private static String frag20() {
-        return "#ifdef GL_ES\nprecision highp float;\n#endif\n"
-                + "void main() { gl_FragColor = vec4(1.0); }\n";
+        return "#ifdef GL_ES\nprecision highp float;\n#endif\nvarying float v_depth;\n"
+                + PACK + "void main() { gl_FragColor = packDepth(v_depth); }\n";
     }
 
     private static final String VERT = """

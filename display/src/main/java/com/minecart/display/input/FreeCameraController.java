@@ -30,6 +30,7 @@ public final class FreeCameraController {
     private float moveSpeed;
     private float lookSensitivity = 0.15f;
     private boolean lookEnabled = true;
+    private boolean skipLookDelta = true; // ignore the first mouse delta after look is (re)enabled — see update()
 
     private final Vector3 forward = new Vector3();
     private final Vector3 right = new Vector3();
@@ -47,15 +48,23 @@ public final class FreeCameraController {
 
     /** When {@code false}, mouse movement is ignored (e.g. while the cursor is released for menus). */
     public void setLookEnabled(boolean lookEnabled) {
+        if (lookEnabled && !this.lookEnabled) {
+            skipLookDelta = true; // re-entering look: drop the accumulated jump so the view doesn't lurch
+        }
         this.lookEnabled = lookEnabled;
     }
 
     /** Applies this frame's mouse-look delta and held-movement keys ({@code dt} seconds). */
     public void update(float dt) {
         if (lookEnabled) {
-            yawDeg += Gdx.input.getDeltaX() * lookSensitivity;
-            pitchDeg = MathUtils.clamp(pitchDeg - Gdx.input.getDeltaY() * lookSensitivity, -89f, 89f);
-            applyOrientation();
+            float dx = Gdx.input.getDeltaX(), dy = Gdx.input.getDeltaY();
+            if (skipLookDelta) {
+                skipLookDelta = false; // the first frame after capture carries the cursor-recentre jump — ignore it
+            } else {
+                yawDeg += dx * lookSensitivity;
+                pitchDeg = MathUtils.clamp(pitchDeg - dy * lookSensitivity, -89f, 89f);
+                applyOrientation();
+            }
         }
 
         float speed = moveSpeed * dt;
