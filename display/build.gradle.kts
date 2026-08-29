@@ -56,6 +56,20 @@ tasks.register<JavaExec>("modelworld") {
     }
 }
 
+// In-game DEBUG model gallery (the merged displayer, via Main + GameMode.DEBUG_MODELS): ./gradlew :display:modelgallery
+tasks.register<JavaExec>("modelgallery") {
+    group = "application"
+    description = "Boot straight into the in-game debug model gallery (every model in a grid)"
+    mainClass = "com.minecart.display.Main"
+    classpath = sourceSets["main"].runtimeClasspath
+    workingDir = projectDir
+    systemProperty("snap.gallery", "1")
+    (project.findProperty("skylight") as String?)?.let { systemProperty("snap.skylight", it) }
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}
+
 // Pivot Phase-B keystone: render a real SnapBoard in 3D via SnapModelBridge + the engine. ./gradlew :display:boarddemo
 tasks.register<JavaExec>("boarddemo") {
     group = "application"

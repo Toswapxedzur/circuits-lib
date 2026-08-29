@@ -134,6 +134,11 @@ public class WorldListScreen extends ScreenAdapter {
      * {@link GameScreen}. Failures show a log entry; the user stays on the world list.
      */
     private void joinWorld(WorldEntry world) {
+        // DEBUG mode is a client-only model gallery — no board, no server, no session. Open it directly.
+        if (world.mode() == GameMode.DEBUG_MODELS) {
+            app.setScreen(new ModelGalleryScreen(app));
+            return;
+        }
         // Open the session log BEFORE booting the integrated server so the load path
         // (WorldStorage.load, listener attach, initial-snapshot send) is captured. If the session
         // setup fails we still want the failure in the file.
@@ -166,19 +171,26 @@ public class WorldListScreen extends ScreenAdapter {
         final GameMode[] chosen = { GameMode.FLAT_2D };
         TextButton mode2d = new TextButton("2D", skin);
         TextButton mode3d = new TextButton("3D Snap", skin);
+        TextButton modeDebug = new TextButton("Debug", skin);
         Label modeHint = new Label("", skin, "muted");
         Runnable reflect = () -> {
             mode2d.setColor(chosen[0] == GameMode.FLAT_2D ? Color.LIME : Color.WHITE);
             mode3d.setColor(chosen[0] == GameMode.SNAP_3D ? Color.LIME : Color.WHITE);
-            modeHint.setText(chosen[0] == GameMode.SNAP_3D
-                    ? "Snap parts onto a 3D baseboard."
-                    : "Free-form 2D wiring (default).");
+            modeDebug.setColor(chosen[0] == GameMode.DEBUG_MODELS ? Color.LIME : Color.WHITE);
+            modeHint.setText(switch (chosen[0]) {
+                case SNAP_3D -> "Snap parts onto a 3D baseboard.";
+                case DEBUG_MODELS -> "Debug: browse every part model in a grid.";
+                default -> "Free-form 2D wiring (default).";
+            });
         };
         mode2d.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) { chosen[0] = GameMode.FLAT_2D; reflect.run(); }
         });
         mode3d.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) { chosen[0] = GameMode.SNAP_3D; reflect.run(); }
+        });
+        modeDebug.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent e, float x, float y) { chosen[0] = GameMode.DEBUG_MODELS; reflect.run(); }
         });
         reflect.run();
 
@@ -201,8 +213,9 @@ public class WorldListScreen extends ScreenAdapter {
         dialog.getContentTable().add(nameField).width(280f).row();
         dialog.getContentTable().add(new Label("Mode:", skin)).left();
         Table modeRow = new Table();
-        modeRow.add(mode2d).width(90f).height(36f).padRight(8f);
-        modeRow.add(mode3d).width(110f).height(36f);
+        modeRow.add(mode2d).width(70f).height(36f).padRight(8f);
+        modeRow.add(mode3d).width(100f).height(36f).padRight(8f);
+        modeRow.add(modeDebug).width(90f).height(36f);
         dialog.getContentTable().add(modeRow).left().row();
         dialog.getContentTable().add(modeHint).colspan(2).left().row();
         dialog.button("Create", Boolean.TRUE);

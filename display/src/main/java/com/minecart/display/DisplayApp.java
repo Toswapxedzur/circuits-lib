@@ -42,6 +42,11 @@ public class DisplayApp extends Game {
      *  3D {@link SnapScreen}, bypassing the menus, so the engine-rendered board can be screenshot-verified
      *  without driving the GUI (which can't be automated headlessly here). Never fires in normal runs. */
     private void devAutoJoin() {
+        // DEV: -Dsnap.gallery=1 boots straight into the debug model gallery (no world needed), for screenshots.
+        if ("1".equals(System.getProperty("snap.gallery"))) {
+            setScreen(new com.minecart.display.screen.ModelGalleryScreen(this));
+            return;
+        }
         String name = System.getProperty("snap.autojoin");
         if (name == null) {
             return;
