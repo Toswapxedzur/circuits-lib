@@ -6,9 +6,13 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.minecart.display.log.Slf4jApplicationLogger;
 import com.minecart.display.screen.MainMenuScreen;
+import com.minecart.display.screen.SnapScreen;
 import com.minecart.display.server.ServerManager;
+import com.minecart.display.session.Sessions;
 import com.minecart.display.ui.Skins;
+import com.minecart.display.world.WorldEntry;
 import com.minecart.display.world.WorldManager;
+import com.minecart.foundation.GameMode;
 
 /**
  * Top-level LibGDX entry point. Owns the shared {@link Skin} and the singleplayer/multiplayer managers,
@@ -31,6 +35,29 @@ public class DisplayApp extends Game {
         worlds = new WorldManager();
         servers = new ServerManager();
         setScreen(new MainMenuScreen(this));
+        devAutoJoin();
+    }
+
+    /** Dev harness — no-op unless {@code -Dsnap.autojoin=<worldName>} is set. Boots straight into that world's
+     *  3D {@link SnapScreen}, bypassing the menus, so the engine-rendered board can be screenshot-verified
+     *  without driving the GUI (which can't be automated headlessly here). Never fires in normal runs. */
+    private void devAutoJoin() {
+        String name = System.getProperty("snap.autojoin");
+        if (name == null) {
+            return;
+        }
+        for (WorldEntry w : worlds.list()) {
+            if (w.name().equals(name) && w.mode() == GameMode.SNAP_3D) {
+                try {
+                    Sessions.Session s = Sessions.singleplayer(w);
+                    setScreen(new SnapScreen(this, w.name(), s.level(), s.connection(), s.integrated()));
+                } catch (Exception e) {
+                    Gdx.app.error("DisplayApp", "snap.autojoin failed for '" + name + "'", e);
+                }
+                return;
+            }
+        }
+        Gdx.app.error("DisplayApp", "snap.autojoin: no snap-mode world named '" + name + "'");
     }
 
     public Skin getSkin() {

@@ -114,3 +114,16 @@ dependencies {
     // compileOnly avoids double-jaring at runtime (the runtimeOnly above already provides it).
     compileOnly("ch.qos.logback:logback-classic:1.5.18")
 }
+// Dev launcher: boot straight into a snap world's engine-backed 3D SnapScreen, bypassing the menus (the GUI
+// can't be automated headlessly for screenshot verification). ./gradlew :display:runsnap -Pworld=<name>
+tasks.register<JavaExec>("runsnap") {
+    group = "application"
+    description = "Launch straight into a snap world's engine-backed 3D editor (dev; -Pworld=<name>, default snap3d)"
+    mainClass = "com.minecart.display.Main"
+    classpath = sourceSets["main"].runtimeClasspath
+    workingDir = projectDir
+    systemProperty("snap.autojoin", (project.findProperty("world") as String?) ?: "snap3d")
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
+    }
+}

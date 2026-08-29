@@ -8,7 +8,7 @@ import java.util.List;
  * dependency, so it is unit-testable and shared by every renderer (libGDX + jMonkeyEngine).
  *
  * <h2>Units — real Snap-Circuit dimensions (all in "pixels")</h2>
- * The base is a grid of <b>bumps</b> (posts) spaced {@link #BUMP_SPACING}=16 apart, each a
+ * The base is a grid of <b>bumps</b> (posts) spaced {@link #BUMP_SPACING}=24 apart, each a
  * {@link #BUMP_WIDTH}=3 × {@link #BUMP_HEIGHT}=1 nub. A component snaps onto bumps with a
  * {@link #COMPONENT_FOOTPRINT}=9 wide, {@link #COMPONENT_HEIGHT}=4 tall body (longer when it spans several
  * bumps) and <b>generates its own bumps on top</b> so the next component stacks on it. One stack level is
@@ -18,8 +18,9 @@ import java.util.List;
  */
 public final class SnapSceneGeometry {
 
-    /** Grid spacing between bumps. */
-    public static final float BUMP_SPACING = 16f;
+    /** Grid spacing between bumps. Unified to the instanced engine's post pitch ({@code SnapModelBridge.PITCH}),
+     *  so the editor's picking/lattice lines up with the engine-rendered parts (whose studs sit at ±12). */
+    public static final float BUMP_SPACING = 24f;
     /** Bump nub width/depth. */
     public static final float BUMP_WIDTH = 3f;
     /** Bump nub height. */

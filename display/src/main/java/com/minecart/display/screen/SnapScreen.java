@@ -22,13 +22,10 @@ import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.display.DisplayApp;
 import com.minecart.display.input.FreeCameraController;
+import com.minecart.display.render.engine.EngineBoardView;
 import com.minecart.display.render.snap.SnapEditor;
-import com.minecart.display.render.snap.SnapRenderer;
 import com.minecart.display.render.snap.SnapScene;
 import com.minecart.snap.SnapSceneGeometry;
-import com.minecart.display.render.snap.PostProcessor;
-import com.minecart.display.render.snap.ToonRenderer;
-import com.minecart.display.render.snap.WaterRenderer;
 import com.minecart.foundation.World;
 import com.minecart.logic.ServerWorld;
 import com.minecart.server.integrated.IntegratedServer;
@@ -66,16 +63,8 @@ public final class SnapScreen extends ScreenAdapter {
 
     private PerspectiveCamera camera;
     private FreeCameraController flyCam;
-    private SnapRenderer renderer;
-    private ToonRenderer environment;
-    private WaterRenderer water;
-    private PostProcessor post;
-    private com.badlogic.gdx.graphics.g3d.environment.DirectionalShadowLight sun;
-    private com.badlogic.gdx.graphics.g3d.Environment sharedEnv;
-    private com.badlogic.gdx.graphics.g3d.ModelBatch shadowBatch;
-    private Vector3 shadowCenter;
-    private Vector3 sunTravel;
-    private SnapScene scene;
+    private EngineBoardView boardView;   // renders the board via the instanced engine (real part models)
+    private SnapScene scene;             // pickable snapshot for the editor (renderer-agnostic geometry)
     private SnapEditor editor;
     private InputMultiplexer input;
 
@@ -128,30 +117,7 @@ public final class SnapScreen extends ScreenAdapter {
         Vector3 start = new Vector3(centerX, span * 0.85f, centerZ + span * 1.15f);
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
-        // Shared lighting + real-time shadow map (Phase R1): a warm directional sun casting into a depth
-        // map, cool sky ambient, and horizon fog — sampled by DefaultShader on both the board and scenery.
-        sun = new com.badlogic.gdx.graphics.g3d.environment.DirectionalShadowLight(2048, 2048, 700f, 700f, 1f, 3000f);
-        sun.set(1.0f, 0.64f, 0.40f,   // warm low dawn sun
-                -ToonRenderer.SUN_TO_LIGHT.x, -ToonRenderer.SUN_TO_LIGHT.y, -ToonRenderer.SUN_TO_LIGHT.z);
-        sharedEnv = new com.badlogic.gdx.graphics.g3d.Environment();
-        sharedEnv.set(new com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute(
-                com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute.AmbientLight, 0.34f, 0.38f, 0.52f, 1f));
-        sharedEnv.add(sun);
-        sharedEnv.shadowMap = sun;
-        shadowBatch = new com.badlogic.gdx.graphics.g3d.ModelBatch(
-                new com.badlogic.gdx.graphics.g3d.utils.DepthShaderProvider());
-        shadowCenter = new Vector3(centerX, 0f, centerZ);
-        sunTravel = new Vector3(ToonRenderer.SUN_TO_LIGHT).scl(-1f);
-
-        renderer = new SnapRenderer(sharedEnv);
-        environment = new ToonRenderer(board, sharedEnv);
-        water = new WaterRenderer(environment.waterY(), environment.pondCenterX(), environment.pondCenterZ(),
-                environment.pondRadius(), ToonRenderer.SUN_TO_LIGHT, environment.sunColor());
-        post = new PostProcessor();
-        // Fog fades distant scenery toward the horizon colour.
-        com.badlogic.gdx.graphics.Color horizon = environment.skyColor();
-        sharedEnv.set(new com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute(
-                com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute.Fog, horizon.r, horizon.g, horizon.b, 1f));
+        boardView = new EngineBoardView(); // the board's real part models, via the instanced engine (GL20 path)
         editor = new SnapEditor(board);
         refreshScene();
     }
@@ -288,8 +254,8 @@ public final class SnapScreen extends ScreenAdapter {
         // while lastRevision stays behind, forcing one harmless extra refresh next frame — rather than
         // recording a newer revision than the scene reflects, which would drop that edit until the next.
         int rev = board.revision();
-        scene = SnapScene.of(board);
-        renderer.setScene(scene);
+        scene = SnapScene.of(board);           // pickable snapshot for the editor
+        boardView.setBoard(board.snapshot());  // the drawn parts, via the instanced engine
         lastRevision = rev;
     }
 
@@ -316,71 +282,29 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     @Override public void render(float dt) {
-        if (renderer != null && camera != null) {
+        boolean ready = boardView != null && camera != null;
+        if (ready) {
             flyCam.update(dt);
             if (board.revision() != lastRevision) {
                 refreshScene();
             }
-            editor.update(camera, scene, dt);
-            renderer.setHighlight(editor.hovered() != null ? editor.hovered().box() : null);
-            renderer.setGhost(editor.ghostRender(), editor.ghostValid());
-
-            // Phase R1 shadow pass: render the casters from the sun's POV into the depth map, BEFORE the
-            // screen clear (the shadow FBO must be filled before DefaultShader samples it below).
-            if (sun != null && environment != null) {
-                sun.begin(shadowCenter, sunTravel);
-                shadowBatch.begin(sun.getCamera());
-                com.badlogic.gdx.graphics.g3d.ModelInstance boardCaster = renderer.shadowCaster();
-                if (boardCaster != null) {
-                    shadowBatch.render(boardCaster);
-                }
-                for (com.badlogic.gdx.graphics.g3d.ModelInstance caster : environment.shadowCasters()) {
-                    shadowBatch.render(caster);
-                }
-                shadowBatch.end();
-                sun.end();
-            }
-
-            // Planar-reflection pass: re-render sky + scenery from a camera mirrored across the pond into the
-            // water's reflection buffer, also before the screen clear (the water shader samples it below).
-            if (water != null && environment != null) {
-                water.update(dt);
-                com.badlogic.gdx.graphics.Camera rc = water.beginReflection(camera, environment.skyColor());
-                environment.renderSky(rc);
-                environment.render(rc);
-                water.endReflection();
-            }
-        }
-
-        com.badlogic.gdx.graphics.Color sky = (environment != null) ? environment.skyColor() : null;
-        float cr = sky != null ? sky.r : 0.06f, cg = sky != null ? sky.g : 0.07f, cb = sky != null ? sky.b : 0.10f;
-
-        // The 3D scene renders into the post-processor's off-screen buffer; renderToScreen() then composites
-        // it back with bloom + vignette. The UI is drawn afterward so it stays crisp (un-bloomed).
-        boolean usePost = post != null && renderer != null && camera != null;
-        if (usePost) {
-            post.begin(cr, cg, cb);
-        } else {
-            Gdx.gl.glClearColor(cr, cg, cb, 1f);
-            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
-        }
-
-        if (renderer != null && camera != null) {
-            if (environment != null) {
-                environment.renderSky(camera); // gradient dome + sun glow (behind everything)
-                environment.render(camera);    // lit + shadowed ground / mountains / hills / trees
-            }
-            renderer.render(camera);           // board + ghost (shadowed via the shared environment)
-            if (water != null) {
-                water.render(camera);          // reflective pond (terrain shoreline depth-clips it)
-            }
+            editor.update(camera, scene, dt); // computes hovered/ghost for place/remove (ghost visual: TODO)
             updateStatus();
         }
 
-        if (usePost) {
-            post.end();
-            post.renderToScreen();
+        // Moderate neutral background (full component-light shading comes in a later milestone; the engine's
+        // baked part art is fullbright for now). The engine sets its own depth/cull state.
+        Gdx.gl.glClearColor(0.13f, 0.14f, 0.17f, 1f);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+
+        if (ready) {
+            boardView.render(camera); // the board's real part models, via the instanced engine (GL20 path)
         }
+
+        // The engine leaves GL_CULL_FACE + depth test enabled; scene2d assumes them off, so its HUD quads
+        // would be back-face-culled. Reset before drawing the UI.
+        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
 
         uiStage.act(dt);
         uiStage.draw();
@@ -406,12 +330,6 @@ public final class SnapScreen extends ScreenAdapter {
             camera.viewportWidth = width;
             camera.viewportHeight = height;
             camera.update();
-        }
-        if (water != null) {
-            water.resize(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
-        }
-        if (post != null) {
-            post.resize(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
         }
     }
 
@@ -537,17 +455,8 @@ public final class SnapScreen extends ScreenAdapter {
         }
         disposed = true;
         Gdx.input.setCursorCatched(false);
-        if (renderer != null) {
-            renderer.dispose();
-        }
-        if (environment != null) {
-            environment.dispose();
-        }
-        if (water != null) {
-            water.dispose();
-        }
-        if (post != null) {
-            post.dispose();
+        if (boardView != null) {
+            boardView.dispose();
         }
         if (!shuttingDown) {
             shuttingDown = true;
