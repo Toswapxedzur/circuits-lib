@@ -59,6 +59,11 @@ final class ComponentInstance {
         }
     }
 
+    /** The world position of this component's light emitter (its bulb, {@code entity.lightYOffset} above the base). */
+    void emitterWorld(Vector3 out) {
+        out.set(0f, entity.lightYOffset, 0f).mul(world);
+    }
+
     /** Adds this component's static boxes, translated to world space, into {@code out} (for the scene mesh). */
     void collectStatic(List<PartMesh.Box> out) {
         float tx = world.val[Matrix4.M03], ty = world.val[Matrix4.M13], tz = world.val[Matrix4.M23];

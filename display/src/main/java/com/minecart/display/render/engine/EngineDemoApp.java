@@ -99,8 +99,9 @@ public final class EngineDemoApp extends ApplicationAdapter {
             world.setToTranslation((i++ - mid) * SPACING, 0f, 0f);
             Color tint = new Color().fromHsv(Parts.PLASTIC_HSV[c][0], Parts.PLASTIC_HSV[c][1], Parts.PLASTIC_HSV[c][2]);
             tint.a = 1f;
+            // The LED both tints its greyscale bulb AND emits a point light of that colour onto its neighbours.
             engine.add(new ComponentInstance(loader.model("led_" + Parts.PLASTIC_NAME[c]), world,
-                    new ComponentEntity(tint)));
+                    new ComponentEntity(tint).emit(tint, 55f)));
         }
 
         float wx = (COUNT - 1 - mid) * SPACING + 16.5f;                  // right edge of the classic row

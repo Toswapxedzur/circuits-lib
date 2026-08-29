@@ -2,9 +2,11 @@ package com.minecart.display.render.engine;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Camera;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 
 import java.util.ArrayList;
@@ -41,9 +43,18 @@ final class EngineRenderer implements Disposable {
     static final class DynamicEntity {
         final ComponentModel model;
         final Matrix4 pose = new Matrix4();
+        Color light = null;       // optional point-light emission (a moving entity that glows); null = none
+        float lightRange = 0f;
 
         DynamicEntity(ComponentModel model) {
             this.model = model;
+        }
+
+        /** Makes this entity a point light of {@code colour} / {@code range} world units (fluent). */
+        DynamicEntity emit(Color colour, float range) {
+            this.light = colour;
+            this.lightRange = range;
+            return this;
         }
 
         /** Sets the world transform used for the next {@link EngineRenderer#render} (the physics pose). */
@@ -56,6 +67,12 @@ final class EngineRenderer implements Disposable {
     private final boolean instanced = Gdx.gl30 != null;
     private final ShaderProgram shader = InstancedShader.create(instanced);
     private final Matrix4 identity = new Matrix4();
+
+    // Point-light collection buffers (LEDs / glowing entities) — filled each frame, pushed to the shader arrays.
+    private final float[] lightPos = new float[InstancedShader.MAX_LIGHTS * 3];
+    private final float[] lightCol = new float[InstancedShader.MAX_LIGHTS * 3];
+    private final float[] lightRng = new float[InstancedShader.MAX_LIGHTS];
+    private final Vector3 tmpEmit = new Vector3();
 
     private final List<ComponentInstance> components = new ArrayList<>();
     private final List<PartMesh.Box> extraStatic = new ArrayList<>();
@@ -164,7 +181,7 @@ final class EngineRenderer implements Disposable {
         shader.setUniformf("u_ambient", 0.60f, 0.60f, 0.62f);
         shader.setUniformf("u_lightDir", 0.337f, 0.842f, 0.421f);   // normalized, TO the light
         shader.setUniformf("u_lightColor", 0.45f, 0.45f, 0.42f);
-        shader.setUniformi("u_numLights", 0);
+        applyPointLights();
 
         // --- Opaque pass: scene mesh (world space) + every movable type, depth-written. ---
         if (staticOpaque != null) {
@@ -198,6 +215,39 @@ final class EngineRenderer implements Disposable {
             Gdx.gl.glDepthMask(true);
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
+    }
+
+    /** Gathers up to {@link InstancedShader#MAX_LIGHTS} point lights (emitting components + glowing entities) and
+     *  pushes them to the shader's light arrays. Called once per frame before the passes. */
+    private void applyPointLights() {
+        int nl = 0;
+        for (ComponentInstance c : components) {
+            if (nl >= InstancedShader.MAX_LIGHTS) break;
+            ComponentEntity e = c.entity;
+            if (e.emits()) {
+                c.emitterWorld(tmpEmit);
+                putLight(nl++, tmpEmit, e.light, e.lightRange);
+            }
+        }
+        for (DynamicEntity en : entities) {
+            if (nl >= InstancedShader.MAX_LIGHTS) break;
+            if (en.light != null && en.lightRange > 0f) {
+                en.pose.getTranslation(tmpEmit);
+                putLight(nl++, tmpEmit, en.light, en.lightRange);
+            }
+        }
+        shader.setUniformi("u_numLights", nl);
+        if (nl > 0) {
+            shader.setUniform3fv("u_lightPos", lightPos, 0, nl * 3);
+            shader.setUniform3fv("u_lightColor2", lightCol, 0, nl * 3);
+            shader.setUniform1fv("u_lightRange", lightRng, 0, nl);
+        }
+    }
+
+    private void putLight(int i, Vector3 pos, Color c, float range) {
+        lightPos[i * 3] = pos.x; lightPos[i * 3 + 1] = pos.y; lightPos[i * 3 + 2] = pos.z;
+        lightCol[i * 3] = c.r; lightCol[i * 3 + 1] = c.g; lightCol[i * 3 + 2] = c.b;
+        lightRng[i] = range;
     }
 
     private void disposeMeshes() {
