@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SnapSceneGeometryTest {
 
     private static final float EPS = 1e-4f;
-    private static final float S = SnapSceneGeometry.BUMP_SPACING; // 16
+    private static final float S = SnapSceneGeometry.BUMP_SPACING; // 24 (unified to the engine pitch)
 
     @Test
     void horizontalBatteryBarSpansItsTwoBumps() {
