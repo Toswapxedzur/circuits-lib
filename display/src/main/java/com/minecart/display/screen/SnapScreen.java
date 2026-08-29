@@ -132,6 +132,12 @@ public final class SnapScreen extends ScreenAdapter {
 
         boardView = new EngineBoardView(); // the board's real part models, via the instanced engine (GL20 path)
         ghostShapes = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
+        // DEV: -Dsnap.skylight=ne|nw|se|sw overrides the skylight octant so the baked variants can be compared.
+        String sky = System.getProperty("snap.skylight");
+        if (sky != null) {
+            float sx = sky.contains("w") ? -0.5f : 0.5f, sz = sky.contains("s") ? -0.5f : 0.5f;
+            boardView.setLightDir(sx, 0.7071f, sz);
+        }
         // The base board the parts sit on: tiled from committed cell + stud sprites, top surface at y=0.
         boardView.setBaseBoard(board.width(), board.height(), 0f);
         editor = new SnapEditor(board);

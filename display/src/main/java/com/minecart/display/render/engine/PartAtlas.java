@@ -30,12 +30,14 @@ final class PartAtlas implements Disposable {
     private final Texture texture;
     private final Map<String, Region> regions = new HashMap<>();
 
-    PartAtlas(Collection<String> spriteNames) {
-        // Load every referenced sprite PNG (fixed, committed). Distinct names only.
+    PartAtlas(Collection<String> spriteNames, PaletteDither.Octant octant) {
+        // Load every referenced sprite PNG (fixed, committed), for the current skylight OCTANT — each name has a
+        // committed <name>_<octant>.png variant (see SeedPartTextures). Regions are keyed by the BASE name, so the
+        // mesh baker requests the octant-independent name and gets the lit variant. Distinct names only.
         List<String> names = new ArrayList<>();
         List<Pixmap> pixmaps = new ArrayList<>();
         for (String name : new java.util.LinkedHashSet<>(spriteNames)) {
-            FileHandle f = Gdx.files.internal("textures/parts/" + name + ".png");
+            FileHandle f = Gdx.files.internal("textures/parts/" + name + octant.suffix + ".png");
             if (!f.exists()) {
                 throw new GdxRuntimeException("Missing sprite PNG: " + f.path()
                         + " — run ./gradlew :display:seedtextures first.");

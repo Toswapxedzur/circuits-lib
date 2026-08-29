@@ -46,25 +46,31 @@ public final class SeedPartTextures extends ApplicationAdapter {
         Gdx.app.log("seed", "writing sprites to " + dir.file().getAbsolutePath());
         Set<String> seen = new LinkedHashSet<>();
         int count = 0;
+        // Every sprite is drawn 4× — once per SKYLIGHT OCTANT — and written as <name>_<octant>.png. The runtime
+        // atlas loads the variant matching the current skylight; the light is BAKED, never computed at runtime.
         for (PaletteDither.Face f : PaletteDither.faces(boxes)) {
             String name = PaletteDither.faceName(f.box(), f.faceId());
             if (!seen.add(name)) {
                 continue; // identical object-space face already drawn (shared across instances)
             }
-            Pixmap pm = PaletteDither.drawFace(f.box(), f.faceId());
-            PixmapIO.writePNG(dir.child(name + ".png"), pm);
-            pm.dispose();
-            count++;
+            for (PaletteDither.Octant o : PaletteDither.Octant.values()) {
+                Pixmap pm = PaletteDither.drawFace(f.box(), f.faceId(), o);
+                PixmapIO.writePNG(dir.child(name + o.suffix + ".png"), pm);
+                pm.dispose();
+                count++;
+            }
         }
         for (PartMesh.Quad q : quads) {                 // oriented-quad sprites (tilted plates)
             String name = q.sprite();
             if (!seen.add(name)) continue;
-            Pixmap pm = PaletteDither.drawQuad(q);
-            PixmapIO.writePNG(dir.child(name + ".png"), pm);
-            pm.dispose();
-            count++;
+            for (PaletteDither.Octant o : PaletteDither.Octant.values()) {
+                Pixmap pm = PaletteDither.drawQuad(q, o);
+                PixmapIO.writePNG(dir.child(name + o.suffix + ".png"), pm);
+                pm.dispose();
+                count++;
+            }
         }
-        Gdx.app.log("seed", "done: " + count + " sprites");
+        Gdx.app.log("seed", "done: " + count + " sprites (" + (count / 4) + " × 4 octants)");
         Gdx.app.exit();
     }
 

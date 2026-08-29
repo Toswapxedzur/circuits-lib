@@ -85,7 +85,6 @@ final class InstancedShader {
             uniform sampler2D u_atlas;
             uniform vec3 u_ambient;
             uniform vec3 u_lightDir;
-            uniform vec3 u_lightColor;
             uniform int u_numLights;
             uniform vec3 u_lightPos[NUM_LIGHTS];
             uniform vec3 u_lightColor2[NUM_LIGHTS];
@@ -99,8 +98,10 @@ final class InstancedShader {
             // (A driver quirk: the same sample reads black when done inside this function but works in main(); keep
             // all sampling in main() to sidestep it.)
             vec3 shade(vec3 N, vec3 worldPos, float sf) {
-                float ndl = max(dot(N, u_lightDir), 0.0);
-                vec3 lit = u_ambient + u_lightColor * (ndl * sf);
+                // The SKYLIGHT directional is BAKED into the texel (per-octant, see PaletteDither) — the shader
+                // just passes that base through (u_ambient ~ 1.0) and STACKS user point lights on top. sf is the
+                // shadow factor: it darkens the baked base in shadowed areas (demo GL3.2 path only).
+                vec3 lit = u_ambient * sf;
                 for (int i = 0; i < NUM_LIGHTS; i++) {
                     if (i >= u_numLights) break;
                     vec3 d = u_lightPos[i] - worldPos;

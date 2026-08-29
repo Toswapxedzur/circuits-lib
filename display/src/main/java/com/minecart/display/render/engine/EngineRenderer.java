@@ -165,7 +165,7 @@ final class EngineRenderer implements Disposable {
         }
         Set<String> names = new LinkedHashSet<>();
         PartMesh.collectSpriteNames(forAtlas, quadsForAtlas, names);
-        atlas = new PartAtlas(names);
+        atlas = new PartAtlas(names, PaletteDither.Octant.of(lightDir.x, lightDir.z)); // baked skylight variant
 
         // Split by translucency: opaque parts (+ all quads) render first; translucent parts (e.g. the LED's
         // glass core) render after, blended, without writing depth.
@@ -289,11 +289,11 @@ final class EngineRenderer implements Disposable {
         shader.bind();
         shader.setUniformMatrix("u_projView", cam.combined);
 
-        // Lighting: a moderate ambient + a soft directional key light (which casts the shadow map), plus the
-        // point lights (LEDs) collected below.
-        shader.setUniformf("u_ambient", 0.60f, 0.60f, 0.62f);
+        // Lighting: the skylight directional is BAKED into the sprites (per-octant), so u_ambient is ~1.0 — it
+        // passes that baked base through — and the point lights (LEDs) stack on top. u_lightDir is still needed
+        // for the shadow-map bias below.
+        shader.setUniformf("u_ambient", 1.0f, 1.0f, 1.0f);
         shader.setUniformf("u_lightDir", lightDir.x, lightDir.y, lightDir.z);
-        shader.setUniformf("u_lightColor", 0.45f, 0.45f, 0.42f);
         applyPointLights();
         if (shadowMap != null && SHADOWS) {
             shader.setUniformMatrix("u_lightViewProj", shadowMap.viewProj());
