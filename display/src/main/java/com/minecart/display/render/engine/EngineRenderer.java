@@ -76,7 +76,14 @@ final class EngineRenderer implements Disposable {
 
     // Shadow map (the directional key light casts real shadows). Depth pass uses the depth shader; the main
     // shader samples the map. Aimed at the scene's bounds (computed at build()).
-    private static final Vector3 LIGHT_DIR = new Vector3(0.52f, 0.62f, 0.59f).nor(); // ~38° sun, TO the light — angled so parts cast readable shadows
+    // The SKYLIGHT — the world's default natural light. Default 45° pitch / 45° yaw (owner spec); TO the light.
+    // (45° pitch: y=sin45; 45° yaw of the horizontal component: x=z=cos45·cos45.) Configurable via setLightDir;
+    // user-placed lights (LED point lights) stack additively on top of this base in the shader.
+    private final Vector3 lightDir = new Vector3(0.5f, 0.7071f, 0.5f); // 45°/45°, |·|=1
+    /** Sets the skylight direction (TO the light; will be normalised). Default 45° pitch / 45° yaw. */
+    public void setLightDir(float x, float y, float z) {
+        lightDir.set(x, y, z).nor();
+    }
     // Directional shadow map — WORKING (verified: parts cast soft shadows on the board slab, no acne, in both the
     // GL3.2 demo and the GL2.0 app). A hardware 24-bit DEPTH TEXTURE (see ShadowMap/DepthShader), sampled .r with a
     // 3x3 PCF in the main shader. The light ortho is fit to a TIGHT world AABB each frame (updateFrameBounds →
@@ -271,7 +278,7 @@ final class EngineRenderer implements Disposable {
         // --- Shadow pass: render the opaque scene's depth from the light's ortho POV into the shadow map. ---
         if (shadowMap != null && SHADOWS) {
             updateFrameBounds(); // cover the parts (entities/movables), which build-time static bounds miss
-            shadowMap.begin(sceneCentre, sceneHalf, LIGHT_DIR);
+            shadowMap.begin(sceneCentre, sceneHalf, lightDir);
             depthShader.bind();
             depthShader.setUniformMatrix("u_projView", shadowMap.viewProj());
             renderOpaqueMeshes(depthShader);
@@ -285,7 +292,7 @@ final class EngineRenderer implements Disposable {
         // Lighting: a moderate ambient + a soft directional key light (which casts the shadow map), plus the
         // point lights (LEDs) collected below.
         shader.setUniformf("u_ambient", 0.60f, 0.60f, 0.62f);
-        shader.setUniformf("u_lightDir", LIGHT_DIR.x, LIGHT_DIR.y, LIGHT_DIR.z);
+        shader.setUniformf("u_lightDir", lightDir.x, lightDir.y, lightDir.z);
         shader.setUniformf("u_lightColor", 0.45f, 0.45f, 0.42f);
         applyPointLights();
         if (shadowMap != null && SHADOWS) {
