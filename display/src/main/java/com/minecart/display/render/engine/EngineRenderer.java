@@ -77,13 +77,15 @@ final class EngineRenderer implements Disposable {
     // Shadow map (the directional key light casts real shadows). Depth pass uses the depth shader; the main
     // shader samples the map. Aimed at the scene's bounds (computed at build()).
     private static final Vector3 LIGHT_DIR = new Vector3(0.337f, 0.842f, 0.421f); // normalized, TO the light
-    // Directional shadow map. PROGRESS this pass: the black-screen root cause was found + fixed — the light
-    // camera aimed at default (0,0,0) bounds while parts render on the ENTITY path, so they fell outside the
-    // frustum (fragDepth>1 → shadowed everywhere). Now updateFrameBounds() recomputes the bounds each frame from
-    // the actual entities/movables (+ a radius cap for precision). REMAINING (why still gated OFF): a residual
-    // constant depth-offset still acnes FLAT RECEIVERS (a board slab) to black — a large bias (~0.05) only
-    // peter-pans it. Tried + ruled out: gl_FragCoord.z vs a v_depth varying, radius-scaled bias, radius cap,
-    // GL_DITHER off. Next suspect: the RGBA8 depth pack precision / FBO depth format. Flip to true to resume.
+    // Directional shadow map — the depth pass, aim, sample + compare are all wired; the shadow is sampled in
+    // main() and passed into shade(). FIXED this work: the black-screen bounds bug (light aimed at default
+    // (0,0,0) while parts render on the ENTITY path → outside the frustum) — updateFrameBounds() now recomputes
+    // the bounds each frame from the real geometry. STILL GATED OFF: flat receivers over-shadow to black (acne),
+    // and it's fragile. Two concrete causes to fix in a focused pass: (1) a tall outlier (the demo's floating
+    // resistor at y60) blows up the bounds' vertical extent → the flat parts get almost no depth precision →
+    // acne — clamp/ignore vertical outliers or use a tight AABB not a bounding SPHERE; (2) the RGBA8-packed depth
+    // is coarse — switch to a hardware DEPTH TEXTURE (sampler2DShadow + PCF) instead of colour-packing. Flip to
+    // true to resume. Lighting (ambient + directional + LED point lights) is fully working without it.
     private static final boolean SHADOWS = false;
     private final ShaderProgram depthShader = DepthShader.create(instanced);
     private ShadowMap shadowMap;
