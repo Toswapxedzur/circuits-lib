@@ -40,7 +40,25 @@ final class ModelLoader {
                         new BindingSpec(mv.bindingType, mv.channel, mv.axis));
             }
         }
+        if (j.collision != null) {
+            b.collision(toCollision(j.collision));
+        }
         return b.build();
+    }
+
+    /** Converts the JSON AABB (from/to corners) into the runtime collision box (centre + half-extents). */
+    private static ComponentModel.Collision toCollision(ModelJson.Collision c) {
+        float cx = (c.from[0] + c.to[0]) / 2f, cy = (c.from[1] + c.to[1]) / 2f, cz = (c.from[2] + c.to[2]) / 2f;
+        float hx = (c.to[0] - c.from[0]) / 2f, hy = (c.to[1] - c.from[1]) / 2f, hz = (c.to[2] - c.from[2]) / 2f;
+        ComponentModel.FaceMaterial[] faces = null;
+        if (c.faces != null) {
+            faces = new ComponentModel.FaceMaterial[c.faces.length];
+            for (int i = 0; i < c.faces.length; i++) {
+                ModelJson.Face f = c.faces[i];
+                if (f != null) faces[i] = new ComponentModel.FaceMaterial(f.friction, f.restitution, f.solid);
+            }
+        }
+        return new ComponentModel.Collision(cx, cy, cz, hx, hy, hz, c.friction, c.restitution, faces);
     }
 
     /** Loads (and caches) a movable part-type by id (a model JSON with only elements). */

@@ -20,17 +20,28 @@ final class ComponentModel {
     /** A movable sub-part: its part-type, placement within the component, and how it moves (as serialisable data). */
     record MovablePart(PartType type, Matrix4 local, BindingSpec binding) {}
 
+    /** The part's single <b>axis-aligned</b> collision box (object space): centre + half-extents, a default
+     *  material, and optional per-face overrides. Generated at datagen (see {@link ModelJson.Collision}); the
+     *  physics turns it into a {@code btBoxShape}. May be null for a geometry-less model. */
+    record Collision(float cx, float cy, float cz, float hx, float hy, float hz,
+                     float friction, float restitution, FaceMaterial[] faces) {}
+
+    /** A per-face collision-material override (index = faceId 0..5). Null fields fall back to the box defaults. */
+    record FaceMaterial(Float friction, Float restitution, Boolean solid) {}
+
     final String id;
     final List<PartMesh.Box> staticBoxes;
     final List<PartMesh.Quad> staticQuads;
     final List<MovablePart> movableParts;
+    final Collision collision;                  // the axis-aligned collision box (may be null)
 
     private ComponentModel(String id, List<PartMesh.Box> staticBoxes, List<PartMesh.Quad> staticQuads,
-                           List<MovablePart> movableParts) {
+                           List<MovablePart> movableParts, Collision collision) {
         this.id = id;
         this.staticBoxes = staticBoxes;
         this.staticQuads = staticQuads;
         this.movableParts = movableParts;
+        this.collision = collision;
     }
 
     static Builder of(String id) {
@@ -42,9 +53,16 @@ final class ComponentModel {
         private final List<PartMesh.Box> statics = new ArrayList<>();
         private final List<PartMesh.Quad> quads = new ArrayList<>();
         private final List<MovablePart> movables = new ArrayList<>();
+        private Collision collision;
 
         private Builder(String id) {
             this.id = id;
+        }
+
+        /** Sets the loaded axis-aligned collision box (ModelLoader passes the datagen'd one). */
+        Builder collision(Collision c) {
+            this.collision = c;
+            return this;
         }
 
         Builder box(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint) {
@@ -103,7 +121,7 @@ final class ComponentModel {
         }
 
         ComponentModel build() {
-            return new ComponentModel(id, List.copyOf(statics), List.copyOf(quads), List.copyOf(movables));
+            return new ComponentModel(id, List.copyOf(statics), List.copyOf(quads), List.copyOf(movables), collision);
         }
     }
 }
