@@ -26,19 +26,33 @@ public final class EngineBoardView implements Disposable {
     private final EngineRenderer engine = new EngineRenderer();
     private final ModelLoader loader = new ModelLoader();
     private boolean built;
+    private boolean hasBase;
 
     public EngineBoardView() {
     }
 
-    /** Rebuilds the drawn parts from a board snapshot (drop → repopulate → bake). Call on show + on revision bump. */
+    /**
+     * Adds the <b>base board</b> the parts sit on — a {@code cols}×{@code rows} grid tiled from the committed
+     * (datagen) board-cell + stud sprites (see {@link SnapBaseBoard}), top surface at {@code topY}. Call ONCE
+     * before the first {@link #setBoard}; it becomes static geometry (survives part rebuilds) so the board stays
+     * visible even when empty. Nothing is generated at runtime — only committed sprites are tiled.
+     */
+    public void setBaseBoard(int cols, int rows, float topY) {
+        engine.addStatic(SnapBaseBoard.build(cols, rows, topY));
+        hasBase = true;
+    }
+
+    /** Rebuilds the drawn parts from a board snapshot (drop → repopulate → bake). Call on show + on revision bump.
+     *  The base board (if set) is static, so it persists across rebuilds and keeps the board visible when empty. */
     public void setBoard(Iterable<SnapPlacement> placements) {
-        if (!placements.iterator().hasNext()) {
-            // Empty board: nothing to bake (an empty atlas would be degenerate). Stop drawing until parts return.
+        boolean anyParts = placements.iterator().hasNext();
+        if (!anyParts && !hasBase) {
+            // Nothing at all to bake (an empty atlas would be degenerate). Stop drawing until parts return.
             engine.clearEntities();
             built = false;
             return;
         }
-        SnapBoardScene.rebuild(engine, loader, placements);
+        SnapBoardScene.rebuild(engine, loader, placements); // clears entities, repopulates, rebakes (base slab kept)
         built = true;
     }
 
