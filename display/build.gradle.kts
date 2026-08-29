@@ -69,7 +69,7 @@ tasks.register<JavaExec>("entityproof") {
 tasks.register<JavaExec>("entitydemo") {
     group = "application"
     description = "World-entity lifecycle demo — a battery ejects into a physics entity and re-sockets"
-    mainClass = "com.minecart.display.entity.EntityDemoApp"
+    mainClass = "com.minecart.display.render.engine.EntityDemoApp"
     classpath = sourceSets["main"].runtimeClasspath
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")

@@ -94,6 +94,8 @@ final class Parts {
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel lamp;                                                     // white-encased bulb (single)
     final ComponentModel tee;                                                      // T-base barebones (triangular 4-port)
+    final ComponentModel batteryCell;                                              // loose battery entity (orange+black cell)
+    final ComponentModel slab;                                                     // neutral grey unit slab (scenery, scaled via pose)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
@@ -178,6 +180,9 @@ final class Parts {
                 PLASTIC_HSV[WIRE_COLOR][0], PLASTIC_HSV[WIRE_COLOR][1], PLASTIC_HSV[WIRE_COLOR][2]);
         lamp = buildLamp(WHITE_PLASTIC);
         tee = buildTee(PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2])); // lime, demo
+        batteryCell = buildBatteryCell();
+        slab = ComponentModel.of("slab").box(0f, 0f, 0f, 1f, 1f, 1f,
+                new PaletteDither.Paint(PaletteDither.grays(4, 0.32f, 0.48f), Color.WHITE, 1, 0.3f, false, 701L, 0f, 0f, 0f, 1f, 1f)).build();
         for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
             wires[n - WIRE_MIN] = buildWire(n, azure);
         }
@@ -294,6 +299,26 @@ final class Parts {
     }
 
     /**
+     * A loose <b>battery cell</b> — the removable world ENTITY that pops out of a battery holder (the holder is
+     * a separate "battery box" part; this cell is what tumbles as a physics entity). Snap-Circuits AA look: an
+     * orange wrap over most of the length, a black band at the <b>+</b> end, and a small steel terminal nub.
+     * Modelled as a 6×6 box lying along X (length 18), <b>centred on the origin</b> so its physics body (a
+     * matching box) tumbles about its own centre. Blocky LEGO style, sharing the series' steel/plastic DNA.
+     */
+    private ComponentModel buildBatteryCell() {
+        Color[] orange = PaletteDither.rampHsv(PLASTIC_HSV[1][0], PLASTIC_HSV[1][1], PLASTIC_HSV[1][2]);
+        float r = shadeR(9f);                                       // half-length 9 along X
+        PaletteDither.Paint wrap = new PaletteDither.Paint(orange, Color.WHITE, 2, 0.3f, false, 611L, 0f, 0f, 0f, r, 1f);
+        PaletteDither.Paint capEnd = new PaletteDither.Paint(SERIES_BLACK, Color.WHITE, 2, 0.3f, false, 612L, 0f, 0f, 0f, r, 1f);
+        PaletteDither.Paint nub = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, 613L, 0f, 0f, 0f, STUD_R, 1f);
+        return ComponentModel.of("battery_cell")
+                .box(-3f, 0f, 0f, 12f, 6f, 6f, wrap)                // orange wrap  x -9..3
+                .box(6f, 0f, 0f, 6f, 6f, 6f, capEnd)                // black + end  x 3..9
+                .box(9.5f, 0f, 0f, 1f, 2f, 2f, nub)                 // + terminal   x 9..10
+                .build();
+    }
+
+    /**
      * Resistor: the standard base + a horizontal tan body (11×3×3) laid across it, banded with three colour
      * codes. The body is built as 4 tan segments + 3 colour bands (all 3×3, abutting) so no faces overlap —
      * neighbour culling drops the seams. Body + bands are colour-independent → they dedupe across every base hue.
@@ -355,21 +380,22 @@ final class Parts {
 
     /**
      * Lamp (Snap-Circuits L1, the white-encased variant): the standard base + a <b>white-plastic tube</b>
-     * enclosing the light. The whole enclosure is <b>5px tall</b> (owner spec — the visible white tube+cap):
-     * a 7×7 fence (1px walls → inner 5×5 hollow) <b>4px tall (y4..8)</b> capped by a <b>7×7 translucent top
-     * cover 1px tall (y8..9)</b> → top at y9, 5px above the base top. There is <b>no solid core</b> — a single
-     * <b>thin film</b> (5×5×1, y5..6) sits low inside and <b>is the light</b> (it lights up when the lamp is on;
-     * that on/off mechanism is not yet wired, so it renders as a static translucent disc). Walls are opaque
-     * white plastic; the film + cover are translucent (blended pass). All features odd-width, centred on 0.
+     * enclosing the light. The enclosure (opaque white fence) is <b>7px tall</b>: 7×7 (1px walls → inner 5×5
+     * hollow), <b>y4..11</b>. The light is <b>ONE translucent film 5px tall</b> — a 5×5×5 block at the <b>top</b>
+     * of the hollow, <b>y6..11</b>, its top flush with the wall rim so that top face IS the glowing cover (there
+     * is NO separate cap). It lights up when the lamp is on; that on/off mechanism is not yet wired, so it
+     * renders as a static translucent block. Walls are opaque white plastic; the film is translucent (blended
+     * pass). All features odd-width, centred on 0.
      */
     private ComponentModel buildLamp(Color[] pal) {
         return base("lamp", pal, whiteTrace())
-                .box(-3f, 6f, 0f, 1f, 4f, 7f, lampWall(931L))   // fence: left wall  x -3.5..-2.5, y4..8 (4px)
-                .box(3f, 6f, 0f, 1f, 4f, 7f, lampWall(931L))    // fence: right wall x  2.5.. 3.5
-                .box(0f, 6f, -3f, 5f, 4f, 1f, lampWall(932L))   // fence: front wall z -3.5..-2.5 (fills the gap)
-                .box(0f, 6f, 3f, 5f, 4f, 1f, lampWall(932L))    // fence: back wall  z  2.5.. 3.5
-                .box(0f, 5.5f, 0f, 5f, 1f, 5f, lampGlass(934L), false, true)  // thin film (the light) y5..6
-                .box(0f, 8.5f, 0f, 7f, 1f, 7f, lampGlass(935L), false, true)  // 7×7 translucent top cover y8..9 → top y9 = 5px tall
+                // The tube = 4 ZERO-THICKNESS white-plastic wall panels, 7×7, 7px tall (y4..11)
+                .box(-3.5f, 7.5f, 0f, 0f, 7f, 7f, lampWall(931L))   // left panel  x=-3.5 (7 tall × 7 deep)
+                .box(3.5f, 7.5f, 0f, 0f, 7f, 7f, lampWall(931L))    // right panel x= 3.5
+                .box(0f, 7.5f, -3.5f, 7f, 7f, 0f, lampWall(932L))   // front panel z=-3.5 (7 wide × 7 tall)
+                .box(0f, 7.5f, 3.5f, 7f, 7f, 0f, lampWall(932L))    // back panel  z= 3.5
+                // the thin film = a ZERO-THICKNESS translucent horizontal plate, 7×7, at y9 (5px above the base)
+                .box(0f, 9f, 0f, 7f, 0f, 7f, lampGlass(934L), false, true)
                 .build();
     }
 
@@ -447,6 +473,8 @@ final class Parts {
         for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
         m.put("lamp", lamp); // single white-encased bulb
         m.put("tee", tee);   // T-base barebones (triangular 4-port shape)
+        m.put("battery_cell", batteryCell); // loose battery entity (orange+black cell)
+        m.put("slab", slab); // neutral grey scenery slab (unit box, scaled via pose)
         for (int c = 0; c < PLASTIC_NAME.length; c++) {
             m.put("switch_" + PLASTIC_NAME[c], switches[c]);
             m.put("press_" + PLASTIC_NAME[c], pressSwitches[c]);
