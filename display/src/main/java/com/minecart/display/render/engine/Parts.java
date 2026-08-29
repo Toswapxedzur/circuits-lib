@@ -284,14 +284,15 @@ final class Parts {
      */
     private ComponentModel buildTee(Color[] pal) {
         ComponentModel.Builder b = rims(ComponentModel.of("tee"), pal, null); // the 33×9 bar (3 layers)
-        // stem: a 9×9 arm from the centre out to the front, same 3-layer rim/band/rim profile, centre z=−9
-        b = b.box(0f, 0.5f, -9f, 9f, 1f, 9f, plastic(111L, pal))   // stem bottom rim y0..1
-                .box(0f, 3.5f, -9f, 9f, 1f, 9f, plastic(212L, pal)) // stem top rim y3..4
-                .box(0f, 2f, -9f, 9f, 2f, 9f, band(313L));          // stem white band y1..3
-        for (float sx : new float[]{-6f, 6f}) {                     // two 3×3 corner squares (front notch, both sides)
-            b = b.box(sx, 0.5f, -6f, 3f, 1f, 3f, plastic(121L, pal))
-                    .box(sx, 3.5f, -6f, 3f, 1f, 3f, plastic(222L, pal))
-                    .box(sx, 2f, -6f, 3f, 2f, 3f, band(323L));
+        // stem: a 9-wide × 12-deep arm from the centre out to the front (centre z=−10.5). Depth is 12 (not 9)
+        // so the stem-tip stud at z=−12 gets the same 3px buffer the bar ends have (stem front reaches −16.5).
+        b = b.box(0f, 0.5f, -10.5f, 9f, 1f, 12f, plastic(111L, pal))   // stem bottom rim y0..1
+                .box(0f, 3.5f, -10.5f, 9f, 1f, 12f, plastic(212L, pal)) // stem top rim y3..4
+                .box(0f, 2f, -10.5f, 9f, 2f, 12f, band(313L));          // stem white band y1..3
+        for (float sx : new float[]{-7.5f, 7.5f}) {                     // two 6×6 corner squares against the stem
+            b = b.box(sx, 0.5f, -7.5f, 6f, 1f, 6f, plastic(121L, pal))  // walls, on the bar front (z −4.5..−10.5)
+                    .box(sx, 3.5f, -7.5f, 6f, 1f, 6f, plastic(222L, pal))
+                    .box(sx, 2f, -7.5f, 6f, 2f, 6f, band(323L));        // → two-step slope 33→21→9 ≈ triangle
         }
         b = studs(b);                                               // bar-end ports (±12,0)
         b = b.box(0f, 4.5f, -12f, 3f, 1f, 3f, stud(404L, 0f, 4.5f, -12f)); // stem-tip stud
