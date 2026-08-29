@@ -21,6 +21,10 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.minecart.client.logic.ClientLevel;
 import com.minecart.client.network.ClientConnection;
 import com.minecart.display.DisplayApp;
+import com.badlogic.gdx.physics.bullet.Bullet;
+import com.badlogic.gdx.physics.bullet.collision.btBoxShape;
+import com.minecart.display.entity.EntityWorld;
+import com.minecart.display.entity.WorldClock;
 import com.minecart.display.input.FreeCameraController;
 import com.minecart.display.render.engine.EngineBoardView;
 import com.minecart.display.render.snap.SnapEditor;
@@ -67,6 +71,13 @@ public final class SnapScreen extends ScreenAdapter {
     private SnapScene scene;             // pickable snapshot for the editor (renderer-agnostic geometry)
     private SnapEditor editor;
     private InputMultiplexer input;
+
+    // The world PHYSICS — its own fixed-timestep clock, SEPARATE from the electrical tick (the server-side
+    // circuit solve). Static colliders come from each placed part's datagen collision box; entities (a loose
+    // battery, …) will rest on/against them. Optional: if Bullet can't init, the screen still renders.
+    private EntityWorld physics;
+    private WorldClock physicsClock;
+    private static boolean bulletReady;
 
     private Label statusLabel;
     private TextButton[] hotbarButtons;
@@ -120,6 +131,29 @@ public final class SnapScreen extends ScreenAdapter {
         boardView = new EngineBoardView(); // the board's real part models, via the instanced engine (GL20 path)
         editor = new SnapEditor(board);
         refreshScene();
+        initPhysics();
+    }
+
+    /** Builds the world physics: a Bullet {@link EntityWorld} with a static collider per placed part (its datagen
+     *  axis-aligned box), stepped on its own fixed clock. Best-effort — a physics failure never blocks rendering. */
+    private void initPhysics() {
+        try {
+            if (!bulletReady) {
+                Bullet.init();
+                bulletReady = true;
+            }
+            physics = new EntityWorld();
+            physicsClock = new WorldClock(60f, 5);
+            int n = 0;
+            for (EngineBoardView.PartCollider c : boardView.colliders(board.snapshot())) {
+                physics.addStatic(new btBoxShape(new com.badlogic.gdx.math.Vector3(c.hx(), c.hy(), c.hz())), c.world());
+                n++;
+            }
+            log.info("snap physics: {} static part colliders (physics clock 60Hz, separate from the electric tick)", n);
+        } catch (Throwable t) {
+            log.warn("snap physics init failed; continuing without it", t);
+            physics = null;
+        }
     }
 
     // --- UI -------------------------------------------------------------------------------------
@@ -285,6 +319,14 @@ public final class SnapScreen extends ScreenAdapter {
         boolean ready = boardView != null && camera != null;
         if (ready) {
             flyCam.update(dt);
+            // The PHYSICS clock: fixed 60Hz steps, independent of the electrical-signal tick (the circuit solve,
+            // which runs event-driven on the server's own logic tick). The two simulations never share a clock.
+            if (physics != null) {
+                int steps = physicsClock.advance(dt);
+                for (int i = 0; i < steps; i++) {
+                    physics.step(physicsClock.step());
+                }
+            }
             if (board.revision() != lastRevision) {
                 refreshScene();
             }
@@ -457,6 +499,9 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.input.setCursorCatched(false);
         if (boardView != null) {
             boardView.dispose();
+        }
+        if (physics != null) {
+            physics.dispose();
         }
         if (!shuttingDown) {
             shuttingDown = true;
