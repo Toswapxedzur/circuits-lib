@@ -71,6 +71,7 @@ final class Parts {
     // White plastic body — the band's grays (0.85–1.0), so the white piece + lamp walls are seamlessly white.
     private static final Color[] WHITE_PLASTIC = PaletteDither.grays(7, 0.85f, 1.0f);
     private static final Color[] LAMP_GLASS = PaletteDither.grays(6, 0.72f, 1.00f); // translucent warm-white film/cap
+    private static final Color[] POINTER_RED = PaletteDither.ramp(new Color(0.86f, 0.13f, 0.13f, 1f)); // clock pointer (red)
     private static final Color WARM = new Color(1.0f, 0.95f, 0.82f, 1f);            // warm diffuse tint for the lamp
     private static final Color TRACE_WHITE = new Color(0.95f, 0.95f, 0.95f, 1f);    // printed trace (default)
     private static final Color TRACE_RED = new Color(0.86f, 0.13f, 0.13f, 1f);      // printed trace (resistor)
@@ -90,14 +91,19 @@ final class Parts {
 
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
+    final PartType pointer;                             // clock/roulette spinning red pointer (rotates about Y)
     final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];         // blank base board, one per colour
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
     final ComponentModel lamp;                                                     // white-encased bulb (single)
     final ComponentModel tee;                                                      // T-base barebones (triangular 4-port)
+    final ComponentModel ic;                                                       // integrated circuit — 2×3 base + big red blob
     final ComponentModel transistorNpn;                                            // red base, cube top-black/bottom-white
     final ComponentModel transistorPnp;                                            // dark-green base, cube top-white/bottom-black
     final ComponentModel batteryCell;                                              // loose battery entity (orange+black cell)
     final ComponentModel slab;                                                     // neutral grey unit slab (scenery, scaled via pose)
+    final ComponentModel varresTee;                                                // T-shaped variable resistor (tee + wide switch)
+    final ComponentModel varresBar;                                                // resistor-style variable resistor (red base + switch)
+    final ComponentModel varresClock;                                              // clock/roulette variable resistor (spinning pointer)
     final ComponentModel[] switches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] pressSwitches = new ComponentModel[PLASTIC_HSV.length];
     final ComponentModel[] resistors = new ComponentModel[PLASTIC_HSV.length];
@@ -134,6 +140,25 @@ final class Parts {
         return new PaletteDither.Paint(SERIES_BLACK, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, SHADE_R, 1f);
     }
 
+    private static PaletteDither.Paint pointerPaint(long seed) { // the clock's red pointer bar
+        return new PaletteDither.Paint(POINTER_RED, Color.WHITE, 2, 0.3f, false, seed, 0f, 6f, 2f, SHADE_R, 1f);
+    }
+
+    /**
+     * A RAISED slide-switch mechanism sitting on top of a solid base's top surface (y4): a 1px-proud steel
+     * fence frame (y4..6) enclosing a {@code hw}-half-width × 2-half-depth well (well OX±hw, OZ±2, offset +0.5),
+     * with a black floor (y4..5). The caller adds the 2×2 {@code slider} movable on the "slide" channel. Reused
+     * by the variable resistors (the switch replaces their body / sits on their centre).
+     */
+    private ComponentModel.Builder raisedSwitch(ComponentModel.Builder b, float hw, long s) {
+        float inX = 2f * hw - 2f; // fence front/back length (well width minus the two side walls)
+        return b.box(OX - hw + 0.5f, 5f, OZ, 1f, 2f, 4f, fence(s + 1))          // fence left  y4..6
+                .box(OX + hw - 0.5f, 5f, OZ, 1f, 2f, 4f, fence(s + 1))          // fence right
+                .box(OX, 5f, OZ - 1.5f, inX, 2f, 1f, fence(s + 2))             // fence front
+                .box(OX, 5f, OZ + 1.5f, inX, 2f, 1f, fence(s + 2))             // fence back
+                .box(OX, 4.5f, OZ, inX, 1f, 2f, knob(s + 3));                  // black well floor y4..5
+    }
+
     // LED bulb paints — GREYSCALE bases (the colour comes from the component-entity tint), shade-centred on the bulb.
     private static PaletteDither.Paint bulbCore(long seed) {   // solid inner glow (tinted)
         return new PaletteDither.Paint(BULB_CORE, Color.WHITE, 2, 0.3f, false, seed, 0f, 8f, 0f, SHADE_R, 1f);
@@ -163,6 +188,10 @@ final class Parts {
         // top (y4 → 7). Pressing (channel "press" 0→1) drops it 2 in Y so its top is 1px above (y5).
         button = new PartType("button", List.of(
                 new PartMesh.Box(0f, 0f, 0f, 3f, 3f, 3f, knob(360L), 0f, 5.5f, 0f, null, false, false, PartMesh.WHITE_BITS, null)));
+        // Clock pointer: a 1×1×3 red bar whose one END is at the part origin (spans z 0..3), sitting at y6..7.
+        // The "spin" channel rotates it about the origin's Y axis (the clock centre) — a sweeping hand.
+        pointer = new PartType("pointer", List.of(
+                new PartMesh.Box(0f, 0.5f, 1.5f, 1f, 1f, 3f, pointerPaint(270L), 0f, 6f, 1.5f, null, false, false, PartMesh.WHITE_BITS, null)));
         Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
@@ -186,9 +215,15 @@ final class Parts {
                 PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2]), true);   // red
         transistorPnp = buildTransistor("transistor_pnp",
                 PaletteDither.rampHsv(PLASTIC_HSV[11][0], PLASTIC_HSV[11][1], PLASTIC_HSV[11][2]), false); // deep green
+        ic = buildIc(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red
         batteryCell = buildBatteryCell();
         slab = ComponentModel.of("slab").box(0f, 0f, 0f, 1f, 1f, 1f,
                 new PaletteDither.Paint(PaletteDither.grays(4, 0.32f, 0.48f), Color.WHITE, 1, 0.3f, false, 701L, 0f, 0f, 0f, 1f, 1f)).build();
+        Color[] vgreen = PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2]);   // lime/green
+        Color[] vred = PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2]);     // red
+        varresTee = buildVarresTee(vgreen);
+        varresBar = buildVarresBar(vred);
+        varresClock = buildVarresClock(WHITE_PLASTIC);
         for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
             wires[n - WIRE_MIN] = buildWire(n, azure);
         }
@@ -344,6 +379,28 @@ final class Parts {
     }
 
     /**
+     * Integrated circuit (Snap-Circuits U-series look): a NEW <b>2×3</b> footprint — a wider 33×21 base carrying
+     * <b>6 studs</b> (3 columns x∈{−12,0,12} × 2 rows z∈{−6,6}) + matching underside sockets — with a single
+     * <b>big matte plastic blob</b> bulging out of the centre (21×9×9, y4..13). No trace, no letters: the blob
+     * IS the whole feature. The blob sits between the two stud rows (|z|≤4.5) so it never covers a stud. Base +
+     * blob share the part colour (one unified {@code pal}). Built inline (the shared {@code rims}/{@code base}
+     * helpers are hardcoded 33×9, too shallow for the 2-row footprint).
+     */
+    private ComponentModel buildIc(Color[] pal) {
+        ComponentModel.Builder b = ComponentModel.of("ic")
+                .box(0f, 0.5f, 0f, 33f, 1f, 21f, plastic(151L, pal))   // coloured rim y0..1
+                .box(0f, 3.5f, 0f, 33f, 1f, 21f, plastic(252L, pal))   // coloured rim y3..4 (top)
+                .box(0f, 2f, 0f, 33f, 2f, 21f, band(353L));            // white band y1..3
+        for (float sz : new float[]{-6f, 6f}) {                        // 2×3 studs + underside sockets
+            for (float sx : new float[]{-12f, 0f, 12f}) {
+                b = socket(b.box(sx, 4.5f, sz, 3f, 1f, 3f, stud(404L, sx, 4.5f, sz)), sx, sz);
+            }
+        }
+        return b.box(0f, 8.5f, 0f, 21f, 9f, 9f, plastic(155L, pal))    // the big blob, y4..13, between the stud rows
+                .build();
+    }
+
+    /**
      * A loose <b>battery cell</b> — the removable world ENTITY that pops out of a battery holder (the holder is
      * a separate "battery box" part; this cell is what tumbles as a physics entity). Snap-Circuits AA look: an
      * orange wrap over most of the length, a black band at the <b>+</b> end, and a small steel terminal nub.
@@ -445,6 +502,46 @@ final class Parts {
     }
 
     /**
+     * Type 1 variable resistor — T-shaped: the {@code tee} triangle base (bar + stem, 3 studs) with a red trace,
+     * and a WIDE raised slide switch centred on the bar (well 12 wide) so the user can smoothly scrub its
+     * position. The 2×2 slider travels ±5 in X on the "slide" channel.
+     */
+    private ComponentModel buildVarresTee(Color[] pal) {
+        ComponentModel.Builder b = teeBuilder("varres_tee", pal, redTrace());
+        b = raisedSwitch(b, 6f, 600L);
+        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 5f, 0f, 0f)).build();
+    }
+
+    /**
+     * Type 2 variable resistor — resistor-style: red base, the resistor's two tilted metal lead-plates kept at
+     * the ends, and a red trace; but the tan body is REPLACED by a raised slide switch (well 6 wide) in the
+     * centre. The 2×2 slider travels ±2 in X.
+     */
+    private ComponentModel buildVarresBar(Color[] pal) {
+        float s5 = (float) Math.sqrt(5.0);
+        ComponentModel.Builder b = base("varres_bar", pal, redTrace())
+                .quad(new Vector3(5.5f, 6f, -0.5f), new Vector3(5.5f + s5, 4f, -0.5f),
+                        new Vector3(5.5f + s5, 4f, 0.5f), new Vector3(5.5f, 6f, 0.5f), fence(905L), 3, 1)  // +X lead
+                .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
+                        new Vector3(-5.5f - s5, 4f, -0.5f), new Vector3(-5.5f, 6f, -0.5f), fence(905L), 3, 1); // −X lead
+        b = raisedSwitch(b, 3f, 610L);
+        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 2f, 0f, 0f)).build();
+    }
+
+    /**
+     * Type 3 variable resistor — clock/roulette: white base + red trace, a <b>white clock</b> = a 7×7 raised
+     * square platform 2px above the base top (y4..6, NO fence), and a <b>red pointer</b> that the user spins.
+     * The pointer (a 1×1×3 bar) sits on the clock (y6..7) and rotates about the clock centre's Y axis via the
+     * new serialisable "rotate" binding on the "spin" channel (±90° per unit).
+     */
+    private ComponentModel buildVarresClock(Color[] pal) {
+        return base("varres_clock", pal, redTrace())
+                .box(0f, 5f, 0f, 7f, 2f, 7f, plastic(620L, WHITE_PLASTIC))                        // white clock platform y4..6
+                .movable(pointer, 0f, 6f, 0f, BindingSpec.rotate("spin", 0f, 0f, 0f, 0f, 1f, 0f, 90f))
+                .build();
+    }
+
+    /**
      * Capacitor (Snap-Circuits form): the SAME base every part has — a <b>recolourable</b> plastic body 33×9×4
      * ({@code pal} rim + white band + rim) with three metal snap studs at −12/0/+12, sitting flat on the board. Its own
      * feature is a black box ({@code w}×{@code w} × {@code h}) on the body's top, raised by two <b>metallic</b>
@@ -518,10 +615,14 @@ final class Parts {
         for (int s = 0; s < cap.length; s++) m.put("capacitor_" + cap[s], capacitorSizes[s]);
         m.put("lamp", lamp); // single white-encased bulb
         m.put("tee", tee);   // T-base barebones (triangular 4-port shape)
+        m.put("ic", ic);     // integrated circuit — 2×3 base + big red blob
         m.put("transistor_npn", transistorNpn); // red, cube top-black/bottom-white
         m.put("transistor_pnp", transistorPnp); // dark-green, cube top-white/bottom-black
         m.put("battery_cell", batteryCell); // loose battery entity (orange+black cell)
         m.put("slab", slab); // neutral grey scenery slab (unit box, scaled via pose)
+        m.put("varres_tee", varresTee);     // Type 1 variable resistor — T-shaped + wide switch
+        m.put("varres_bar", varresBar);     // Type 2 variable resistor — resistor-style + switch
+        m.put("varres_clock", varresClock); // Type 3 variable resistor — clock + spinning pointer
         for (int c = 0; c < PLASTIC_NAME.length; c++) {
             m.put("switch_" + PLASTIC_NAME[c], switches[c]);
             m.put("press_" + PLASTIC_NAME[c], pressSwitches[c]);
@@ -540,6 +641,7 @@ final class Parts {
         Map<String, PartType> m = new LinkedHashMap<>();
         m.put(slider.id(), slider);   // "slider"
         m.put(button.id(), button);   // "button"
+        m.put(pointer.id(), pointer); // "pointer" — clock's spinning red hand
         return m;
     }
 }

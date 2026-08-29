@@ -37,7 +37,7 @@ final class ModelLoader {
         if (j.movables != null) {
             for (ModelJson.Movable mv : j.movables) {
                 b.movable(partType(mv.part), mv.at[0], mv.at[1], mv.at[2],
-                        new BindingSpec(mv.bindingType, mv.channel, mv.axis));
+                        new BindingSpec(mv.bindingType, mv.channel, mv.axis, mv.pivot, mv.degPerUnit));
             }
         }
         if (j.collision != null) {

@@ -68,9 +68,11 @@ final class ModelJson {
     static final class Movable {
         String part;                       // part-type model id (a borrow / dependency)
         float[] at;                        // local translation [x,y,z]
-        String bindingType;                // BindingSpec.type ("translate")
+        String bindingType;                // BindingSpec.type ("translate" | "rotate")
         String channel;
         float[] axis;
+        float[] pivot;                     // rotate only: pivot point [x,y,z] (null for translate)
+        float degPerUnit;                  // rotate only: degrees per channel unit (0 for translate)
     }
 
     static int faceId(String key) {
@@ -114,6 +116,8 @@ final class ModelJson {
             mv.bindingType = m.binding().type();
             mv.channel = m.binding().channel();
             mv.axis = m.binding().axis();
+            mv.pivot = m.binding().pivot();
+            mv.degPerUnit = m.binding().degPerUnit();
             j.movables.add(mv);
         }
         j.collision = aabb(boxes, quads); // the single axis-aligned collision box over the visible extent

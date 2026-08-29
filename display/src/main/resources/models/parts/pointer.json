@@ -1,0 +1,43 @@
+{
+  "id": "pointer",
+  "elements": [
+    {
+      "from": [
+        -0.5,
+        0.0,
+        0.0
+      ],
+      "to": [
+        0.5,
+        1.0,
+        3.0
+      ],
+      "faces": {
+        "east": "sp4b4dd4b99ad6ab2f_1x3",
+        "west": "sp3db0b1cdacc66b0_1x3",
+        "up": "sp3d2210f6b4b8a8b1_1x3",
+        "down": "sp765cdf234825b732_1x3",
+        "south": "sp2f9ea0d3c3903db3_1x1",
+        "north": "sp6993ca2534108934_1x1"
+      },
+      "tint": false,
+      "translucent": false
+    }
+  ],
+  "quads": [],
+  "movables": [],
+  "collision": {
+    "from": [
+      -0.5,
+      0.0,
+      0.0
+    ],
+    "to": [
+      0.5,
+      1.0,
+      3.0
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  }
+}

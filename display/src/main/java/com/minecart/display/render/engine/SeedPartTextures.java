@@ -37,6 +37,7 @@ public final class SeedPartTextures extends ApplicationAdapter {
         }
         boxes.addAll(parts.slider.boxes());
         boxes.addAll(parts.button.boxes());
+        boxes.addAll(parts.pointer.boxes());
         boxes.add(EngineDemoApp.boardBox());
 
         FileHandle dir = Gdx.files.local(OUT_DIR);
