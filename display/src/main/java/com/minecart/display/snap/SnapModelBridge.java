@@ -26,7 +26,7 @@ public final class SnapModelBridge {
     /** World units per stack layer (engine base tile 4 + stud 1 == the board's LEVEL_HEIGHT). */
     public static final float LEVEL = 5f;
 
-    private static final String DEFAULT_RESISTOR = "resistor_yellow";
+    private static final String DEFAULT_RESISTOR = "resistor";
 
     private SnapModelBridge() {}
 
@@ -41,8 +41,8 @@ public final class SnapModelBridge {
         return switch (p.type().id()) {
             case "snap_wire" -> "wire_2";
             case "snap_resistor" -> DEFAULT_RESISTOR;
-            case "snap_battery" -> "base_red";   // PLACEHOLDER until a battery_* model exists
-            default -> "base_teal";               // unknown type → a neutral base tile
+            case "snap_battery" -> "battery_cell"; // the loose battery cell model
+            default -> "base";                    // unknown type → the neutral base tile
         };
     }
 
