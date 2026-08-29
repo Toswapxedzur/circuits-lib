@@ -335,9 +335,11 @@ final class Parts {
         ComponentModel.Builder b = teeBuilder(id, pal, transistorTrace())
                 .box(0f, 8.5f, 0f, 5f, 3f, 5f, plastic(931L, botPal))   // cube bottom 3px (60%) y7..10
                 .box(0f, 11f, 0f, 5f, 2f, 5f, plastic(932L, topPal));   // cube top 2px (40%) y10..12
-        for (float lx : new float[]{-2f, 0f, 2f}) {                     // 3 legs in the 3px gap under the cube
-            b = b.box(lx, 5.5f, -2.5f, 1f, 3f, 0f, fence(940L));        // 1×3×0 metal tab, y4..7, z=−2.5 (front)
-        }
+        // 3 legs (1×3×0, y4..7) spread in DEPTH: outer legs 1px in from the cube's front depth-end (z=−1.5),
+        // middle leg 4px in (z=+1.5) — the real TO-92 "middle lead bent back" look. Breadth stays 10101.
+        b = b.box(-2f, 5.5f, -1.5f, 1f, 3f, 0f, fence(940L))            // left leg  (front, 1px from end)
+                .box(2f, 5.5f, -1.5f, 1f, 3f, 0f, fence(940L))          // right leg (front, 1px from end)
+                .box(0f, 5.5f, 1.5f, 1f, 3f, 0f, fence(940L));          // middle leg (4px in — pushed back)
         return b.build();
     }
 

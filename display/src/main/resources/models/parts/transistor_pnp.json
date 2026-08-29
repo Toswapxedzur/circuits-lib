@@ -697,34 +697,16 @@
       "from": [
         -2.5,
         4.0,
-        -2.5
+        -1.5
       ],
       "to": [
         -1.5,
         7.0,
-        -2.5
+        -1.5
       ],
       "faces": {
-        "south": "sp1006f7b47d852d28_1x3",
-        "north": "sp2e7e9078ab278969_1x3"
-      },
-      "tint": false,
-      "translucent": false
-    },
-    {
-      "from": [
-        -0.5,
-        4.0,
-        -2.5
-      ],
-      "to": [
-        0.5,
-        7.0,
-        -2.5
-      ],
-      "faces": {
-        "south": "sp11700e4ef430f028_1x3",
-        "north": "sp2fe7a71321d34c69_1x3"
+        "south": "sp100727cccfe56ea8_1x3",
+        "north": "sp2e7ec090fd87cae9_1x3"
       },
       "tint": false,
       "translucent": false
@@ -733,16 +715,34 @@
       "from": [
         1.5,
         4.0,
-        -2.5
+        -1.5
       ],
       "to": [
         2.5,
         7.0,
-        -2.5
+        -1.5
       ],
       "faces": {
-        "south": "sp12d924e96adcb328_1x3",
-        "north": "sp3150bdad987f0f69_1x3"
+        "south": "sp12d95501bd3cf4a8_1x3",
+        "north": "sp3150edc5eadf50e9_1x3"
+      },
+      "tint": false,
+      "translucent": false
+    },
+    {
+      "from": [
+        -0.5,
+        4.0,
+        1.5
+      ],
+      "to": [
+        0.5,
+        7.0,
+        1.5
+      ],
+      "faces": {
+        "south": "sp1170ceb03db1f628_1x3",
+        "north": "sp2fe867746b545269_1x3"
       },
       "tint": false,
       "translucent": false
