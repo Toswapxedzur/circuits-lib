@@ -70,6 +70,14 @@ final class PartMesh implements Disposable {
             return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, tint, translucent, WHITE_BITS, null);
         }
 
+        /** A translucent box rendered blended at vertex-tint alpha {@code a} (0..1) — e.g. the semi-transparent
+         *  base board. Goes through the engine's translucent pass (depth-tested, not depth-written). */
+        static Box localAlpha(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
+                              float a) {
+            return new Box(cx, cy, cz, sx, sy, sz, paint, cx, cy, cz, null, false, true,
+                    new Color(1f, 1f, 1f, a).toFloatBits(), null);
+        }
+
         /** A definition-time box with a TRACE decal printed on its top face. */
         static Box local(float cx, float cy, float cz, float sx, float sy, float sz, PaletteDither.Paint paint,
                          Trace trace) {

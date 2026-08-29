@@ -30,13 +30,15 @@ final class SnapBaseBoard {
     // A muted blue-grey plastic board; studs a touch lighter so the grid reads.
     private static final Color BOARD = new Color(0.44f, 0.48f, 0.55f, 1f);
     private static final Color STUD_COLOR = new Color(0.56f, 0.60f, 0.66f, 1f);
+    /** Board opacity — semi-transparent (owner spec), so the board reads as a glassy plate. */
+    private static final float ALPHA = 0.55f;
 
     /** One surface cell, centred at world ({@code wx}, {@code wz}) with its top at {@code topY}. */
     private static PartMesh.Box cell(float wx, float wz, float topY) {
         float cy = topY - THICK / 2f;
         PaletteDither.Paint paint = new PaletteDither.Paint(PaletteDither.ramp(BOARD), Color.WHITE,
                 2, 0.3f, false, 4501L, wx, cy, wz, CELL / 2f, 1f); // shade centre = own centre → shared sprite
-        return PartMesh.Box.local(wx, cy, wz, CELL, THICK, CELL, paint);
+        return PartMesh.Box.localAlpha(wx, cy, wz, CELL, THICK, CELL, paint, ALPHA);
     }
 
     /** One stud nub sitting on top of the surface at world ({@code wx}, {@code wz}), {@code topY} = surface top. */
@@ -44,7 +46,7 @@ final class SnapBaseBoard {
         float cy = topY + STUD_H / 2f;
         PaletteDither.Paint paint = new PaletteDither.Paint(PaletteDither.ramp(STUD_COLOR), Color.WHITE,
                 1, 0.3f, false, 4507L, wx, cy, wz, STUD, 1f); // shade centre = own centre → shared sprite
-        return PartMesh.Box.local(wx, cy, wz, STUD, STUD_H, STUD, paint);
+        return PartMesh.Box.localAlpha(wx, cy, wz, STUD, STUD_H, STUD, paint, ALPHA);
     }
 
     /**
