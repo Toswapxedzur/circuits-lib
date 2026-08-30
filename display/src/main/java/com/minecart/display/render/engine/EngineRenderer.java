@@ -348,9 +348,14 @@ final class EngineRenderer implements Disposable {
         }
     }
 
-    /** Draws the placement <b>ghost</b>: the registered {@code modelId} model, blended at {@code (r,g,b,a)} tint,
-     *  at {@code pose}. Call AFTER {@link #render} (same frame/camera). No shadow/point-lights on the preview —
-     *  it shows the real baked sprite × the tint, depth-tested (occluded by real parts) but not depth-written. */
+    /** Draws the placement <b>ghost</b>: the registered {@code modelId} model at {@code pose}, blended at
+     *  {@code (r,g,b,a)}. Call AFTER {@link #render} (same frame/camera). No shadow/point-lights on the preview.
+     *
+     *  <p>Uses a <b>depth pre-pass</b> so the translucent model reads as a clean single layer: a multi-box part
+     *  drawn blended in one pass shows its own back/interior faces bleeding through (an X-ray mess). Pass 1 writes
+     *  only DEPTH (nearest surface); pass 2 blends only fragments at that depth — so just the frontmost skin of the
+     *  ghost is shown, like a solid part that happens to be see-through. Depth-tested against real parts (occluded
+     *  correctly) but never depth-written to the scene (glDepthMask stays false in pass 2). */
     void drawGhost(Camera cam, String modelId, Matrix4 pose, float r, float g, float b, float a) {
         PartMesh mesh = ghostMeshes.get(modelId);
         if (mesh == null) {
@@ -365,16 +370,29 @@ final class EngineRenderer implements Disposable {
         atlas.texture().bind(0);
         shader.setUniformi("u_atlas", 0);
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
         Gdx.gl.glCullFace(GL20.GL_BACK);
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        Gdx.gl.glDepthMask(false);
         mesh.begin();
         mesh.add(pose);
-        mesh.render(shader);
+
+        // Pass 1 — depth only: fills the depth buffer with the ghost's nearest surface (no colour, no blend).
+        Gdx.gl.glColorMask(false, false, false, false);
         Gdx.gl.glDepthMask(true);
         Gdx.gl.glDisable(GL20.GL_BLEND);
+        mesh.render(shader);
+
+        // Pass 2 — blended colour of ONLY that frontmost surface (LEQUAL passes it, deeper interior faces fail).
+        Gdx.gl.glColorMask(true, true, true, true);
+        Gdx.gl.glDepthMask(false);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        mesh.render(shader);
+
+        // Restore default scene state.
+        Gdx.gl.glDepthMask(true);
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+        Gdx.gl.glDepthFunc(GL20.GL_LESS);
     }
 
     /** Renders the opaque geometry (scene mesh + movables + entities) with {@code sh} — used by both the shadow
