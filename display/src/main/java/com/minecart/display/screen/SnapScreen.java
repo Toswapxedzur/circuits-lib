@@ -27,6 +27,7 @@ import com.minecart.display.entity.EntityWorld;
 import com.minecart.display.entity.WorldClock;
 import com.minecart.display.input.FreeCameraController;
 import com.minecart.display.render.engine.EngineBoardView;
+import com.minecart.display.snap.SnapModelBridge;
 import com.minecart.display.render.snap.SnapEditor;
 import com.minecart.display.render.snap.SnapScene;
 import com.minecart.snap.SnapSceneGeometry;
@@ -71,8 +72,6 @@ public final class SnapScreen extends ScreenAdapter {
     private SnapScene scene;             // pickable snapshot for the editor (renderer-agnostic geometry)
     private SnapEditor editor;
     private InputMultiplexer input;
-    private com.badlogic.gdx.graphics.glutils.ShapeRenderer ghostShapes; // wireframe placement preview
-    private final com.badlogic.gdx.math.Matrix4 ghostPose = new com.badlogic.gdx.math.Matrix4();
 
     // The world PHYSICS — its own fixed-timestep clock, SEPARATE from the electrical tick (the server-side
     // circuit solve). Static colliders come from each placed part's datagen collision box; entities (a loose
@@ -132,7 +131,6 @@ public final class SnapScreen extends ScreenAdapter {
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
         boardView = new EngineBoardView(); // the board's real part models, via the instanced engine (GL20 path)
-        ghostShapes = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
         // DEV: -Dsnap.skylight=ne|nw|se|sw overrides the skylight octant so the baked variants can be compared.
         String sky = System.getProperty("snap.skylight");
         if (sky != null) {
@@ -303,23 +301,15 @@ public final class SnapScreen extends ScreenAdapter {
         });
     }
 
-    /** Draws the placement ghost as a wireframe outline (green = valid target, red = blocked), so the player sees
-     *  where the current tool will land. Uses the perspective camera + depth test so it occludes behind parts. */
-    private void drawGhost() {
-        if (editor == null || editor.ghost() == null || !cursorCaught) {
-            return;
+    /** Feeds this frame's placement ghost to the board view: the real component model at the ghost's true world
+     *  pose (which the view eases toward). Hidden when the cursor is free or there's no valid target cell. */
+    private void feedGhost(float dt) {
+        if (editor != null && editor.ghost() != null && cursorCaught) {
+            boardView.setGhost(true, SnapModelBridge.modelId(editor.ghost()),
+                    SnapModelBridge.world(editor.ghost()), editor.ghostValid(), dt);
+        } else {
+            boardView.setGhost(false, null, null, false, dt);
         }
-        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
-        ghostShapes.setProjectionMatrix(camera.combined);
-        ghostShapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
-        ghostShapes.setColor(editor.ghostValid() ? Color.LIME : new Color(1f, 0.35f, 0.3f, 1f));
-        for (com.minecart.display.render.snap.OrientedBox b : editor.ghostRender()) {
-            ghostPose.idt().translate(b.cx(), b.cy(), b.cz()).rotate(0f, 1f, 0f, -b.yawDeg());
-            ghostShapes.setTransformMatrix(ghostPose);
-            ghostShapes.box(-b.sizeX() / 2f, -b.sizeY() / 2f, b.sizeZ() / 2f, b.sizeX(), b.sizeY(), b.sizeZ());
-        }
-        ghostShapes.end();
-        ghostShapes.identity();
     }
 
     /** Rebuilds the drawable/pickable scene from the current board and records its revision. */
@@ -370,7 +360,8 @@ public final class SnapScreen extends ScreenAdapter {
             if (board.revision() != lastRevision) {
                 refreshScene();
             }
-            editor.update(camera, scene, dt); // computes hovered/ghost for place/remove (ghost visual: TODO)
+            editor.update(camera, scene, dt); // computes hovered/ghost for place/remove
+            feedGhost(dt);                     // hand the ghost to the board view (eased, real translucent model)
             updateStatus();
         }
 
@@ -380,8 +371,7 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 
         if (ready) {
-            boardView.render(camera); // the board's real part models, via the instanced engine (GL20 path)
-            drawGhost();              // wireframe preview of where the current tool would place
+            boardView.render(camera); // the board's real part models + the placement ghost, via the engine
         }
 
         // The engine leaves GL_CULL_FACE + depth test enabled; scene2d assumes them off, so its HUD quads
@@ -540,9 +530,6 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.input.setCursorCatched(false);
         if (boardView != null) {
             boardView.dispose();
-        }
-        if (ghostShapes != null) {
-            ghostShapes.dispose();
         }
         if (physics != null) {
             physics.dispose();

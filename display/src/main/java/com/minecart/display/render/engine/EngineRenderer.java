@@ -112,6 +112,12 @@ final class EngineRenderer implements Disposable {
     private PartMesh staticOpaque;
     private PartMesh staticTranslucent;
 
+    // Placement-ghost models: registered up-front so their sprites are in the atlas + a mesh is baked per model,
+    // ready to draw translucent at an eased pose (the "shadow" preview of where the current tool would place).
+    private final Map<String, ComponentModel> ghostModels = new LinkedHashMap<>();
+    private final Map<String, PartMesh> ghostMeshes = new LinkedHashMap<>();
+    private final com.badlogic.gdx.graphics.Color tmpTint = new com.badlogic.gdx.graphics.Color();
+
     /** Places a component: its static boxes join the scene mesh (on {@link #build}); its movables are instanced. */
     void add(ComponentInstance c) {
         components.add(c);
@@ -134,6 +140,12 @@ final class EngineRenderer implements Disposable {
      *  the next {@link #build()}; call build() after re-adding. */
     void clearEntities() {
         entities.clear();
+    }
+
+    /** Registers a model that the placement ghost may preview, so its sprites join the atlas and a mesh is baked
+     *  for it on {@link #build()}. Call for every tool's model before build; drawn via {@link #drawGhost}. */
+    void addGhostModel(String id, ComponentModel model) {
+        ghostModels.put(id, model);
     }
 
     /**
@@ -163,6 +175,10 @@ final class EngineRenderer implements Disposable {
             forAtlas.addAll(e.model.staticBoxes);
             quadsForAtlas.addAll(e.model.staticQuads);
         }
+        for (ComponentModel g : ghostModels.values()) { // ghost-preview models — sprites must be in the atlas
+            forAtlas.addAll(g.staticBoxes);
+            quadsForAtlas.addAll(g.staticQuads);
+        }
         Set<String> names = new LinkedHashSet<>();
         PartMesh.collectSpriteNames(forAtlas, quadsForAtlas, names);
         atlas = new PartAtlas(names, PaletteDither.Octant.of(lightDir.x, lightDir.z)); // baked skylight variant
@@ -183,6 +199,10 @@ final class EngineRenderer implements Disposable {
         // opaque/translucent split as the scene mesh, added when one exists.)
         for (DynamicEntity e : entities) {
             entityMeshes.put(e, PartMesh.of(e.model.staticBoxes, e.model.staticQuads, 1, atlas, instanced));
+        }
+        for (Map.Entry<String, ComponentModel> g : ghostModels.entrySet()) {
+            ghostMeshes.put(g.getKey(),
+                    PartMesh.of(g.getValue().staticBoxes, g.getValue().staticQuads, 1, atlas, instanced));
         }
 
         // Bounds for the shadow-map light camera (over the static world boxes; movables/entities live within).
@@ -294,6 +314,7 @@ final class EngineRenderer implements Disposable {
         // passes that baked base through — and the point lights (LEDs) stack on top. u_lightDir is still needed
         // for the shadow-map bias below.
         shader.setUniformf("u_ambient", 1.0f, 1.0f, 1.0f);
+        shader.setUniformf("u_tint", 1f, 1f, 1f, 1f); // parts draw untinted; the ghost overrides this per-draw
         shader.setUniformf("u_lightDir", lightDir.x, lightDir.y, lightDir.z);
         applyPointLights();
         if (shadowMap != null && SHADOWS) {
@@ -325,6 +346,35 @@ final class EngineRenderer implements Disposable {
             Gdx.gl.glDepthMask(true);
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
+    }
+
+    /** Draws the placement <b>ghost</b>: the registered {@code modelId} model, blended at {@code (r,g,b,a)} tint,
+     *  at {@code pose}. Call AFTER {@link #render} (same frame/camera). No shadow/point-lights on the preview —
+     *  it shows the real baked sprite × the tint, depth-tested (occluded by real parts) but not depth-written. */
+    void drawGhost(Camera cam, String modelId, Matrix4 pose, float r, float g, float b, float a) {
+        PartMesh mesh = ghostMeshes.get(modelId);
+        if (mesh == null) {
+            return;
+        }
+        shader.bind();
+        shader.setUniformMatrix("u_projView", cam.combined);
+        shader.setUniformf("u_ambient", 1f, 1f, 1f);
+        shader.setUniformf("u_tint", r, g, b, a);
+        shader.setUniformf("u_shadowStrength", 0f);
+        shader.setUniformi("u_numLights", 0);
+        atlas.texture().bind(0);
+        shader.setUniformi("u_atlas", 0);
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glEnable(GL20.GL_CULL_FACE);
+        Gdx.gl.glCullFace(GL20.GL_BACK);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        Gdx.gl.glDepthMask(false);
+        mesh.begin();
+        mesh.add(pose);
+        mesh.render(shader);
+        Gdx.gl.glDepthMask(true);
+        Gdx.gl.glDisable(GL20.GL_BLEND);
     }
 
     /** Renders the opaque geometry (scene mesh + movables + entities) with {@code sh} — used by both the shadow
@@ -401,6 +451,10 @@ final class EngineRenderer implements Disposable {
             m.dispose();
         }
         entityMeshes.clear();
+        for (PartMesh m : ghostMeshes.values()) {
+            m.dispose();
+        }
+        ghostMeshes.clear();
         if (atlas != null) {
             atlas.dispose();
             atlas = null;

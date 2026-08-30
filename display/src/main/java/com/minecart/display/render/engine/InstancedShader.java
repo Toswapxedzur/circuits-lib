@@ -83,6 +83,7 @@ final class InstancedShader {
             varying vec3 v_normal;
             varying vec3 v_worldPos;
             uniform sampler2D u_atlas;
+            uniform vec4 u_tint;              // per-draw multiplier (white for parts; green/red + alpha for the ghost)
             uniform vec3 u_ambient;
             uniform vec3 u_lightDir;
             uniform int u_numLights;
@@ -118,7 +119,7 @@ final class InstancedShader {
                 return lit;
             }
             void main() {
-                vec4 texel = texture2D(u_atlas, v_uv) * v_color;
+                vec4 texel = texture2D(u_atlas, v_uv) * v_color * u_tint;
                 vec3 N = normalize(v_normal);
                 float ndl = max(dot(N, u_lightDir), 0.0);
                 float sf = 1.0;
