@@ -29,19 +29,29 @@ final class ComponentModel {
     /** A per-face collision-material override (index = faceId 0..5). Null fields fall back to the box defaults. */
     record FaceMaterial(Float friction, Float restitution, Boolean solid) {}
 
+    /**
+     * A physical <b>connector</b> (object space) — a stud/socket where this part mates another (see the physical
+     * free-placement system). {@code local} is its position, {@code axis} the mating direction (a MALE stud points
+     * OUT along +axis; a FEMALE socket receives along −axis), {@code terminal} which of the part's electrical
+     * terminals it carries (0 = A/−, 1 = B/+). {@code male} true = stud, false = socket. (Polarity/keying: later.)
+     */
+    record Connector(Vector3 local, Vector3 axis, int terminal, boolean male) {}
+
     final String id;
     final List<PartMesh.Box> staticBoxes;
     final List<PartMesh.Quad> staticQuads;
     final List<MovablePart> movableParts;
     final Collision collision;                  // the axis-aligned collision box (may be null)
+    final List<Connector> connectors;           // physical mating points (may be empty)
 
     private ComponentModel(String id, List<PartMesh.Box> staticBoxes, List<PartMesh.Quad> staticQuads,
-                           List<MovablePart> movableParts, Collision collision) {
+                           List<MovablePart> movableParts, Collision collision, List<Connector> connectors) {
         this.id = id;
         this.staticBoxes = staticBoxes;
         this.staticQuads = staticQuads;
         this.movableParts = movableParts;
         this.collision = collision;
+        this.connectors = connectors;
     }
 
     static Builder of(String id) {
@@ -53,6 +63,7 @@ final class ComponentModel {
         private final List<PartMesh.Box> statics = new ArrayList<>();
         private final List<PartMesh.Quad> quads = new ArrayList<>();
         private final List<MovablePart> movables = new ArrayList<>();
+        private final List<Connector> connectors = new ArrayList<>();
         private Collision collision;
 
         private Builder(String id) {
@@ -62,6 +73,12 @@ final class ComponentModel {
         /** Sets the loaded axis-aligned collision box (ModelLoader passes the datagen'd one). */
         Builder collision(Collision c) {
             this.collision = c;
+            return this;
+        }
+
+        /** Adds a physical connector (object space). */
+        Builder connector(Connector c) {
+            connectors.add(c);
             return this;
         }
 
@@ -121,7 +138,8 @@ final class ComponentModel {
         }
 
         ComponentModel build() {
-            return new ComponentModel(id, List.copyOf(statics), List.copyOf(quads), List.copyOf(movables), collision);
+            return new ComponentModel(id, List.copyOf(statics), List.copyOf(quads), List.copyOf(movables),
+                    collision, List.copyOf(connectors));
         }
     }
 }

@@ -85,6 +85,10 @@ public final class SnapScreen extends ScreenAdapter {
     private int lastRevision = Integer.MIN_VALUE;
     private boolean cursorCaught;
     private final boolean fixedCam = "1".equals(System.getProperty("snap.fixedcam")); // dev: freeze camera for shots
+    // Physical free-placement mode (the Minecraft-grid replacement) — behind -Dsnap.physical=1 while it matures.
+    private final boolean physical = "1".equals(System.getProperty("snap.physical"));
+    private com.minecart.display.render.engine.PhysicalBoardView physWorld;
+    private com.minecart.display.snap.PhysicalEditor physEditor;
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -99,10 +103,10 @@ public final class SnapScreen extends ScreenAdapter {
         this.uiStage = new Stage(new ScreenViewport());
         this.serverWorld = snapWorld(integrated);
         this.board = serverWorld != null ? serverWorld.getSnapBoard() : null;
-        buildUi();
         if (board != null) {
-            buildScene();
+            buildScene(); // creates the editor(s) the hotbar/UI below reference
         }
+        buildUi();
     }
 
     /** In singleplayer the authoritative board lives on the integrated server's world. */
@@ -130,6 +134,24 @@ public final class SnapScreen extends ScreenAdapter {
         Vector3 start = new Vector3(centerX, span * 0.85f, centerZ + span * 1.15f);
         flyCam = new FreeCameraController(camera, start, new Vector3(centerX, 0f, centerZ), span);
 
+        if (physical) {
+            // Physical free-placement mode: continuous transforms + magnetic snap, no grid board/editor.
+            physWorld = new com.minecart.display.render.engine.PhysicalBoardView();
+            physWorld.setBaseBoard(board.width(), board.height(), 0f);
+            physEditor = new com.minecart.display.snap.PhysicalEditor();
+            if ("1".equals(System.getProperty("snap.phystest"))) {
+                // Place a wire, then place a 2nd wire whose candidate is offset — snap() should mate them.
+                Vector3 c = new Vector3(centerX, 0f, centerZ);
+                com.badlogic.gdx.math.Matrix4 a = new com.badlogic.gdx.math.Matrix4().setToTranslation(c.x, 0f, c.z);
+                physWorld.place("wire_2", a);
+                com.badlogic.gdx.math.Matrix4 cand = new com.badlogic.gdx.math.Matrix4().setToTranslation(c.x + 26f, 0f, c.z);
+                physWorld.place("wire_2", physWorld.snap("wire_2", cand));
+                physWorld.place("resistor", new com.badlogic.gdx.math.Matrix4().setToTranslation(c.x, 0f, c.z + 30f).rotate(0f, 1f, 0f, 40f));
+                log.info("phystest: placed {} parts, {} world connectors", physWorld.placements().size(),
+                        physWorld.connectorsWorld().size());
+            }
+            return;
+        }
         boardView = new EngineBoardView(); // the board's real part models, via the instanced engine (GL20 path)
         // DEV: -Dsnap.skylight=ne|nw|se|sw overrides the skylight octant so the baked variants can be compared.
         String sky = System.getProperty("snap.skylight");
@@ -216,21 +238,23 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     private void buildHotbar(Skin skin) {
-        SnapEditor.Tool[] tools = SnapEditor.Tool.values();
-        hotbarButtons = new TextButton[tools.length];
-
+        int n = physical ? physEditor.toolCount() : SnapEditor.Tool.values().length;
+        hotbarButtons = new TextButton[n];
         Table hotbar = new Table();
         hotbar.setFillParent(true);
         hotbar.bottom().pad(16f);
-        for (int i = 0; i < tools.length; i++) {
-            SnapEditor.Tool tool = tools[i];
-            TextButton button = new TextButton((i + 1) + "  " + tool.label(), skin);
+        for (int i = 0; i < n; i++) {
+            final int idx = i;
+            String label = physical ? physEditor.toolLabel(i) : SnapEditor.Tool.values()[i].label();
+            TextButton button = new TextButton((i + 1) + "  " + label, skin);
             button.addListener(new ClickListener() {
                 @Override public void clicked(InputEvent e, float x, float y) {
-                    if (editor != null) {
-                        editor.select(tool);
-                        refreshHotbar();
+                    if (physical) {
+                        physEditor.selectTool(idx);
+                    } else if (editor != null) {
+                        editor.select(SnapEditor.Tool.values()[idx]);
                     }
+                    refreshHotbar();
                 }
             });
             hotbarButtons[i] = button;
@@ -240,16 +264,22 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     private void refreshHotbar() {
-        if (hotbarButtons == null || editor == null) {
+        if (hotbarButtons == null) {
             return;
         }
-        SnapEditor.Tool[] tools = SnapEditor.Tool.values();
+        int sel = physical ? physEditor.tool() : (editor == null ? -1 : editor.tool().ordinal());
         for (int i = 0; i < hotbarButtons.length; i++) {
-            hotbarButtons[i].setColor(tools[i] == editor.tool() ? Color.LIME : Color.WHITE);
+            hotbarButtons[i].setColor(i == sel ? Color.LIME : Color.WHITE);
         }
     }
 
     private void updateStatus() {
+        if (physical) {
+            statusLabel.setText("PHYSICAL  |  Item: " + physEditor.toolLabel(physEditor.tool())
+                    + "   |   1-3 select   scroll/R rotate   LMB place   RMB remove   WASD+Space/Ctrl fly   Esc cursor"
+                    + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : ""));
+            return;
+        }
         if (editor == null) {
             return;
         }
@@ -346,6 +376,10 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     @Override public void render(float dt) {
+        if (physical) {
+            renderPhysical(dt);
+            return;
+        }
         boolean ready = boardView != null && camera != null;
         if (ready) {
             flyCam.update(dt);
@@ -397,6 +431,27 @@ public final class SnapScreen extends ScreenAdapter {
         }
     }
 
+    /** The physical free-placement render loop: free camera, ghost eased to the snapped pose, engine + HUD. */
+    private void renderPhysical(float dt) {
+        boolean ready = physWorld != null && camera != null;
+        if (ready) {
+            flyCam.update(dt);
+            physEditor.update(camera, physWorld);
+            physWorld.setGhost(physEditor.present() && cursorCaught, physEditor.modelId(),
+                    physEditor.ghostTransform(), physEditor.valid(), dt);
+            updateStatus();
+        }
+        Gdx.gl.glClearColor(0.13f, 0.14f, 0.17f, 1f);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+        if (ready) {
+            physWorld.render(camera);
+        }
+        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        uiStage.act(dt);
+        uiStage.draw();
+    }
+
     @Override public void resize(int width, int height) {
         uiStage.getViewport().update(width, height, true);
         if (camera != null) {
@@ -409,7 +464,7 @@ public final class SnapScreen extends ScreenAdapter {
     /** Handles world clicks (place/remove), hotbar scroll/keys, and the Esc cursor toggle. */
     private final class EditInput extends InputAdapter {
         @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-            if (editor == null) {
+            if (editor == null && !physical) {
                 return false;
             }
             if (!cursorCaught) {
@@ -418,17 +473,24 @@ public final class SnapScreen extends ScreenAdapter {
                 return true;
             }
             if (button == Buttons.LEFT) {
-                placeAction();
+                if (physical) { physEditor.place(physWorld); } else { placeAction(); }
                 return true;
             }
             if (button == Buttons.RIGHT) {
-                removeAction();
+                if (physical) {
+                    physEditor.update(camera, physWorld);
+                    physWorld.removeNear(physEditor.ghostTransform().getTranslation(new Vector3()), 18f);
+                } else { removeAction(); }
                 return true;
             }
             return false;
         }
 
         @Override public boolean scrolled(float amountX, float amountY) {
+            if (physical) {
+                physEditor.rotate(amountY > 0 ? 15f : -15f);
+                return true;
+            }
             if (editor == null) {
                 return false;
             }
@@ -438,12 +500,21 @@ public final class SnapScreen extends ScreenAdapter {
         }
 
         @Override public boolean keyDown(int keycode) {
-            if (editor == null) {
-                return false;
-            }
             if (keycode == Keys.ESCAPE) {
                 setCursorCaught(!cursorCaught);
                 return true;
+            }
+            if (physical) {
+                if (keycode == Keys.R) { physEditor.rotate(15f); return true; }
+                if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {
+                    physEditor.selectTool(keycode - Keys.NUM_1);
+                    refreshHotbar();
+                    return true;
+                }
+                return false;
+            }
+            if (editor == null) {
+                return false;
             }
             if (keycode == Keys.R) {
                 editor.nudgeDirection(45f);
@@ -530,6 +601,9 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.input.setCursorCatched(false);
         if (boardView != null) {
             boardView.dispose();
+        }
+        if (physWorld != null) {
+            physWorld.dispose();
         }
         if (physics != null) {
             physics.dispose();

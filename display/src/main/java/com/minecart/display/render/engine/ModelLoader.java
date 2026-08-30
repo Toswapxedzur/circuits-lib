@@ -41,7 +41,14 @@ final class ModelLoader {
             }
         }
         if (j.collision != null) {
-            b.collision(toCollision(j.collision));
+            ComponentModel.Collision col = toCollision(j.collision);
+            b.collision(col);
+            // Default connectors (until datagen emits them): two terminals near the part's two ends along its
+            // long axis (X for the standard parts), at the base plane (y=0), studs pointing UP (+Y). terminal 0/1.
+            float ex = Math.max(1f, col.hx() - 1.5f);         // just inside each end
+            com.badlogic.gdx.math.Vector3 up = new com.badlogic.gdx.math.Vector3(0f, 1f, 0f);
+            b.connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(col.cx() - ex, 0f, col.cz()), up, 0, true));
+            b.connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(col.cx() + ex, 0f, col.cz()), up, 1, true));
         }
         return b.build();
     }
