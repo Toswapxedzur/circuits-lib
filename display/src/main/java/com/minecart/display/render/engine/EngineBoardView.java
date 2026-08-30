@@ -28,7 +28,51 @@ public final class EngineBoardView implements Disposable {
     private boolean built;
     private boolean hasBase;
 
+    // Placement ghost — the real component model, drawn translucent at a pose that SMOOTHLY EASES toward its true
+    // target (never snapping). green-ish = valid, red-ish = blocked. Position is lerped and rotation is SLERPed
+    // (via quaternion) separately — a naive 16-element Matrix4.lerp would skew/shrink the model mid-rotation.
+    private static final float GHOST_EASE = 12f;   // per-second easing rate toward the true pose
+    private static final float GHOST_ALPHA = 0.5f; // translucency of the preview
+    private final com.badlogic.gdx.math.Vector3 tgtPos = new com.badlogic.gdx.math.Vector3();
+    private final com.badlogic.gdx.math.Vector3 dispPos = new com.badlogic.gdx.math.Vector3();
+    private final com.badlogic.gdx.math.Quaternion tgtRot = new com.badlogic.gdx.math.Quaternion();
+    private final com.badlogic.gdx.math.Quaternion dispRot = new com.badlogic.gdx.math.Quaternion();
+    private final Matrix4 ghostDisplayed = new Matrix4();
+    private String ghostModelId;
+    private boolean ghostPresent;
+    private boolean ghostValid;
+
     public EngineBoardView() {
+        // Pre-register every model the ghost can preview so their sprites are in the atlas + a mesh is baked.
+        for (String id : SnapModelBridge.allModelIds()) {
+            engine.addGhostModel(id, loader.model(id));
+        }
+    }
+
+    /** Sets the placement ghost for this frame: the {@code modelId} to preview at world {@code truePose}, whether
+     *  the target is {@code valid}, ORE hidden ({@code present=false}). The DISPLAYED pose eases toward
+     *  {@code truePose} over {@code dt} (position + rotation), so the preview glides rather than jumps.
+     *  {@code present=false} hides it. */
+    public void setGhost(boolean present, String modelId, Matrix4 truePose, boolean valid, float dt) {
+        if (!present || modelId == null) {
+            ghostPresent = false;
+            return;
+        }
+        boolean modelChanged = !modelId.equals(ghostModelId);
+        ghostModelId = modelId;
+        ghostValid = valid;
+        truePose.getTranslation(tgtPos);
+        truePose.getRotation(tgtRot, true);
+        if (!ghostPresent || modelChanged) {
+            dispPos.set(tgtPos); // snap on first appear / tool switch, then ease from there
+            dispRot.set(tgtRot);
+        } else {
+            float k = Math.min(1f, dt * GHOST_EASE);
+            dispPos.lerp(tgtPos, k);       // smooth position
+            dispRot.slerp(tgtRot, k);      // smooth rotation (proper quaternion slerp, not a matrix component-lerp)
+        }
+        ghostDisplayed.set(dispPos, dispRot);
+        ghostPresent = true;
     }
 
     /** Sets the skylight direction (TO the light; default 45°/45°). Call before the first {@link #setBoard} so the
@@ -62,10 +106,20 @@ public final class EngineBoardView implements Disposable {
         built = true;
     }
 
-    /** Draws the current board with {@code cam}. No-op until the first {@link #setBoard}. */
+    /** Draws the current board with {@code cam}, then the placement ghost (if any) on top. No-op until the first
+     *  {@link #setBoard}. */
     public void render(Camera cam) {
-        if (built) {
-            engine.render(cam);
+        if (!built) {
+            return;
+        }
+        engine.render(cam);
+        if (ghostPresent) {
+            // Valid = the real component, gently dimmed; blocked = washed red. Both at GHOST_ALPHA transparency.
+            if (ghostValid) {
+                engine.drawGhost(cam, ghostModelId, ghostDisplayed, 1f, 1f, 1f, GHOST_ALPHA);
+            } else {
+                engine.drawGhost(cam, ghostModelId, ghostDisplayed, 1f, 0.45f, 0.4f, GHOST_ALPHA);
+            }
         }
     }
 

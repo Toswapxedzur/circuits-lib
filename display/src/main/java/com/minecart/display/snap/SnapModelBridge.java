@@ -46,6 +46,12 @@ public final class SnapModelBridge {
         };
     }
 
+    /** Every model id {@link #modelId} can emit — so the renderer can pre-load them all (e.g. for the placement
+     *  ghost, whose sprites must be in the atlas before any part of that type is placed). */
+    public static List<String> allModelIds() {
+        return List.of("wire_2", DEFAULT_RESISTOR, "battery_cell", "base_teal");
+    }
+
     /**
      * Placement → world transform: translate to the midpoint of its two posts on its layer, then yaw to its
      * heading. {@code flipped} (electrical polarity) has no geometric effect for the symmetric parts modelled so
