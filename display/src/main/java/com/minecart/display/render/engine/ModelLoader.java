@@ -43,12 +43,17 @@ final class ModelLoader {
         if (j.collision != null) {
             ComponentModel.Collision col = toCollision(j.collision);
             b.collision(col);
-            // Default connectors (until datagen emits them): two terminals near the part's two ends along its
-            // long axis (X for the standard parts), at the base plane (y=0), studs pointing UP (+Y). terminal 0/1.
+            // Default connectors (until datagen emits them): two terminals at the part's two ends along its long
+            // axis (X for the standard parts), at the base plane (y=0). The mating AXIS is the terminal's OUTWARD
+            // horizontal direction (−X / +X) — so two parts snap end-to-end, the ghost rotating so its connector
+            // anti-aligns the target's. terminal 0 = −X end, 1 = +X end.
             float ex = Math.max(1f, col.hx() - 1.5f);         // just inside each end
-            com.badlogic.gdx.math.Vector3 up = new com.badlogic.gdx.math.Vector3(0f, 1f, 0f);
-            b.connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(col.cx() - ex, 0f, col.cz()), up, 0, true));
-            b.connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(col.cx() + ex, 0f, col.cz()), up, 1, true));
+            b.connector(new ComponentModel.Connector(
+                    new com.badlogic.gdx.math.Vector3(col.cx() - ex, 0f, col.cz()),
+                    new com.badlogic.gdx.math.Vector3(-1f, 0f, 0f), 0, true));
+            b.connector(new ComponentModel.Connector(
+                    new com.badlogic.gdx.math.Vector3(col.cx() + ex, 0f, col.cz()),
+                    new com.badlogic.gdx.math.Vector3(1f, 0f, 0f), 1, true));
         }
         return b.build();
     }

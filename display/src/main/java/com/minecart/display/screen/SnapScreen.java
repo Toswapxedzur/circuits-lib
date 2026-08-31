@@ -140,13 +140,19 @@ public final class SnapScreen extends ScreenAdapter {
             physWorld.setBaseBoard(board.width(), board.height(), 0f);
             physEditor = new com.minecart.display.snap.PhysicalEditor();
             if ("1".equals(System.getProperty("snap.phystest"))) {
-                // Place a wire, then place a 2nd wire whose candidate is offset — snap() should mate them.
-                Vector3 c = new Vector3(centerX, 0f, centerZ);
-                com.badlogic.gdx.math.Matrix4 a = new com.badlogic.gdx.math.Matrix4().setToTranslation(c.x, 0f, c.z);
-                physWorld.place("wire_2", a);
-                com.badlogic.gdx.math.Matrix4 cand = new com.badlogic.gdx.math.Matrix4().setToTranslation(c.x + 26f, 0f, c.z);
-                physWorld.place("wire_2", physWorld.snap("wire_2", cand));
-                physWorld.place("resistor", new com.badlogic.gdx.math.Matrix4().setToTranslation(c.x, 0f, c.z + 30f).rotate(0f, 1f, 0f, 40f));
+                // A resistor at a free 40°, then a wire candidate at yaw 0 near its far terminal: snap() must
+                // ROTATE the wire to mate end-to-end (rotation-align), not just translate.
+                float cx = centerX, cz = centerZ;
+                physWorld.place("resistor", new com.badlogic.gdx.math.Matrix4()
+                        .setToTranslation(cx, 0f, cz).rotate(0f, 1f, 0f, 40f));
+                for (com.minecart.display.render.engine.PhysicalBoardView.WorldConnector wc : physWorld.connectorsWorld()) {
+                    if (wc.terminal() == 1) { // the resistor's +X terminal
+                        com.badlogic.gdx.math.Matrix4 cand = new com.badlogic.gdx.math.Matrix4()
+                                .setToTranslation(wc.pos().x + 8f, 0f, wc.pos().z); // near it, yaw 0
+                        physWorld.place("wire_2", physWorld.snap("wire_2", cand));
+                        break;
+                    }
+                }
                 log.info("phystest: placed {} parts, {} world connectors", physWorld.placements().size(),
                         physWorld.connectorsWorld().size());
             }
