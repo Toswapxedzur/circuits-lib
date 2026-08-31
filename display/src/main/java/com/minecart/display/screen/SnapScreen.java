@@ -159,9 +159,17 @@ public final class SnapScreen extends ScreenAdapter {
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
+                // Typed chain: a wire, then a wire candidate near its STUD (+X) end at yaw 0 — its SOCKET should
+                // mate + the part should MOVE onto the target (snap != candidate).
+                com.badlogic.gdx.math.Matrix4 w1 = new com.badlogic.gdx.math.Matrix4().setToTranslation(cx, 0f, cz + 40f);
+                physWorld.place("wire_2", w1);
+                com.badlogic.gdx.math.Matrix4 wc = new com.badlogic.gdx.math.Matrix4().setToTranslation(cx + 30f, 0f, cz + 40f);
+                com.badlogic.gdx.math.Matrix4 snapped = physWorld.snap("wire_2", wc);
+                boolean chained = !snapped.getTranslation(new Vector3()).epsilonEquals(wc.getTranslation(new Vector3()), 0.5f);
+                physWorld.place("wire_2", snapped);
                 physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
-                log.info("phystest: placed {} parts; mating-allowed={} nonmating-overlap-blocked={}; saved to {}",
-                        physWorld.placements().size(), mateOk, overlapBlocked, physFile().path());
+                log.info("phystest: {} parts; mating-allowed={} nonmating-blocked={} typed-chain-snapped={}; saved {}",
+                        physWorld.placements().size(), mateOk, overlapBlocked, chained, physFile().path());
             }
             return;
         }
