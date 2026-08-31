@@ -31,6 +31,9 @@ public final class PhysicalBoardView implements Disposable {
     private final EngineRenderer engine = new EngineRenderer();
     private final ModelLoader loader = new ModelLoader();
     private final List<Placed> placed = new ArrayList<>();
+    private final List<EngineRenderer.DynamicEntity> ents = new ArrayList<>(); // parallel to placed (render entities)
+    // Populated on the server thread (buildCircuit), read on the render thread (glow) — concurrent-safe.
+    private final java.util.Map<Integer, com.minecart.logic.CircuitEdge> deviceEdge = new java.util.concurrent.ConcurrentHashMap<>();
     private boolean built;
     private boolean hasBase;
 
@@ -88,13 +91,37 @@ public final class PhysicalBoardView implements Disposable {
 
     private void rebuild() {
         engine.clearEntities();
+        ents.clear();
         for (Placed p : placed) {
             EngineRenderer.DynamicEntity e = new EngineRenderer.DynamicEntity(loader.model(p.modelId()));
             e.pose(p.transform());
             engine.addEntity(e);
+            ents.add(e);
         }
         engine.build();
         built = hasBase || !placed.isEmpty();
+    }
+
+    // Warm colour a device glows when carrying current; brightness + range scale with |current|.
+    private static final com.badlogic.gdx.graphics.Color GLOW = new com.badlogic.gdx.graphics.Color(1f, 0.55f, 0.2f, 1f);
+    private final com.badlogic.gdx.graphics.Color glowTmp = new com.badlogic.gdx.graphics.Color();
+
+    /** Reads each device's solved current and makes the part EMIT light proportional to it — so a live circuit
+     *  glows in-world (a resistor "heats up"), not just in the HUD. Called each frame before rendering. */
+    private void updateElectricalGlow() {
+        for (int i = 0; i < ents.size(); i++) {
+            EngineRenderer.DynamicEntity e = ents.get(i);
+            com.minecart.logic.CircuitEdge edge = deviceEdge.get(i);
+            double cur = edge == null ? 0.0 : Math.abs(edge.getCurrent().getValue());
+            if (cur > 1e-4) {
+                float b = (float) Math.min(1.0, 0.5 + cur * 8.0); // brightness ramps with current
+                e.light = glowTmp.set(GLOW.r * b, GLOW.g * b, GLOW.b * b, 1f);
+                e.lightRange = (float) Math.min(90.0, 30.0 + cur * 600.0);
+            } else {
+                e.light = null;
+                e.lightRange = 0f;
+            }
+        }
     }
 
     private com.minecart.logic.CircuitEdge lastBattery; // captured to read solved current (a live-circuit proof)
@@ -110,6 +137,7 @@ public final class PhysicalBoardView implements Disposable {
             world.removeCircuit(c);
         }
         lastBattery = null;
+        deviceEdge.clear();
         ConnectorField field = new ConnectorField(world);
         // Pass 1: wires union their two terminals (so a wire run collapses to one node).
         for (Placed p : placed) {
@@ -119,7 +147,8 @@ public final class PhysicalBoardView implements Disposable {
             }
         }
         // Pass 2: devices attach their element between the (now-merged) coincident-connector nodes.
-        for (Placed p : placed) {
+        for (int i = 0; i < placed.size(); i++) {
+            Placed p = placed.get(i);
             char k = kind(p.modelId());
             if (k == 'r' || k == 'b') {
                 Vector3[] t = terminals(p);
@@ -127,11 +156,12 @@ public final class PhysicalBoardView implements Disposable {
                 com.minecart.logic.CircuitNode a = field.at(t[0]), bb = field.at(t[1]);
                 if (a == bb) continue; // terminals shorted onto one net
                 if (k == 'r') {
-                    world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
-                            new com.minecart.variant.Informations.ResistorInfo(100.0));
+                    deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
+                            new com.minecart.variant.Informations.ResistorInfo(100.0)));
                 } else {
                     lastBattery = world.connect(com.minecart.registry.AllComponents.BATTERY, a, bb,
                             new com.minecart.variant.Informations.BatteryInfo(5.0, 0.01));
+                    deviceEdge.put(i, lastBattery);
                 }
             }
         }
@@ -350,6 +380,7 @@ public final class PhysicalBoardView implements Disposable {
         if (!built) {
             return;
         }
+        updateElectricalGlow(); // live current → per-part emission (glow) before the lighting pass
         engine.render(cam);
         if (gPresent) {
             if (gValid) {
