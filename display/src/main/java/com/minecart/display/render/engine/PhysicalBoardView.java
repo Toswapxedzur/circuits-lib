@@ -326,6 +326,9 @@ public final class PhysicalBoardView implements Disposable {
         for (ComponentModel.Connector c : m.connectors) {
             Vector3 gp = tmp.set(c.local()).mul(candidate); // ghost connector current world pos
             for (WorldConnector t : targets) {
+                if (t.male() == c.male()) {
+                    continue; // typed: a stud mates a socket, not stud↔stud / socket↔socket
+                }
                 float d = gp.dst2(t.pos());
                 if (d < bestD) {
                     bestD = d;

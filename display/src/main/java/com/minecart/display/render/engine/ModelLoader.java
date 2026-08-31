@@ -47,13 +47,16 @@ final class ModelLoader {
             // parts are modelled with studs at ±half-pitch (±12), so terminals there let different-length parts
             // interconnect (share a node when coincident), matching the grid they were designed for. The mating
             // AXIS is the terminal's OUTWARD horizontal direction (−X / +X), so parts snap + rotation-align.
+            // TYPED: terminal 0 (−X end) = SOCKET (female), terminal 1 (+X end) = STUD (male). Snapping mates
+            // stud↔socket only (two studs / two + ends can't clip together — the keying). Electrical connectivity
+            // stays coincidence-based (ConnectorField), independent of this typing.
             float ex = com.minecart.display.snap.SnapModelBridge.PITCH / 2f; // ±12 (stud position)
             b.connector(new ComponentModel.Connector(
                     new com.badlogic.gdx.math.Vector3(col.cx() - ex, 0f, col.cz()),
-                    new com.badlogic.gdx.math.Vector3(-1f, 0f, 0f), 0, true));
+                    new com.badlogic.gdx.math.Vector3(-1f, 0f, 0f), 0, false)); // socket
             b.connector(new ComponentModel.Connector(
                     new com.badlogic.gdx.math.Vector3(col.cx() + ex, 0f, col.cz()),
-                    new com.badlogic.gdx.math.Vector3(1f, 0f, 0f), 1, true));
+                    new com.badlogic.gdx.math.Vector3(1f, 0f, 0f), 1, true));   // stud
         }
         return b.build();
     }
