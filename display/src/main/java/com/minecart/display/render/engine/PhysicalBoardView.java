@@ -116,9 +116,10 @@ public final class PhysicalBoardView implements Disposable {
     }
 
     /**
-     * MAGNETIC SNAP: given a candidate transform for {@code modelId}, if any of its connectors is within
-     * {@link #SNAP_RADIUS} of a compatible placed connector, returns a transform TRANSLATED so the nearest such
-     * pair coincides exactly; otherwise returns {@code candidate} unchanged. (Rotation-align on mate: next step.)
+     * MAGNETIC SNAP with ROTATION-ALIGN: given a candidate transform for {@code modelId}, if one of its connectors
+     * is within {@link #SNAP_RADIUS} of a compatible placed connector, returns a transform that ROTATES the part so
+     * that connector's outward axis anti-aligns the target's (they face each other) AND translates so the pair
+     * coincides exactly — a clean end-to-end mate at any angle. Otherwise returns {@code candidate} unchanged.
      */
     public Matrix4 snap(String modelId, Matrix4 candidate) {
         ComponentModel m = loader.model(modelId);
@@ -130,24 +131,31 @@ public final class PhysicalBoardView implements Disposable {
             return candidate;
         }
         float bestD = SNAP_RADIUS * SNAP_RADIUS;
-        Vector3 bestDelta = null;
+        Matrix4 best = null;
         for (ComponentModel.Connector c : m.connectors) {
-            Vector3 gp = tmp.set(c.local()).mul(candidate); // ghost connector world pos
+            Vector3 gp = tmp.set(c.local()).mul(candidate); // ghost connector current world pos
             for (WorldConnector t : targets) {
-                if (t.male() == c.male()) {
-                    continue; // stud mates socket, not stud↔stud (typed)
-                }
                 float d = gp.dst2(t.pos());
                 if (d < bestD) {
                     bestD = d;
-                    bestDelta = new Vector3(t.pos()).sub(gp);
+                    best = alignConnector(c, t);
                 }
             }
         }
-        if (bestDelta == null) {
-            return candidate;
-        }
-        return new Matrix4(candidate).trn(bestDelta.x, bestDelta.y, bestDelta.z);
+        return best != null ? best : candidate;
+    }
+
+    /** Builds the transform that mates ghost connector {@code c} onto placed connector {@code t}: yaw so c's
+     *  outward axis anti-aligns t's (face-to-face), then translate so c lands exactly on t. */
+    private Matrix4 alignConnector(ComponentModel.Connector c, WorldConnector t) {
+        // Desired WORLD angle of c's outward axis = angle of (−t.axis); c's LOCAL outward angle = atan2(z, x).
+        float wantAng = (float) Math.atan2(-t.axis().z, -t.axis().x);
+        float localAng = (float) Math.atan2(c.axis().z, c.axis().x);
+        float yawRad = wantAng - localAng;
+        Matrix4 r = new Matrix4().setToRotationRad(0f, 1f, 0f, yawRad);
+        Vector3 rotated = new Vector3(c.local()).rot(r);          // c's pos after rotation (about origin)
+        Vector3 trans = new Vector3(t.pos()).sub(rotated);        // translate so rotated + trans = t.pos
+        return new Matrix4().setToTranslation(trans).mul(r);      // world = T · R
     }
 
     /** True if {@code modelId} at {@code transform} does NOT overlap any placed part (world-AABB test). */
