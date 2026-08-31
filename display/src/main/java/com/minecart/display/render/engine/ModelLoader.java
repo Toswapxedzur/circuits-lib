@@ -43,11 +43,11 @@ final class ModelLoader {
         if (j.collision != null) {
             ComponentModel.Collision col = toCollision(j.collision);
             b.collision(col);
-            // Default connectors (until datagen emits them): two terminals at the part's two ends along its long
-            // axis (X for the standard parts), at the base plane (y=0). The mating AXIS is the terminal's OUTWARD
-            // horizontal direction (−X / +X) — so two parts snap end-to-end, the ghost rotating so its connector
-            // anti-aligns the target's. terminal 0 = −X end, 1 = +X end.
-            float ex = Math.max(1f, col.hx() - 1.5f);         // just inside each end
+            // Default connectors (until datagen emits real ones): two terminals on the STANDARD grid span — the
+            // parts are modelled with studs at ±half-pitch (±12), so terminals there let different-length parts
+            // interconnect (share a node when coincident), matching the grid they were designed for. The mating
+            // AXIS is the terminal's OUTWARD horizontal direction (−X / +X), so parts snap + rotation-align.
+            float ex = com.minecart.display.snap.SnapModelBridge.PITCH / 2f; // ±12 (stud position)
             b.connector(new ComponentModel.Connector(
                     new com.badlogic.gdx.math.Vector3(col.cx() - ex, 0f, col.cz()),
                     new com.badlogic.gdx.math.Vector3(-1f, 0f, 0f), 0, true));

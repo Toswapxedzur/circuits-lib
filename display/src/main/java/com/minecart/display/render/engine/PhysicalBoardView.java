@@ -97,6 +97,130 @@ public final class PhysicalBoardView implements Disposable {
         built = hasBase || !placed.isEmpty();
     }
 
+    private com.minecart.logic.CircuitEdge lastBattery; // captured to read solved current (a live-circuit proof)
+
+    /**
+     * Rebuilds the world's ELECTRICAL circuit from the physical placements — the {@code ConnectorField} unions
+     * connectors that COINCIDE in world space into shared {@link com.minecart.logic.CircuitNode}s (replacing the
+     * grid's post-sharing), then wires union their terminals and devices attach elements between nodes. Reuses the
+     * exact core solver. Call after every place/remove.
+     */
+    public void buildCircuit(com.minecart.logic.ServerWorld world) {
+        for (com.minecart.foundation.Circuit c : new ArrayList<>(world.getCircuits())) {
+            world.removeCircuit(c);
+        }
+        lastBattery = null;
+        ConnectorField field = new ConnectorField(world);
+        // Pass 1: wires union their two terminals (so a wire run collapses to one node).
+        for (Placed p : placed) {
+            if (kind(p.modelId()) == 'w') {
+                Vector3[] t = terminals(p);
+                if (t != null) field.union(t[0], t[1]);
+            }
+        }
+        // Pass 2: devices attach their element between the (now-merged) coincident-connector nodes.
+        for (Placed p : placed) {
+            char k = kind(p.modelId());
+            if (k == 'r' || k == 'b') {
+                Vector3[] t = terminals(p);
+                if (t == null) continue;
+                com.minecart.logic.CircuitNode a = field.at(t[0]), bb = field.at(t[1]);
+                if (a == bb) continue; // terminals shorted onto one net
+                if (k == 'r') {
+                    world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
+                            new com.minecart.variant.Informations.ResistorInfo(100.0));
+                } else {
+                    lastBattery = world.connect(com.minecart.registry.AllComponents.BATTERY, a, bb,
+                            new com.minecart.variant.Informations.BatteryInfo(5.0, 0.01));
+                }
+            }
+        }
+        if (DBG) {
+            com.badlogic.gdx.Gdx.app.log("PHYS-CIRCUIT", "placed=" + placed.size() + " circuits="
+                    + world.getCircuits().size() + " battery=" + (lastBattery != null)
+                    + (lastBattery != null ? " I0=" + lastBattery.getCurrent().getValue() : "")
+                    + " termsBat=" + java.util.Arrays.toString(termKeys("battery_cell"))
+                    + " termsRes=" + java.util.Arrays.toString(termKeys("resistor")));
+        }
+    }
+
+    private static final boolean DBG = "1".equals(System.getProperty("snap.phystest"));
+    private String[] termKeys(String modelId) {
+        for (Placed p : placed) {
+            if (p.modelId().equals(modelId)) {
+                Vector3[] t = terminals(p);
+                if (t != null) return new String[]{ConnectorField.key(t[0]), ConnectorField.key(t[1])};
+            }
+        }
+        return new String[0];
+    }
+
+    /** The most recent battery's solved current magnitude (amps) — a live-circuit readout; 0 if none/unsolved. */
+    public double batteryCurrent() {
+        return lastBattery == null ? 0.0 : Math.abs(lastBattery.getCurrent().getValue());
+    }
+
+    private static char kind(String modelId) {
+        if (modelId.startsWith("wire")) return 'w';
+        if (modelId.startsWith("resistor")) return 'r';
+        if (modelId.startsWith("battery")) return 'b';
+        return '.';
+    }
+
+    /** A placement's two terminal world positions (index 0 / 1), or null if it lacks both. */
+    private Vector3[] terminals(Placed p) {
+        ComponentModel m = loader.model(p.modelId());
+        Vector3 t0 = null, t1 = null;
+        for (ComponentModel.Connector c : m.connectors) {
+            Vector3 w = new Vector3(c.local()).mul(p.transform());
+            if (c.terminal() == 0) t0 = w;
+            else if (c.terminal() == 1) t1 = w;
+        }
+        return (t0 != null && t1 != null) ? new Vector3[]{t0, t1} : null;
+    }
+
+    /** Union-find over connectors that COINCIDE in world space → one shared circuit node each (grid PostGrid's
+     *  role, but keyed by quantised world position since snapping mates connectors exactly). */
+    private static final class ConnectorField {
+        private final com.minecart.logic.ServerWorld world;
+        private final java.util.Map<String, Integer> keyId = new java.util.HashMap<>();
+        private final List<Integer> parent = new ArrayList<>();
+        private final java.util.Map<Integer, com.minecart.logic.CircuitNode> node = new java.util.HashMap<>();
+
+        ConnectorField(com.minecart.logic.ServerWorld world) {
+            this.world = world;
+        }
+
+        private static String key(Vector3 p) { // round to 2u — mated connectors coincide, distinct ones don't
+            return Math.round(p.x / 2f) + "," + Math.round(p.y / 2f) + "," + Math.round(p.z / 2f);
+        }
+
+        private int id(Vector3 p) {
+            return keyId.computeIfAbsent(key(p), k -> {
+                parent.add(parent.size());
+                return parent.size() - 1;
+            });
+        }
+
+        private int find(int i) {
+            while (parent.get(i) != i) {
+                parent.set(i, parent.get(parent.get(i)));
+                i = parent.get(i);
+            }
+            return i;
+        }
+
+        void union(Vector3 a, Vector3 b) {
+            int ra = find(id(a)), rb = find(id(b));
+            if (ra != rb) parent.set(ra, rb);
+        }
+
+        com.minecart.logic.CircuitNode at(Vector3 p) {
+            return node.computeIfAbsent(find(id(p)),
+                    r -> world.createNode(com.minecart.registry.AllComponents.CONNECTION));
+        }
+    }
+
     /** Every placed part's connectors in world space (for snapping + electrical connectivity). */
     public List<WorldConnector> connectorsWorld() {
         List<WorldConnector> out = new ArrayList<>();
