@@ -145,11 +145,17 @@ public final class SnapScreen extends ScreenAdapter {
                 float cx = centerX, cz = centerZ;
                 com.badlogic.gdx.math.Matrix4 t = new com.badlogic.gdx.math.Matrix4().setToTranslation(cx, 0f, cz);
                 physWorld.place("battery_cell", t);
+                // Connection-aware collision: a resistor sharing the battery's terminals MATES (overlap allowed);
+                // a wire dumped mid-body with no shared connector genuinely OVERLAPS (blocked).
+                boolean mateOk = physWorld.canPlace("resistor", new com.badlogic.gdx.math.Matrix4(t));
+                boolean overlapBlocked = !physWorld.canPlace("wire_2",
+                        new com.badlogic.gdx.math.Matrix4().setToTranslation(cx + 4f, 0f, cz));
                 physWorld.place("resistor", new com.badlogic.gdx.math.Matrix4(t)); // same terminals → closed loop
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
-                log.info("phystest: placed {} parts, built circuit", physWorld.placements().size());
+                log.info("phystest: placed {} parts; mating-allowed={} nonmating-overlap-blocked={}",
+                        physWorld.placements().size(), mateOk, overlapBlocked);
             }
             return;
         }

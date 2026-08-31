@@ -312,24 +312,54 @@ public final class PhysicalBoardView implements Disposable {
         return new Matrix4().setToTranslation(trans).mul(r);      // world = T · R
     }
 
-    /** True if {@code modelId} at {@code transform} does NOT overlap any placed part (world-AABB test). */
+    private static final float MATE_EPS2 = 4f; // (2u)² — connectors this close count as mated (they coincide exactly)
+
+    /**
+     * Connection-aware validity: {@code modelId} at {@code transform} is placeable unless its collision box
+     * overlaps a placed part <b>without mating it</b>. Mated parts SHARE a terminal and their bodies legitimately
+     * overlap (like real Snap Circuits base tiles interlocking), so an overlap is allowed when the candidate has a
+     * connector coincident with one of that part's connectors.
+     */
     public boolean canPlace(String modelId, Matrix4 transform) {
         ComponentModel m = loader.model(modelId);
         if (m.collision == null) {
             return true;
         }
         float[] a = worldAabb(m.collision, transform);
+        List<Vector3> mine = candidateConnectors(m, transform);
         for (Placed p : placed) {
             ComponentModel pm = loader.model(p.modelId());
             if (pm.collision == null) {
                 continue;
             }
             float[] b = worldAabb(pm.collision, p.transform());
-            if (overlap(a, b)) {
+            if (overlap(a, b) && !sharesConnector(mine, pm, p.transform())) {
                 return false;
             }
         }
         return true;
+    }
+
+    /** The world positions of {@code m}'s connectors under {@code world}. */
+    private List<Vector3> candidateConnectors(ComponentModel m, Matrix4 world) {
+        List<Vector3> out = new ArrayList<>(m.connectors.size());
+        for (ComponentModel.Connector c : m.connectors) {
+            out.add(new Vector3(c.local()).mul(world));
+        }
+        return out;
+    }
+
+    /** True if any of {@code mine} coincides (within {@link #MATE_EPS2}) with a connector of placed part {@code pm}. */
+    private boolean sharesConnector(List<Vector3> mine, ComponentModel pm, Matrix4 pWorld) {
+        for (ComponentModel.Connector c : pm.connectors) {
+            Vector3 w = new Vector3(c.local()).mul(pWorld);
+            for (Vector3 g : mine) {
+                if (g.dst2(w) <= MATE_EPS2) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** World-space AABB {minx,miny,minz,maxx,maxy,maxz} of a collision box under {@code world} (8-corner bound). */
