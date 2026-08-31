@@ -72,6 +72,43 @@ public final class PhysicalBoardView implements Disposable {
         rebuild();
     }
 
+    /** One saved placement: model id + its 16-float world matrix. */
+    private static final class SaveEntry { String id; float[] m; }
+
+    /** Persists the placements to {@code f} as JSON (a side-file per world — independent of the grid save path). */
+    public void save(com.badlogic.gdx.files.FileHandle f) {
+        List<SaveEntry> list = new ArrayList<>(placed.size());
+        for (Placed p : placed) {
+            SaveEntry s = new SaveEntry();
+            s.id = p.modelId();
+            s.m = p.transform().val.clone();
+            list.add(s);
+        }
+        f.writeString(new com.google.gson.Gson().toJson(list), false);
+    }
+
+    /** Restores placements from {@code f} (if it exists), rebuilds the scene. Returns the count loaded. */
+    public int load(com.badlogic.gdx.files.FileHandle f) {
+        if (!f.exists()) {
+            return 0;
+        }
+        SaveEntry[] arr = new com.google.gson.Gson().fromJson(f.readString(), SaveEntry[].class);
+        if (arr == null) {
+            return 0;
+        }
+        placed.clear();
+        for (SaveEntry s : arr) {
+            if (s == null || s.id == null || s.m == null || s.m.length != 16) {
+                continue;
+            }
+            Matrix4 mm = new Matrix4();
+            System.arraycopy(s.m, 0, mm.val, 0, 16);
+            placed.add(new Placed(s.id, mm));
+        }
+        rebuild();
+        return placed.size();
+    }
+
     /** Removes the placement nearest {@code worldPoint} within {@code radius}; returns true if one was removed. */
     public boolean removeNear(Vector3 worldPoint, float radius) {
         int best = -1;

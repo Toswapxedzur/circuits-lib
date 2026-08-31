@@ -139,6 +139,11 @@ public final class SnapScreen extends ScreenAdapter {
             physWorld = new com.minecart.display.render.engine.PhysicalBoardView();
             physWorld.setBaseBoard(board.width(), board.height(), 0f);
             physEditor = new com.minecart.display.snap.PhysicalEditor();
+            int loaded = physWorld.load(physFile());
+            if (loaded > 0 && serverWorld != null && integrated != null) {
+                integrated.level().submit(() -> physWorld.buildCircuit(serverWorld)); // restore the live circuit
+                log.info("physical: loaded {} placements from {}", loaded, physFile().path());
+            }
             if ("1".equals(System.getProperty("snap.phystest"))) {
                 // A live LOOP: a battery and a resistor sharing BOTH terminals (coincident) → 5V across ~100Ω →
                 // the solver should report ~0.05 A. Proves physical placements build a real, solved circuit.
@@ -154,8 +159,9 @@ public final class SnapScreen extends ScreenAdapter {
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
-                log.info("phystest: placed {} parts; mating-allowed={} nonmating-overlap-blocked={}",
-                        physWorld.placements().size(), mateOk, overlapBlocked);
+                physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
+                log.info("phystest: placed {} parts; mating-allowed={} nonmating-overlap-blocked={}; saved to {}",
+                        physWorld.placements().size(), mateOk, overlapBlocked, physFile().path());
             }
             return;
         }
@@ -564,9 +570,23 @@ public final class SnapScreen extends ScreenAdapter {
         return integrated != null;
     }
 
+    /** The per-world side-file holding this world's physical-mode placements (independent of the grid save). */
+    private com.badlogic.gdx.files.FileHandle physFile() {
+        String safe = (worldName == null ? "world" : worldName).replaceAll("[^A-Za-z0-9_-]", "_");
+        return Gdx.files.external("circuitslib-phys/" + safe + ".json");
+    }
+
     private void saveAndBack() {
         if (shuttingDown) return;
         shuttingDown = true;
+        if (physical && physWorld != null) {
+            try {
+                physWorld.save(physFile());
+                log.info("physical: saved {} placements to {}", physWorld.placements().size(), physFile().path());
+            } catch (Throwable t) {
+                log.warn("physical save failed", t);
+            }
+        }
         if (isSingleplayer()) {
             closeConnectionQuietly();
             try {
