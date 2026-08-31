@@ -140,21 +140,16 @@ public final class SnapScreen extends ScreenAdapter {
             physWorld.setBaseBoard(board.width(), board.height(), 0f);
             physEditor = new com.minecart.display.snap.PhysicalEditor();
             if ("1".equals(System.getProperty("snap.phystest"))) {
-                // A resistor at a free 40°, then a wire candidate at yaw 0 near its far terminal: snap() must
-                // ROTATE the wire to mate end-to-end (rotation-align), not just translate.
+                // A live LOOP: a battery and a resistor sharing BOTH terminals (coincident) → 5V across ~100Ω →
+                // the solver should report ~0.05 A. Proves physical placements build a real, solved circuit.
                 float cx = centerX, cz = centerZ;
-                physWorld.place("resistor", new com.badlogic.gdx.math.Matrix4()
-                        .setToTranslation(cx, 0f, cz).rotate(0f, 1f, 0f, 40f));
-                for (com.minecart.display.render.engine.PhysicalBoardView.WorldConnector wc : physWorld.connectorsWorld()) {
-                    if (wc.terminal() == 1) { // the resistor's +X terminal
-                        com.badlogic.gdx.math.Matrix4 cand = new com.badlogic.gdx.math.Matrix4()
-                                .setToTranslation(wc.pos().x + 8f, 0f, wc.pos().z); // near it, yaw 0
-                        physWorld.place("wire_2", physWorld.snap("wire_2", cand));
-                        break;
-                    }
+                com.badlogic.gdx.math.Matrix4 t = new com.badlogic.gdx.math.Matrix4().setToTranslation(cx, 0f, cz);
+                physWorld.place("battery_cell", t);
+                physWorld.place("resistor", new com.badlogic.gdx.math.Matrix4(t)); // same terminals → closed loop
+                if (serverWorld != null && integrated != null) {
+                    integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
-                log.info("phystest: placed {} parts, {} world connectors", physWorld.placements().size(),
-                        physWorld.connectorsWorld().size());
+                log.info("phystest: placed {} parts, built circuit", physWorld.placements().size());
             }
             return;
         }
@@ -281,9 +276,11 @@ public final class SnapScreen extends ScreenAdapter {
 
     private void updateStatus() {
         if (physical) {
+            double i = physWorld.batteryCurrent();
             statusLabel.setText("PHYSICAL  |  Item: " + physEditor.toolLabel(physEditor.tool())
-                    + "   |   1-3 select   scroll/R rotate   LMB place   RMB remove   WASD+Space/Ctrl fly   Esc cursor"
-                    + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : ""));
+                    + "   |   1-3 select   scroll/R rotate   LMB place   RMB remove   Esc cursor"
+                    + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
+                    + (i > 1e-4 ? String.format("    |    circuit LIVE: I = %.3f A", i) : ""));
             return;
         }
         if (editor == null) {
@@ -437,6 +434,13 @@ public final class SnapScreen extends ScreenAdapter {
         }
     }
 
+    /** Rebuilds the physical circuit on the SERVER thread (so its tick solves it), thread-safe with the render. */
+    private void rebuildPhysCircuit() {
+        if (serverWorld != null && integrated != null) {
+            integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
+        }
+    }
+
     /** The physical free-placement render loop: free camera, ghost eased to the snapped pose, engine + HUD. */
     private void renderPhysical(float dt) {
         boolean ready = physWorld != null && camera != null;
@@ -479,13 +483,17 @@ public final class SnapScreen extends ScreenAdapter {
                 return true;
             }
             if (button == Buttons.LEFT) {
-                if (physical) { physEditor.place(physWorld); } else { placeAction(); }
+                if (physical) {
+                    if (physEditor.place(physWorld)) rebuildPhysCircuit();
+                } else { placeAction(); }
                 return true;
             }
             if (button == Buttons.RIGHT) {
                 if (physical) {
                     physEditor.update(camera, physWorld);
-                    physWorld.removeNear(physEditor.ghostTransform().getTranslation(new Vector3()), 18f);
+                    if (physWorld.removeNear(physEditor.ghostTransform().getTranslation(new Vector3()), 18f)) {
+                        rebuildPhysCircuit();
+                    }
                 } else { removeAction(); }
                 return true;
             }
