@@ -18,8 +18,8 @@ import com.minecart.display.render.engine.PhysicalBoardView;
 public final class PhysicalEditor {
 
     /** The placeable tools → their model ids (free mode uses the model directly, no grid part-type). */
-    private static final String[] TOOL_MODEL = {"wire_2", "resistor", "battery_cell"};
-    private static final String[] TOOL_LABEL = {"Wire", "Resistor", "Battery"};
+    private static final String[] TOOL_MODEL = {"wire_2", "resistor", "battery_cell", "led"};
+    private static final String[] TOOL_LABEL = {"Wire", "Resistor", "Battery", "LED"};
 
     private final Plane ground = new Plane(new Vector3(0f, 1f, 0f), 0f);
     private final Vector3 hit = new Vector3();
