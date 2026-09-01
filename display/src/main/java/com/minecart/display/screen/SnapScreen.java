@@ -157,7 +157,7 @@ public final class SnapScreen extends ScreenAdapter {
                 boolean mateOk = physWorld.canPlace("resistor", new com.badlogic.gdx.math.Matrix4(t));
                 boolean overlapBlocked = !physWorld.canPlace("wire_2",
                         new com.badlogic.gdx.math.Matrix4().setToTranslation(cx + 4f, 0f, cz));
-                physWorld.place("resistor", new com.badlogic.gdx.math.Matrix4(t)); // same terminals → closed loop
+                physWorld.place("led", new com.badlogic.gdx.math.Matrix4(t)); // battery+LED loop → the LED lights red
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }

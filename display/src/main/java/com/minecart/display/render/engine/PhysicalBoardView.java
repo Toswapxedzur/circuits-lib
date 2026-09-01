@@ -139,21 +139,27 @@ public final class PhysicalBoardView implements Disposable {
         built = hasBase || !placed.isEmpty();
     }
 
-    // Warm colour a device glows when carrying current; brightness + range scale with |current|.
-    private static final com.badlogic.gdx.graphics.Color GLOW = new com.badlogic.gdx.graphics.Color(1f, 0.55f, 0.2f, 1f);
+    // Glow colours: a resistor/other device "heats up" warm-orange; an LED lights in its own (red) colour, brighter.
+    private static final com.badlogic.gdx.graphics.Color GLOW_HEAT = new com.badlogic.gdx.graphics.Color(1f, 0.55f, 0.2f, 1f);
+    private static final com.badlogic.gdx.graphics.Color GLOW_LED = new com.badlogic.gdx.graphics.Color(1f, 0.15f, 0.1f, 1f);
     private final com.badlogic.gdx.graphics.Color glowTmp = new com.badlogic.gdx.graphics.Color();
 
     /** Reads each device's solved current and makes the part EMIT light proportional to it — so a live circuit
-     *  glows in-world (a resistor "heats up"), not just in the HUD. Called each frame before rendering. */
+     *  glows in-world (a resistor "heats up", an LED lights its colour), not just in the HUD. Called per frame. */
     private void updateElectricalGlow() {
         for (int i = 0; i < ents.size(); i++) {
             EngineRenderer.DynamicEntity e = ents.get(i);
             com.minecart.logic.CircuitEdge edge = deviceEdge.get(i);
             double cur = edge == null ? 0.0 : Math.abs(edge.getCurrent().getValue());
             if (cur > 1e-4) {
-                float b = (float) Math.min(1.0, 0.5 + cur * 8.0); // brightness ramps with current
-                e.light = glowTmp.set(GLOW.r * b, GLOW.g * b, GLOW.b * b, 1f);
-                e.lightRange = (float) Math.min(90.0, 30.0 + cur * 600.0);
+                boolean led = kind(placed.get(i).modelId()) == 'l';
+                com.badlogic.gdx.graphics.Color base = led ? GLOW_LED : GLOW_HEAT;
+                // An LED lit at all reads at near-full brightness + wide range (it's a light source, not heat);
+                // a resistor's warm glow ramps with current.
+                float b = led ? (float) Math.min(1.0, 0.9 + cur * 4.0) : (float) Math.min(1.0, 0.5 + cur * 8.0);
+                e.light = glowTmp.set(base.r * b, base.g * b, base.b * b, 1f);
+                e.lightRange = led ? (float) Math.min(110.0, 60.0 + cur * 800.0)
+                        : (float) Math.min(90.0, 30.0 + cur * 600.0);
             } else {
                 e.light = null;
                 e.lightRange = 0f;
@@ -187,7 +193,7 @@ public final class PhysicalBoardView implements Disposable {
         for (int i = 0; i < placed.size(); i++) {
             Placed p = placed.get(i);
             char k = kind(p.modelId());
-            if (k == 'r' || k == 'b') {
+            if (k == 'r' || k == 'b' || k == 'l') {
                 Vector3[] t = terminals(p);
                 if (t == null) continue;
                 com.minecart.logic.CircuitNode a = field.at(t[0]), bb = field.at(t[1]);
@@ -195,6 +201,11 @@ public final class PhysicalBoardView implements Disposable {
                 if (k == 'r') {
                     deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
                             new com.minecart.variant.Informations.ResistorInfo(100.0)));
+                } else if (k == 'l') {
+                    // LED: modelled as a current-limiting resistor so a battery+LED loop is solvable; it glows its
+                    // own colour ∝ current (see updateElectricalGlow). A true diode model is a later refinement.
+                    deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
+                            new com.minecart.variant.Informations.ResistorInfo(220.0)));
                 } else {
                     lastBattery = world.connect(com.minecart.registry.AllComponents.BATTERY, a, bb,
                             new com.minecart.variant.Informations.BatteryInfo(5.0, 0.01));
@@ -231,6 +242,7 @@ public final class PhysicalBoardView implements Disposable {
         if (modelId.startsWith("wire")) return 'w';
         if (modelId.startsWith("resistor")) return 'r';
         if (modelId.startsWith("battery")) return 'b';
+        if (modelId.startsWith("led")) return 'l';
         return '.';
     }
 
