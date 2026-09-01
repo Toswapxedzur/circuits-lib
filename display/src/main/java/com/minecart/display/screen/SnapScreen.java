@@ -300,7 +300,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (physical) {
             double i = physWorld.batteryCurrent();
             statusLabel.setText("PHYSICAL  |  Item: " + physEditor.toolLabel(physEditor.tool())
-                    + "   |   1-3 select   scroll/R rotate   LMB place   RMB remove   Esc cursor"
+                    + "   |   1-" + physEditor.toolCount() + " select   scroll/R rotate   LMB place   RMB remove   Esc cursor"
                     + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
                     + (i > 1e-4 ? String.format("    |    circuit LIVE: I = %.3f A", i) : ""));
             return;
