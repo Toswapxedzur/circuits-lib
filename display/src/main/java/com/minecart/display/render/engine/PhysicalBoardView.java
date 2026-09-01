@@ -143,9 +143,10 @@ public final class PhysicalBoardView implements Disposable {
     }
 
     private static final com.badlogic.gdx.graphics.Color LED_BODY = new com.badlogic.gdx.graphics.Color(1f, 0.35f, 0.32f, 1f);
-    // Glow colours: a resistor/other device "heats up" warm-orange; an LED lights in its own (red) colour, brighter.
+    // Glow colours: a resistor "heats up" warm-orange; an LED lights red; a lamp glows bright warm-white.
     private static final com.badlogic.gdx.graphics.Color GLOW_HEAT = new com.badlogic.gdx.graphics.Color(1f, 0.55f, 0.2f, 1f);
     private static final com.badlogic.gdx.graphics.Color GLOW_LED = new com.badlogic.gdx.graphics.Color(1f, 0.15f, 0.1f, 1f);
+    private static final com.badlogic.gdx.graphics.Color GLOW_LAMP = new com.badlogic.gdx.graphics.Color(1f, 0.92f, 0.7f, 1f);
     private final com.badlogic.gdx.graphics.Color glowTmp = new com.badlogic.gdx.graphics.Color();
 
     /** Reads each device's solved current and makes the part EMIT light proportional to it — so a live circuit
@@ -156,13 +157,12 @@ public final class PhysicalBoardView implements Disposable {
             com.minecart.logic.CircuitEdge edge = deviceEdge.get(i);
             double cur = edge == null ? 0.0 : Math.abs(edge.getCurrent().getValue());
             if (cur > 1e-4) {
-                boolean led = kind(placed.get(i).modelId()) == 'l';
-                com.badlogic.gdx.graphics.Color base = led ? GLOW_LED : GLOW_HEAT;
-                // An LED lit at all reads at near-full brightness + wide range (it's a light source, not heat);
-                // a resistor's warm glow ramps with current.
-                float b = led ? (float) Math.min(1.0, 0.9 + cur * 4.0) : (float) Math.min(1.0, 0.5 + cur * 8.0);
+                char k = kind(placed.get(i).modelId());
+                boolean emitter = (k == 'l' || k == 'p'); // LED / lamp are light SOURCES (bright, wide)
+                com.badlogic.gdx.graphics.Color base = k == 'l' ? GLOW_LED : k == 'p' ? GLOW_LAMP : GLOW_HEAT;
+                float b = emitter ? (float) Math.min(1.0, 0.9 + cur * 4.0) : (float) Math.min(1.0, 0.5 + cur * 8.0);
                 e.light = glowTmp.set(base.r * b, base.g * b, base.b * b, 1f);
-                e.lightRange = led ? (float) Math.min(110.0, 60.0 + cur * 800.0)
+                e.lightRange = emitter ? (float) Math.min(110.0, 60.0 + cur * 800.0)
                         : (float) Math.min(90.0, 30.0 + cur * 600.0);
             } else {
                 e.light = null;
@@ -197,23 +197,28 @@ public final class PhysicalBoardView implements Disposable {
         for (int i = 0; i < placed.size(); i++) {
             Placed p = placed.get(i);
             char k = kind(p.modelId());
-            if (k == 'r' || k == 'b' || k == 'l') {
+            if (k == 'r' || k == 'b' || k == 'l' || k == 'p' || k == 'c') {
                 Vector3[] t = terminals(p);
                 if (t == null) continue;
                 com.minecart.logic.CircuitNode a = field.at(t[0]), bb = field.at(t[1]);
                 if (a == bb) continue; // terminals shorted onto one net
-                if (k == 'r') {
-                    deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
+                switch (k) {
+                    case 'r' -> deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
                             new com.minecart.variant.Informations.ResistorInfo(100.0)));
-                } else if (k == 'l') {
-                    // LED: modelled as a current-limiting resistor so a battery+LED loop is solvable; it glows its
-                    // own colour ∝ current (see updateElectricalGlow). A true diode model is a later refinement.
-                    deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
-                            new com.minecart.variant.Informations.ResistorInfo(220.0)));
-                } else {
-                    lastBattery = world.connect(com.minecart.registry.AllComponents.BATTERY, a, bb,
-                            new com.minecart.variant.Informations.BatteryInfo(5.0, 0.01));
-                    deviceEdge.put(i, lastBattery);
+                    case 'l' -> // LED: a true DIODE — forward ~220Ω limits current + lights; reverse ~1MΩ blocks
+                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.DIODE, a, bb,
+                                    new com.minecart.variant.Informations.DiodeInfo(220.0, 1.0e6)));
+                    case 'p' -> // lamp: a low-resistance heating element (bright warm glow)
+                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
+                                    new com.minecart.variant.Informations.ResistorInfo(50.0)));
+                    case 'c' -> // capacitor: charges then blocks DC (transient current)
+                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.CAPACITOR, a, bb,
+                                    new com.minecart.variant.Informations.CapacitorInfo(1.0e-3, 1.0)));
+                    default -> {
+                        lastBattery = world.connect(com.minecart.registry.AllComponents.BATTERY, a, bb,
+                                new com.minecart.variant.Informations.BatteryInfo(5.0, 0.01));
+                        deviceEdge.put(i, lastBattery);
+                    }
                 }
             }
         }
@@ -247,6 +252,8 @@ public final class PhysicalBoardView implements Disposable {
         if (modelId.startsWith("resistor")) return 'r';
         if (modelId.startsWith("battery")) return 'b';
         if (modelId.startsWith("led")) return 'l';
+        if (modelId.startsWith("lamp")) return 'p';
+        if (modelId.startsWith("capacitor")) return 'c';
         return '.';
     }
 

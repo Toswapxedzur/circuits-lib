@@ -49,7 +49,7 @@ public final class SnapModelBridge {
     /** Every model id {@link #modelId} can emit — so the renderer can pre-load them all (e.g. for the placement
      *  ghost, whose sprites must be in the atlas before any part of that type is placed). */
     public static List<String> allModelIds() {
-        return List.of("wire_2", DEFAULT_RESISTOR, "battery_cell", "base_teal", "led");
+        return List.of("wire_2", DEFAULT_RESISTOR, "battery_cell", "base_teal", "led", "lamp", "capacitor_medium");
     }
 
     /**
