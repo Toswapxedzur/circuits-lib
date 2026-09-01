@@ -45,6 +45,7 @@ final class EngineRenderer implements Disposable {
         final Matrix4 pose = new Matrix4();
         Color light = null;       // optional point-light emission (a moving entity that glows); null = none
         float lightRange = 0f;
+        Color bodyTint = null;    // optional whole-body colour multiplier (e.g. a red LED); null = untinted
 
         DynamicEntity(ComponentModel model) {
             this.model = model;
@@ -411,11 +412,22 @@ final class EngineRenderer implements Disposable {
             }
             mesh.render(sh);
         }
+        boolean tinted = false;
         for (DynamicEntity e : entities) {                       // free-moving entities at their physics pose
             PartMesh mesh = entityMeshes.get(e);
+            if (e.bodyTint != null) {                            // per-entity colour (e.g. a red LED body)
+                sh.setUniformf("u_tint", e.bodyTint.r, e.bodyTint.g, e.bodyTint.b, e.bodyTint.a);
+                tinted = true;
+            } else if (tinted) {
+                sh.setUniformf("u_tint", 1f, 1f, 1f, 1f);        // reset after a tinted entity
+                tinted = false;
+            }
             mesh.begin();
             mesh.add(e.pose);
             mesh.render(sh);
+        }
+        if (tinted) {
+            sh.setUniformf("u_tint", 1f, 1f, 1f, 1f);           // leave u_tint white for later passes
         }
     }
 
