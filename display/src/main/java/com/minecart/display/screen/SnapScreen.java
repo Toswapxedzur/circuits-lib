@@ -85,8 +85,10 @@ public final class SnapScreen extends ScreenAdapter {
     private int lastRevision = Integer.MIN_VALUE;
     private boolean cursorCaught;
     private final boolean fixedCam = "1".equals(System.getProperty("snap.fixedcam")); // dev: freeze camera for shots
-    // Physical free-placement mode (the Minecraft-grid replacement) — behind -Dsnap.physical=1 while it matures.
-    private final boolean physical = "1".equals(System.getProperty("snap.physical"));
+    // Physical free-placement mode is now the DEFAULT 3D snap experience (continuous placement + magnetic snap +
+    // typed mating + live circuit + persistence). The legacy discrete grid mode is retained as an opt-out:
+    // -Dsnap.physical=off (or -Pphysical=off via runsnap).
+    private final boolean physical = !"off".equals(System.getProperty("snap.physical"));
     private com.minecart.display.render.engine.PhysicalBoardView physWorld;
     private com.minecart.display.snap.PhysicalEditor physEditor;
 
