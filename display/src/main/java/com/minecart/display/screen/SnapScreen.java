@@ -91,6 +91,8 @@ public final class SnapScreen extends ScreenAdapter {
     private final boolean physical = !"off".equals(System.getProperty("snap.physical"));
     private com.minecart.display.render.engine.PhysicalBoardView physWorld;
     private com.minecart.display.snap.PhysicalEditor physEditor;
+    private com.badlogic.gdx.graphics.glutils.ShapeRenderer outline; // Minecraft-style focus highlight
+    private com.minecart.display.render.engine.PhysicalBoardView.Focus physFocus; // what the crosshair is over
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -212,6 +214,24 @@ public final class SnapScreen extends ScreenAdapter {
                 log.info("HARDEN: {}/{} components placeable{}", placeable,
                         com.minecart.display.snap.SnapModelBridge.CATALOG.size(),
                         fails.length() == 0 ? "" : "  NOT-PLACEABLE: " + fails);
+                // SUB-PART FOCUS: a switch's knob is a separate hitbox — a ray onto it must focus the SUB-PART, and a
+                // ray onto the base plate (off the knob) must focus the BASE (subPart == -1).
+                physWorld.clearAll();
+                // Place the switch where the fixed-cam CROSSHAIR hits the board, so its outline shows in the shot.
+                com.badlogic.gdx.math.collision.Ray cr = camera.getPickRay(camera.viewportWidth / 2f, camera.viewportHeight / 2f);
+                Vector3 hp = new Vector3();
+                com.badlogic.gdx.math.Intersector.intersectRayPlane(cr,
+                        new com.badlogic.gdx.math.Plane(new Vector3(0, 1, 0), 0), hp);
+                com.badlogic.gdx.math.Matrix4 sw = physWorld.snap("switch",
+                        new com.badlogic.gdx.math.Matrix4().setToTranslation(hp.x, 0f, hp.z));
+                physWorld.place("switch", sw);
+                Vector3 knob = new Vector3(0.5f, 5f, 0.5f).mul(sw); // slider local → world
+                com.minecart.display.render.engine.PhysicalBoardView.Focus fKnob = physWorld.focusAt(
+                        new com.badlogic.gdx.math.collision.Ray(new Vector3(knob.x, 200f, knob.z), new Vector3(0, -1, 0)));
+                com.minecart.display.render.engine.PhysicalBoardView.Focus fEdge = physWorld.focusAt(
+                        new com.badlogic.gdx.math.collision.Ray(new Vector3(knob.x + 14f, 200f, knob.z), new Vector3(0, -1, 0)));
+                log.info("SUBPART-FOCUS: onKnob subPart={} (>=0 good)  onBasePlate subPart={} (-1 good)",
+                        fKnob == null ? "null" : fKnob.subPart(), fEdge == null ? "null" : fEdge.subPart());
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
@@ -349,7 +369,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (physical) {
             double i = physWorld.batteryCurrent();
             statusLabel.setText("PHYSICAL  |  Item: " + physEditor.toolLabel(physEditor.tool())
-                    + "   |   1-9/click tool   scroll/R rotate   ←→ terminal   LMB place   RMB remove   Esc cursor"
+                    + "   |   1-9/click tool   scroll/R rotate   L/R-arrow terminal   LMB place   RMB remove   Esc cursor"
                     + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
                     + (i > 1e-4 ? String.format("    |    circuit LIVE: I = %.3f A", i) : ""));
             return;
@@ -526,11 +546,43 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         if (ready) {
             physWorld.render(camera);
+            drawFocusOutline();
         }
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         uiStage.act(dt);
         uiStage.draw();
+    }
+
+    /** Minecraft-style highlight: outline whatever the crosshair is over — a placed part (black) or one of its
+     *  movable sub-parts / knobs (cyan). {@link #physFocus} is remembered for the interaction layer. */
+    private void drawFocusOutline() {
+        physFocus = physWorld.focusAt(camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
+        if (physFocus == null) {
+            return;
+        }
+        if (outline == null) {
+            outline = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
+        }
+        boolean sub = physFocus.subPart() >= 0;
+        float[] a = physFocus.aabb();
+        float e = sub ? 0.2f : 0.4f; // expand a touch so the outline sits just outside the surface
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST); // draw the highlight ON TOP (not occluded by the placement ghost)
+        outline.setProjectionMatrix(camera.combined);
+        outline.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
+        if (sub) outline.setColor(0.2f, 0.9f, 1f, 1f); else outline.setColor(1f, 0.92f, 0.2f, 1f); // sub=cyan, base=yellow
+        aabbEdges(outline, a[0] - e, a[1] - e, a[2] - e, a[3] + e, a[4] + e, a[5] + e);
+        outline.end();
+    }
+
+    private static void aabbEdges(com.badlogic.gdx.graphics.glutils.ShapeRenderer sr,
+                                  float x0, float y0, float z0, float x1, float y1, float z1) {
+        sr.line(x0, y0, z0, x1, y0, z0); sr.line(x1, y0, z0, x1, y0, z1);
+        sr.line(x1, y0, z1, x0, y0, z1); sr.line(x0, y0, z1, x0, y0, z0);
+        sr.line(x0, y1, z0, x1, y1, z0); sr.line(x1, y1, z0, x1, y1, z1);
+        sr.line(x1, y1, z1, x0, y1, z1); sr.line(x0, y1, z1, x0, y1, z0);
+        sr.line(x0, y0, z0, x0, y1, z0); sr.line(x1, y0, z0, x1, y1, z0);
+        sr.line(x1, y0, z1, x1, y1, z1); sr.line(x0, y0, z1, x0, y1, z1);
     }
 
     @Override public void resize(int width, int height) {
