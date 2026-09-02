@@ -144,11 +144,19 @@ final class ModelJson {
             }
         }
         if (!any) return null;
+        // COLLISION = the BASE PLATE only (owner 2026-09-02): every snap part shares the same base (studs + plate,
+        // top at y=BASE_TOP); the raised component body (resistor coil, LED/lamp bulb, capacitor can) above it is
+        // VISUAL only and must NOT collide or affect stacking — real Snap Circuits parts collide as their small
+        // base. So clamp the box top to the base height (the footprint X/Z already comes from the wide base plate).
+        max[1] = Math.min(max[1], BASE_TOP);
         Collision col = new Collision();
         col.from = min;
         col.to = max;
         return col;
     }
+
+    /** The snap base-plate top (object space): under-studs −1..0, plate 0..4, top studs 4..5 → top at 5. */
+    private static final float BASE_TOP = 5f;
 
     /** Every sprite name any element or quad references — the texture dependencies of this model. */
     List<String> textureDeps() {
