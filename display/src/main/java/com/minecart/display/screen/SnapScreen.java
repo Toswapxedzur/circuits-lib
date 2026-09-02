@@ -149,8 +149,8 @@ public final class SnapScreen extends ScreenAdapter {
                 log.info("physical: loaded {} placements from {}", loaded, physFile().path());
             }
             if ("1".equals(System.getProperty("snap.phystest"))) {
-                // Verifies pitch-12 grid, FLAT-by-default placement (no auto-stacking), inline connections, and
-                // DELIBERATE stacking via Port Alias (aim at a stud → place on top).
+                // Verifies real-Snap-Circuit rules: STRICT 3D collision (a same-level joint is a CLASH → blocked), and
+                // connection = STACK via Port Alias (aim at a stud → place ON TOP at the shared post, elevated + valid).
                 float cx = centerX, cz = centerZ;
                 // GRID SNAP: an arbitrary off-grid candidate (offset + odd yaw) must resolve onto sockets, FLAT (y=0).
                 com.badlogic.gdx.math.Matrix4 cand = new com.badlogic.gdx.math.Matrix4()
@@ -159,37 +159,39 @@ public final class SnapScreen extends ScreenAdapter {
                 Vector3 bt = t.getTranslation(new Vector3());
                 boolean gridSnapped = physWorld.canPlace("wire_2", t) && Math.abs(bt.y) < 0.01f; // on grid AND flat
                 physWorld.place("wire_2", t);
-                // INLINE: a wire one cell along the wire's axis shares a stud, stays FLAT, and is VALID (no climb).
                 Vector3 c0 = new Vector3(-6f, 0f, 0f).mul(t), c1 = new Vector3(6f, 0f, 0f).mul(t); // its two studs (world)
                 float ax = c1.x - c0.x, az = c1.z - c0.z, al = (float) Math.hypot(ax, az); ax /= al; az /= al;
-                com.badlogic.gdx.math.Matrix4 inl = physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
-                        .setToTranslation(c1.x + ax * 6f, 0f, c1.z + az * 6f).rotate(0f, 1f, 0f,
-                                (float) Math.toDegrees(Math.atan2(az, ax))));
-                boolean inlineFlat = physWorld.canPlace("wire_2", inl)
-                        && Math.abs(inl.getTranslation(new Vector3()).y) < 0.01f;
-                // COVER same-footprint FLAT must be rejected (to stack you aim at the stud, below).
-                boolean coverBlocked = !physWorld.canPlace("wire_2", new com.badlogic.gdx.math.Matrix4(t));
-                // PORT ALIAS: a ray onto the wire's FAR stud (c1) resolves to that port at the wire's OWN LEVEL (flat,
-                // y≈0); snapToPort connects a new wire FLAT extending outward (+X from c1), a valid joint (no climb).
+                float yawAxis = (float) Math.toDegrees(Math.atan2(az, ax));
+                // SAME-LEVEL JOINT is now a COLLISION: a wire one cell along the axis (shares stud c1) at y=0 is BLOCKED.
+                com.badlogic.gdx.math.Matrix4 jt = physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
+                        .setToTranslation(c1.x + ax * 6f, 0f, c1.z + az * 6f).rotate(0f, 1f, 0f, yawAxis));
+                boolean jointBlocked = !physWorld.canPlace("wire_2", jt);
+                // SEPARATE FLAT: a wire two cells away (no overlap) is VALID at y=0.
+                com.badlogic.gdx.math.Matrix4 sep = physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
+                        .setToTranslation(bt.x, 0f, bt.z + 36f).rotate(0f, 1f, 0f, yawAxis));
+                boolean separateFlatOk = physWorld.canPlace("wire_2", sep)
+                        && Math.abs(sep.getTranslation(new Vector3()).y) < 0.01f;
+                // PORT ALIAS = STACK: a ray onto stud c1 resolves to that post at the wire's TOP; snapToPort places the
+                // new wire ON TOP (elevated y) and it's VALID (3D-clear of the wire below — only the peg interlocks).
                 com.badlogic.gdx.math.collision.Ray downRay = new com.badlogic.gdx.math.collision.Ray(
                         new Vector3(c1.x, 200f, c1.z), new Vector3(0f, -1f, 0f));
                 Vector3 picked = physWorld.pickTarget(downRay);
-                boolean portPicked = picked != null && Math.abs(picked.y) < 0.01f
+                boolean portOnTop = picked != null && picked.y > 1f
                         && Math.abs(picked.x - c1.x) < 1.5f && Math.abs(picked.z - c1.z) < 1.5f;
-                com.badlogic.gdx.math.Matrix4 pp = picked == null ? null : physWorld.snapToPort("wire_2", picked, 0f);
-                boolean portConnectsFlat = pp != null && Math.abs(pp.getTranslation(new Vector3()).y) < 0.01f
-                        && physWorld.canPlace("wire_2", pp);
+                com.badlogic.gdx.math.Matrix4 up = picked == null ? null : physWorld.snapToPort("wire_2", picked, yawAxis);
+                boolean stacksValid = up != null && up.getTranslation(new Vector3()).y > 1f
+                        && physWorld.canPlace("wire_2", up);
                 // OFF-BOARD candidate (way past the grid edge) must be rejected.
                 boolean offBoardBlocked = !physWorld.canPlace("wire_2",
                         physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
                                 .setToTranslation(cx + 100000f, 0f, cz)));
-                if (inlineFlat) physWorld.place("wire_2", inl);
+                if (up != null && stacksValid) physWorld.place("wire_2", up);
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
                 physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
-                log.info("phystest: {} parts; grid-snapped-flat={} inline-flat={} cover-blocked={} port-picked-flat={} port-connects-flat={} off-board-blocked={}; saved {}",
-                        physWorld.placements().size(), gridSnapped, inlineFlat, coverBlocked, portPicked, portConnectsFlat, offBoardBlocked, physFile().path());
+                log.info("phystest: {} parts; grid-snapped-flat={} joint-blocked={} separate-flat-ok={} port-on-top={} stacks-valid={} off-board-blocked={}; saved {}",
+                        physWorld.placements().size(), gridSnapped, jointBlocked, separateFlatOk, portOnTop, stacksValid, offBoardBlocked, physFile().path());
             }
             return;
         }
