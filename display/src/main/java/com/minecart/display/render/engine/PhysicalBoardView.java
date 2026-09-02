@@ -232,9 +232,11 @@ public final class PhysicalBoardView implements Disposable {
         lastBattery = null;
         deviceEdge.clear();
         ConnectorField field = new ConnectorField(world);
-        // Pass 1: wires union their two terminals (so a wire run collapses to one node).
+        // Pass 1: pure conductors union their two terminals (a wire/tee-junction run — and a closed switch —
+        // collapses to one node).
         for (Placed p : placed) {
-            if (kind(p.modelId()) == 'w') {
+            char k = kind(p.modelId());
+            if (k == 'w' || k == 's') {
                 Vector3[] t = terminals(p);
                 if (t != null) field.union(t[0], t[1]);
             }
@@ -243,7 +245,7 @@ public final class PhysicalBoardView implements Disposable {
         for (int i = 0; i < placed.size(); i++) {
             Placed p = placed.get(i);
             char k = kind(p.modelId());
-            if (k == 'r' || k == 'b' || k == 'l' || k == 'p' || k == 'c') {
+            if (k == 'r' || k == 'b' || k == 'l' || k == 'p' || k == 'c' || k == 'd') {
                 Vector3[] t = terminals(p);
                 if (t == null) continue;
                 com.minecart.logic.CircuitNode a = field.at(t[0]), bb = field.at(t[1]);
@@ -254,6 +256,9 @@ public final class PhysicalBoardView implements Disposable {
                     case 'l' -> // LED: a true DIODE — forward ~220Ω limits current + lights; reverse ~1MΩ blocks
                             deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.DIODE, a, bb,
                                     new com.minecart.variant.Informations.DiodeInfo(220.0, 1.0e6)));
+                    case 'd' -> // plain diode: one-way conductor (no light)
+                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.DIODE, a, bb,
+                                    new com.minecart.variant.Informations.DiodeInfo(1.0, 1.0e6)));
                     case 'p' -> // lamp: a low-resistance heating element (bright warm glow)
                             deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
                                     new com.minecart.variant.Informations.ResistorInfo(50.0)));
@@ -294,13 +299,7 @@ public final class PhysicalBoardView implements Disposable {
     }
 
     private static char kind(String modelId) {
-        if (modelId.startsWith("wire")) return 'w';
-        if (modelId.startsWith("resistor")) return 'r';
-        if (modelId.startsWith("battery")) return 'b';
-        if (modelId.startsWith("led")) return 'l';
-        if (modelId.startsWith("lamp")) return 'p';
-        if (modelId.startsWith("capacitor")) return 'c';
-        return '.';
+        return com.minecart.display.snap.SnapModelBridge.kindOf(modelId);
     }
 
     /** A placement's two terminal world positions (index 0 / 1), or null if it lacks both. */
