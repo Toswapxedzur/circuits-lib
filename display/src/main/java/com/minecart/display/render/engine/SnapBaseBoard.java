@@ -22,7 +22,11 @@ final class SnapBaseBoard {
 
     private SnapBaseBoard() {}
 
-    private static final float CELL = SnapSceneGeometry.BUMP_SPACING;     // 24 — one grid cell
+    /** The PHYSICAL board's grid pitch (owner 2026-09-02): studs 12 apart == wire_2's real stud span. Kept
+     *  SEPARATE from the legacy {@link SnapSceneGeometry#BUMP_SPACING}=24 (grid mode + a unit test depend on 24).
+     *  {@link PhysicalBoardView} reads this for its socket grid so the drawn studs and the snap grid always match. */
+    static final float PITCH = 12f;
+    private static final float CELL = PITCH;                              // 12 — one grid cell
     private static final float THICK = SnapSceneGeometry.BASE_THICKNESS;  // 2  — slab thickness (below topY)
     private static final float STUD = SnapSceneGeometry.BUMP_WIDTH;       // 3  — stud footprint
     private static final float STUD_H = SnapSceneGeometry.BUMP_HEIGHT;    // 1  — stud height (above topY)
@@ -33,11 +37,13 @@ final class SnapBaseBoard {
     /** Board opacity — semi-transparent (owner spec), so the board reads as a glassy plate. */
     private static final float ALPHA = 0.55f;
 
-    /** One surface cell, centred at world ({@code wx}, {@code wz}) with its top at {@code topY}. */
+    /** One surface cell, centred at world ({@code wx}, {@code wz}) with its top at {@code topY}. FLAT/uniform
+     *  (grain 0, huge shade radius) so the tiled cells read as ONE continuous plate — the board's shading/shadow
+     *  is a whole-plate effect from the runtime light + shadow map, NOT baked per cell (owner 2026-09-02). */
     private static PartMesh.Box cell(float wx, float wz, float topY) {
         float cy = topY - THICK / 2f;
         PaletteDither.Paint paint = new PaletteDither.Paint(PaletteDither.ramp(BOARD), Color.WHITE,
-                2, 0.3f, false, 4501L, wx, cy, wz, CELL / 2f, 1f); // shade centre = own centre → shared sprite
+                0, 0f, false, 4501L, wx, cy, wz, 1_000_000f, 1f); // flat: no grain, radius ≫ cell → uniform shade
         return PartMesh.Box.localAlpha(wx, cy, wz, CELL, THICK, CELL, paint, ALPHA);
     }
 
@@ -45,7 +51,7 @@ final class SnapBaseBoard {
     private static PartMesh.Box stud(float wx, float wz, float topY) {
         float cy = topY + STUD_H / 2f;
         PaletteDither.Paint paint = new PaletteDither.Paint(PaletteDither.ramp(STUD_COLOR), Color.WHITE,
-                1, 0.3f, false, 4507L, wx, cy, wz, STUD, 1f); // shade centre = own centre → shared sprite
+                0, 0f, false, 4507L, wx, cy, wz, 1_000_000f, 1f); // flat, matches the plate
         return PartMesh.Box.localAlpha(wx, cy, wz, STUD, STUD_H, STUD, paint, ALPHA);
     }
 

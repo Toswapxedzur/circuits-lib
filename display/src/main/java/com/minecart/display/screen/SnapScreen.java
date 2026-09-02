@@ -125,7 +125,9 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     private void buildScene() {
-        float cell = SnapSceneGeometry.BUMP_SPACING;
+        // Physical mode uses its own denser stud pitch (12); legacy grid mode uses BUMP_SPACING (24).
+        float cell = physical ? com.minecart.display.render.engine.PhysicalBoardView.PITCH
+                              : SnapSceneGeometry.BUMP_SPACING;
         float centerX = board.width() * cell / 2f;
         float centerZ = board.height() * cell / 2f;
         float span = Math.max(board.width(), board.height()) * cell + cell;
@@ -147,8 +149,8 @@ public final class SnapScreen extends ScreenAdapter {
                 log.info("physical: loaded {} placements from {}", loaded, physFile().path());
             }
             if ("1".equals(System.getProperty("snap.phystest"))) {
-                // A live LOOP: a battery and an LED sharing BOTH terminals (coincident grid sockets) → the diode
-                // conducts. Everything goes through snap() first, so it lands on the board's DISCRETE socket grid.
+                // Verifies the pitch-12 grid + bounding-box collision. Everything goes through snap() first so it
+                // lands on the board's DISCRETE socket grid (studs 12 apart).
                 float cx = centerX, cz = centerZ;
                 // GRID SNAP: an arbitrary off-grid candidate (offset + odd yaw) must resolve onto sockets.
                 com.badlogic.gdx.math.Matrix4 cand = new com.badlogic.gdx.math.Matrix4()
@@ -156,23 +158,29 @@ public final class SnapScreen extends ScreenAdapter {
                 com.badlogic.gdx.math.Matrix4 t = physWorld.snap("battery_cell", cand);
                 boolean gridSnapped = physWorld.canPlace("battery_cell", t); // true ⇒ both terminals landed on sockets
                 physWorld.place("battery_cell", t);
-                // Connection-aware collision: an LED sharing the battery's sockets MATES (overlap allowed);
-                // a wire dumped a half-cell off with no shared socket genuinely OVERLAPS + is off-grid (blocked).
-                boolean mateOk = physWorld.canPlace("led", new com.badlogic.gdx.math.Matrix4(t));
-                // OFF-GRID candidate (a half-cell off, terminals fall BETWEEN sockets) must be rejected.
+                // STACK BLOCKED: a second part on the SAME footprint overlaps by more than a pitch → invalid even
+                // though it shares connectors (the owner's bounding-box rule: no stacking two parts in one spot).
+                boolean stackBlocked = !physWorld.canPlace("battery_cell", new com.badlogic.gdx.math.Matrix4(t));
+                // END-TO-END ALLOWED: a wire snapped one cell along +X shares the battery's far stud (thin overhang
+                // overlap ≤ pitch) → valid connection.
+                Vector3 bt = t.getTranslation(new Vector3());
+                com.badlogic.gdx.math.Matrix4 wc = physWorld.snap("wire_2",
+                        new com.badlogic.gdx.math.Matrix4().setToTranslation(bt.x + 18f, 0f, bt.z));
+                boolean endToEnd = physWorld.canPlace("wire_2", wc);
+                // OFF-GRID candidate (3u off → terminals fall BETWEEN studs) must be rejected.
                 boolean offGridBlocked = !physWorld.canPlace("wire_2",
-                        new com.badlogic.gdx.math.Matrix4().setToTranslation(cx + 6f, 0f, cz));
+                        new com.badlogic.gdx.math.Matrix4().setToTranslation(bt.x + 3f, 0f, bt.z));
                 // OFF-BOARD candidate (way past the grid edge) must be rejected — no free placement in empty space.
                 boolean offBoardBlocked = !physWorld.canPlace("wire_2",
                         physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
                                 .setToTranslation(cx + 100000f, 0f, cz)));
-                physWorld.place("led", new com.badlogic.gdx.math.Matrix4(t)); // battery+LED loop → the LED lights red
+                if (endToEnd) physWorld.place("wire_2", wc);
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
                 physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
-                log.info("phystest: {} parts; grid-snapped={} mating-allowed={} off-grid-blocked={} off-board-blocked={}; saved {}",
-                        physWorld.placements().size(), gridSnapped, mateOk, offGridBlocked, offBoardBlocked, physFile().path());
+                log.info("phystest: {} parts; grid-snapped={} stack-blocked={} end-to-end={} off-grid-blocked={} off-board-blocked={}; saved {}",
+                        physWorld.placements().size(), gridSnapped, stackBlocked, endToEnd, offGridBlocked, offBoardBlocked, physFile().path());
             }
             return;
         }
