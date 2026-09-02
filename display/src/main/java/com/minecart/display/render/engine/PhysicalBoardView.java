@@ -397,7 +397,7 @@ public final class PhysicalBoardView implements Disposable {
      */
     public Vector3 pickTarget(com.badlogic.gdx.math.collision.Ray ray) {
         Placed best = null;
-        float bestDist = Float.MAX_VALUE, bestTop = boardTopY;
+        float bestDist = Float.MAX_VALUE;
         Vector3 hit = new Vector3(), bestHit = new Vector3();
         for (Placed p : placed) {
             ComponentModel pm = loader.model(p.modelId());
@@ -413,7 +413,6 @@ public final class PhysicalBoardView implements Disposable {
                     bestDist = d;
                     best = p;
                     bestHit.set(hit);
-                    bestTop = ab[4];
                 }
             }
         }
@@ -431,11 +430,13 @@ public final class PhysicalBoardView implements Disposable {
                 nearest = w;
             }
         }
-        return nearest == null ? null : new Vector3(nearest.x, bestTop, nearest.z); // stud x-z at the part's TOP
+        // The port at ITS OWN height (the aimed part's level) — connecting extends the run FLAT from that stud, it
+        // does NOT climb onto the part's top. (Building upward would be a separate, deliberate action.)
+        return nearest; // world (x, part-level-y, z)
     }
 
-    /** Places {@code modelId} so its FIRST connector lands on the targeted port {@code port} (x, top-y, z) at the
-     *  given yaw — i.e. ON TOP of the aimed part — then grid-aligns via {@link #snap} (which preserves the height). */
+    /** Places {@code modelId} so its FIRST connector lands on the targeted port {@code port} (x, level-y, z) at the
+     *  given yaw — connecting FLAT at that port's level — then grid-aligns via {@link #snap} (preserving the height). */
     public Matrix4 snapToPort(String modelId, Vector3 port, float yawDeg) {
         ComponentModel m = loader.model(modelId);
         float ex = m.connectors.isEmpty() ? 0f : -m.connectors.get(0).local().x; // connector[0] sits at local −ex
