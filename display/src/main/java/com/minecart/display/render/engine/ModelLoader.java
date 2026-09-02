@@ -50,10 +50,11 @@ final class ModelLoader {
             // TYPED: terminal 0 (−X end) = SOCKET (female), terminal 1 (+X end) = STUD (male). Snapping mates
             // stud↔socket only (two studs / two + ends can't clip together — the keying). Electrical connectivity
             // stays coincidence-based (ConnectorField), independent of this typing.
-            // Standard terminal spacing (±half-pitch) so ANY two parts interconnect on the shared spacing — the
-            // real datagen'd per-part terminal positions are a later refinement (they'd require wire-bridging
-            // between mismatched-length parts, changing the connection paradigm).
-            float ex = com.minecart.display.snap.SnapModelBridge.PITCH / 2f; // ±12
+            // Terminals sit on the part's REAL studs (owner 2026-09-02): the modelled snap studs are at ±(hx−4.5)
+            // — wire_2 ±6, resistor/led/… ±12, wire_7 ±36. Rounding that to a multiple of 6 keeps the stud SPACING
+            // (2·ex) a multiple of the board pitch (12) so every part aligns to the grid, and repairs odd models
+            // (battery_cell hx=9.5 → ex 6). The board studs are 12 apart, so wire_2 spans exactly one cell.
+            float ex = Math.round((col.hx() - 4.5f) / 6f) * 6f;
             b.connector(new ComponentModel.Connector(
                     new com.badlogic.gdx.math.Vector3(col.cx() - ex, 0f, col.cz()),
                     new com.badlogic.gdx.math.Vector3(-1f, 0f, 0f), 0, false)); // socket

@@ -38,7 +38,7 @@ public final class PhysicalBoardView implements Disposable {
     // The board's DISCRETE socket grid — parts anchor here (this is Snap Circuits, not free continuous placement).
     // Sockets sit at world (col*PITCH, boardTopY, row*PITCH) for col∈[0,boardCols), row∈[0,boardRows), matching the
     // studs {@link SnapBaseBoard} draws. Set by {@link #setBaseBoard}.
-    private static final float PITCH = com.minecart.display.snap.SnapModelBridge.PITCH; // 24
+    public static final float PITCH = SnapBaseBoard.PITCH; // 12 — the physical board's stud spacing
     private int boardCols, boardRows;
     private float boardTopY;
     private static final float ON_SOCKET_EPS2 = 1f; // (1u)² — a terminal this close to a grid point sits ON it
@@ -413,11 +413,25 @@ public final class PhysicalBoardView implements Disposable {
                 continue;
             }
             float[] b = worldAabb(pm.collision, p.transform());
-            if (overlap(a, b) && !sharesConnector(mine, pm, p.transform())) {
-                return false;
+            if (overlap(a, b)) {
+                // Bounding-box collision INVALIDATES placement (owner 2026-09-02) — you can't drop a part where
+                // another already sits. The ONE allowed overlap is a genuine connection: the parts must share a
+                // stud AND the overlap must be a thin end-to-end / T-junction overhang (≤ one pitch in each ground
+                // axis). Stacking two parts on the same footprint, or crossing/covering, overlaps by more → blocked.
+                if (!sharesConnector(mine, pm, p.transform()) || overlapExceedsPitch(a, b)) {
+                    return false;
+                }
             }
         }
         return true;
+    }
+
+    /** True if AABBs {@code a},{@code b} overlap by more than one grid pitch in either ground axis (x/z) — i.e. one
+     *  part covers/stacks the other rather than just abutting it end-to-end at a shared stud. */
+    private static boolean overlapExceedsPitch(float[] a, float[] b) {
+        float ox = Math.min(a[3], b[3]) - Math.max(a[0], b[0]);
+        float oz = Math.min(a[5], b[5]) - Math.max(a[2], b[2]);
+        return ox > PITCH + 0.5f || oz > PITCH + 0.5f;
     }
 
     /** The world positions of {@code m}'s connectors under {@code world}. */
