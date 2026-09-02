@@ -170,12 +170,18 @@ public final class SnapScreen extends ScreenAdapter {
                         physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
                                 .setToTranslation(cx + 100000f, 0f, cz)));
                 physWorld.place("wire_2", st); // commit the stacked wire so the screenshot shows the height offset
+                // PORT ALIAS: a ray straight down onto a placed wire's stud must resolve to that port (not the ground).
+                com.badlogic.gdx.math.collision.Ray downRay = new com.badlogic.gdx.math.collision.Ray(
+                        new Vector3(bt.x - 6f, 200f, bt.z), new Vector3(0f, -1f, 0f));
+                Vector3 picked = physWorld.pickTarget(downRay);
+                boolean portPicked = picked != null
+                        && Math.abs(picked.x - (bt.x - 6f)) < 1.5f && Math.abs(picked.z - bt.z) < 1.5f;
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
                 physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
-                log.info("phystest: {} parts; grid-snapped={} stacks-above={} (stackY={}) same-height-blocked={} off-board-blocked={}; saved {}",
-                        physWorld.placements().size(), gridSnapped, stacksAbove, stackY, sameHeightBlocked, offBoardBlocked, physFile().path());
+                log.info("phystest: {} parts; grid-snapped={} stacks-above={} (stackY={}) same-height-blocked={} off-board-blocked={} port-picked={}; saved {}",
+                        physWorld.placements().size(), gridSnapped, stacksAbove, stackY, sameHeightBlocked, offBoardBlocked, portPicked, physFile().path());
             }
             return;
         }
