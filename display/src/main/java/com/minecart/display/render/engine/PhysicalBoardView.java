@@ -397,7 +397,7 @@ public final class PhysicalBoardView implements Disposable {
      */
     public Vector3 pickTarget(com.badlogic.gdx.math.collision.Ray ray) {
         Placed best = null;
-        float bestDist = Float.MAX_VALUE;
+        float bestDist = Float.MAX_VALUE, bestTop = boardTopY;
         Vector3 hit = new Vector3(), bestHit = new Vector3();
         for (Placed p : placed) {
             ComponentModel pm = loader.model(p.modelId());
@@ -413,6 +413,7 @@ public final class PhysicalBoardView implements Disposable {
                     bestDist = d;
                     best = p;
                     bestHit.set(hit);
+                    bestTop = ab[4];
                 }
             }
         }
@@ -430,13 +431,13 @@ public final class PhysicalBoardView implements Disposable {
                 nearest = w;
             }
         }
-        // The port at ITS OWN height (the aimed part's level) — connecting extends the run FLAT from that stud, it
-        // does NOT climb onto the part's top. (Building upward would be a separate, deliberate action.)
-        return nearest; // world (x, part-level-y, z)
+        // CONNECTION = STACK: the target stud x-z at the aimed part's TOP, so the new part goes ON TOP at the shared
+        // post (real Snap Circuits — you overlap one part under another; the height difference clears the 3D boxes).
+        return nearest == null ? null : new Vector3(nearest.x, bestTop, nearest.z);
     }
 
-    /** Places {@code modelId} so its FIRST connector lands on the targeted port {@code port} (x, level-y, z) at the
-     *  given yaw — connecting FLAT at that port's level — then grid-aligns via {@link #snap} (preserving the height). */
+    /** Places {@code modelId} so its FIRST connector lands on the targeted port {@code port} (x, top-y, z) at the
+     *  given yaw — ON TOP of the aimed part at the shared post — then grid-aligns via {@link #snap} (keeps the height). */
     public Matrix4 snapToPort(String modelId, Vector3 port, float yawDeg) {
         ComponentModel m = loader.model(modelId);
         float ex = m.connectors.isEmpty() ? 0f : -m.connectors.get(0).local().x; // connector[0] sits at local −ex
@@ -447,14 +448,12 @@ public final class PhysicalBoardView implements Disposable {
         return snap(modelId, candidate);
     }
 
-    private static final float MATE_EPS2 = 4f; // (2u)² — connectors this close count as coincident (a shared stud)
-
     /**
-     * 3D validity: every terminal must land on an in-bounds board socket (x-z grid), AND the part's 3D box must not
-     * clash with a placed part's. It's a TRUE 3D test — parts at DIFFERENT heights (a deliberate stack) never clash
-     * (only their under-stud peg touches, within {@link #overlap}'s Y tolerance). Among parts at the SAME height, an
-     * inline JOINT is allowed (they share a stud and overlap ≤ one pitch in each ground axis — end-to-end / corner),
-     * but a part COVERING another (overlap > pitch) is rejected: to place there you aim at the stud and stack.
+     * STRICT 3D validity (real Snap Circuits): every terminal must land on an in-bounds board socket (x-z grid), AND
+     * the part's 3D bounding box must NOT intersect any placed part's — no exceptions. Two solid bodies can't share
+     * a space at the same height, so a flat same-level "joint" IS a collision and is rejected. To connect, you stack
+     * (aim at a stud → the part goes ON TOP at the shared post), which lands at a DIFFERENT height so the 3D boxes
+     * clear — only the under-stud peg interlocks, absorbed by {@link #overlap}'s small Y tolerance.
      */
     public boolean canPlace(String modelId, Matrix4 transform) {
         ComponentModel m = loader.model(modelId);
@@ -470,51 +469,16 @@ public final class PhysicalBoardView implements Disposable {
             return true;
         }
         float[] a = worldAabb(m.collision, transform);
-        List<Vector3> mine = candidateConnectors(m, transform);
         for (Placed p : placed) {
             ComponentModel pm = loader.model(p.modelId());
             if (pm.collision == null) {
                 continue;
             }
-            float[] b = worldAabb(pm.collision, p.transform());
-            if (overlap(a, b)) { // a REAL 3D clash (same height — stacks clear via the peg tolerance)
-                if (!sharesConnector(mine, pm, p.transform()) || overlapExceedsPitch(a, b)) {
-                    return false; // covering / crossing without a shared stud → invalid at this level
-                }
+            if (overlap(a, worldAabb(pm.collision, p.transform()))) {
+                return false; // 3D boxes clash — a body already occupies this space at this height
             }
         }
         return true;
-    }
-
-    /** True if AABBs overlap by more than one grid pitch in either ground axis (x/z) — one part covers the other,
-     *  rather than just meeting it end-to-end / at a corner. */
-    private static boolean overlapExceedsPitch(float[] a, float[] b) {
-        float ox = Math.min(a[3], b[3]) - Math.max(a[0], b[0]);
-        float oz = Math.min(a[5], b[5]) - Math.max(a[2], b[2]);
-        return ox > PITCH + 0.5f || oz > PITCH + 0.5f;
-    }
-
-    /** World positions of {@code m}'s connectors under {@code world}. */
-    private List<Vector3> candidateConnectors(ComponentModel m, Matrix4 world) {
-        List<Vector3> out = new ArrayList<>(m.connectors.size());
-        for (ComponentModel.Connector c : m.connectors) {
-            out.add(new Vector3(c.local()).mul(world));
-        }
-        return out;
-    }
-
-    /** True if any of {@code mine} coincides (within {@link #MATE_EPS2}, x-z) with a connector of placed part {@code pm}. */
-    private boolean sharesConnector(List<Vector3> mine, ComponentModel pm, Matrix4 pWorld) {
-        for (ComponentModel.Connector c : pm.connectors) {
-            Vector3 w = new Vector3(c.local()).mul(pWorld);
-            for (Vector3 g : mine) {
-                float dx = g.x - w.x, dz = g.z - w.z;
-                if (dx * dx + dz * dz <= MATE_EPS2) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     /** World-space AABB {minx,miny,minz,maxx,maxy,maxz} of a collision box under {@code world} (8-corner bound). */
