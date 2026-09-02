@@ -326,7 +326,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (physical) {
             double i = physWorld.batteryCurrent();
             statusLabel.setText("PHYSICAL  |  Item: " + physEditor.toolLabel(physEditor.tool())
-                    + "   |   1-" + physEditor.toolCount() + " select   scroll/R rotate   LMB place   RMB remove   Esc cursor"
+                    + "   |   1-" + physEditor.toolCount() + " select   scroll/R/←→ rotate   LMB place   RMB remove   Esc cursor"
                     + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
                     + (i > 1e-4 ? String.format("    |    circuit LIVE: I = %.3f A", i) : ""));
             return;
@@ -568,6 +568,10 @@ public final class SnapScreen extends ScreenAdapter {
             }
             if (physical) {
                 if (keycode == Keys.R) { physEditor.rotate(90f); return true; }
+                // ←/→ arrows rotate the part in quarter-turns too — when aiming at a stud the part pivots AROUND
+                // that pinned terminal (Port Alias), so the arrows swing which way it extends from the connection.
+                if (keycode == Keys.LEFT) { physEditor.rotate(-90f); return true; }
+                if (keycode == Keys.RIGHT) { physEditor.rotate(90f); return true; }
                 if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {
                     physEditor.selectTool(keycode - Keys.NUM_1);
                     refreshHotbar();
