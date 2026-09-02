@@ -147,31 +147,32 @@ public final class SnapScreen extends ScreenAdapter {
                 log.info("physical: loaded {} placements from {}", loaded, physFile().path());
             }
             if ("1".equals(System.getProperty("snap.phystest"))) {
-                // A live LOOP: a battery and a resistor sharing BOTH terminals (coincident) → 5V across ~100Ω →
-                // the solver should report ~0.05 A. Proves physical placements build a real, solved circuit.
+                // A live LOOP: a battery and an LED sharing BOTH terminals (coincident grid sockets) → the diode
+                // conducts. Everything goes through snap() first, so it lands on the board's DISCRETE socket grid.
                 float cx = centerX, cz = centerZ;
-                com.badlogic.gdx.math.Matrix4 t = new com.badlogic.gdx.math.Matrix4().setToTranslation(cx, 0f, cz);
+                // GRID SNAP: an arbitrary off-grid candidate (offset + odd yaw) must resolve onto sockets.
+                com.badlogic.gdx.math.Matrix4 cand = new com.badlogic.gdx.math.Matrix4()
+                        .setToTranslation(cx + 7f, 0f, cz + 5f).rotate(0f, 1f, 0f, 37f);
+                com.badlogic.gdx.math.Matrix4 t = physWorld.snap("battery_cell", cand);
+                boolean gridSnapped = physWorld.canPlace("battery_cell", t); // true ⇒ both terminals landed on sockets
                 physWorld.place("battery_cell", t);
-                // Connection-aware collision: a resistor sharing the battery's terminals MATES (overlap allowed);
-                // a wire dumped mid-body with no shared connector genuinely OVERLAPS (blocked).
-                boolean mateOk = physWorld.canPlace("resistor", new com.badlogic.gdx.math.Matrix4(t));
-                boolean overlapBlocked = !physWorld.canPlace("wire_2",
-                        new com.badlogic.gdx.math.Matrix4().setToTranslation(cx + 4f, 0f, cz));
+                // Connection-aware collision: an LED sharing the battery's sockets MATES (overlap allowed);
+                // a wire dumped a half-cell off with no shared socket genuinely OVERLAPS + is off-grid (blocked).
+                boolean mateOk = physWorld.canPlace("led", new com.badlogic.gdx.math.Matrix4(t));
+                // OFF-GRID candidate (a half-cell off, terminals fall BETWEEN sockets) must be rejected.
+                boolean offGridBlocked = !physWorld.canPlace("wire_2",
+                        new com.badlogic.gdx.math.Matrix4().setToTranslation(cx + 6f, 0f, cz));
+                // OFF-BOARD candidate (way past the grid edge) must be rejected — no free placement in empty space.
+                boolean offBoardBlocked = !physWorld.canPlace("wire_2",
+                        physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
+                                .setToTranslation(cx + 100000f, 0f, cz)));
                 physWorld.place("led", new com.badlogic.gdx.math.Matrix4(t)); // battery+LED loop → the LED lights red
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
-                // Typed chain: a wire, then a wire candidate near its STUD (+X) end at yaw 0 — its SOCKET should
-                // mate + the part should MOVE onto the target (snap != candidate).
-                com.badlogic.gdx.math.Matrix4 w1 = new com.badlogic.gdx.math.Matrix4().setToTranslation(cx, 0f, cz + 40f);
-                physWorld.place("wire_2", w1);
-                com.badlogic.gdx.math.Matrix4 wc = new com.badlogic.gdx.math.Matrix4().setToTranslation(cx + 30f, 0f, cz + 40f);
-                com.badlogic.gdx.math.Matrix4 snapped = physWorld.snap("wire_2", wc);
-                boolean chained = !snapped.getTranslation(new Vector3()).epsilonEquals(wc.getTranslation(new Vector3()), 0.5f);
-                physWorld.place("wire_2", snapped);
                 physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
-                log.info("phystest: {} parts; mating-allowed={} nonmating-blocked={} typed-chain-snapped={}; saved {}",
-                        physWorld.placements().size(), mateOk, overlapBlocked, chained, physFile().path());
+                log.info("phystest: {} parts; grid-snapped={} mating-allowed={} off-grid-blocked={} off-board-blocked={}; saved {}",
+                        physWorld.placements().size(), gridSnapped, mateOk, offGridBlocked, offBoardBlocked, physFile().path());
             }
             return;
         }
@@ -524,7 +525,7 @@ public final class SnapScreen extends ScreenAdapter {
 
         @Override public boolean scrolled(float amountX, float amountY) {
             if (physical) {
-                physEditor.rotate(amountY > 0 ? 15f : -15f);
+                physEditor.rotate(amountY > 0 ? 90f : -90f); // grid mode: quarter-turns (snap aligns to 90°)
                 return true;
             }
             if (editor == null) {
@@ -541,7 +542,7 @@ public final class SnapScreen extends ScreenAdapter {
                 return true;
             }
             if (physical) {
-                if (keycode == Keys.R) { physEditor.rotate(15f); return true; }
+                if (keycode == Keys.R) { physEditor.rotate(90f); return true; }
                 if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {
                     physEditor.selectTool(keycode - Keys.NUM_1);
                     refreshHotbar();

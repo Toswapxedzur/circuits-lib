@@ -26,8 +26,6 @@ public final class PhysicalBoardView implements Disposable {
     /** A connector in world space (for snapping + connectivity): position, mating axis, terminal, male=stud. */
     public record WorldConnector(Vector3 pos, Vector3 axis, int terminal, boolean male, int placementIndex) {}
 
-    private static final float SNAP_RADIUS = 12f; // world units within which a ghost connector snaps to a target
-
     private final EngineRenderer engine = new EngineRenderer();
     private final ModelLoader loader = new ModelLoader();
     private final List<Placed> placed = new ArrayList<>();
@@ -36,6 +34,14 @@ public final class PhysicalBoardView implements Disposable {
     private final java.util.Map<Integer, com.minecart.logic.CircuitEdge> deviceEdge = new java.util.concurrent.ConcurrentHashMap<>();
     private boolean built;
     private boolean hasBase;
+
+    // The board's DISCRETE socket grid — parts anchor here (this is Snap Circuits, not free continuous placement).
+    // Sockets sit at world (col*PITCH, boardTopY, row*PITCH) for col∈[0,boardCols), row∈[0,boardRows), matching the
+    // studs {@link SnapBaseBoard} draws. Set by {@link #setBaseBoard}.
+    private static final float PITCH = com.minecart.display.snap.SnapModelBridge.PITCH; // 24
+    private int boardCols, boardRows;
+    private float boardTopY;
+    private static final float ON_SOCKET_EPS2 = 1f; // (1u)² — a terminal this close to a grid point sits ON it
 
     // Ghost easing state (reused from the eased translucent preview).
     private static final float GHOST_EASE = 12f, GHOST_ALPHA = 0.5f;
@@ -62,8 +68,28 @@ public final class PhysicalBoardView implements Disposable {
      *  board (and the ghost models' atlas) render immediately, before any part is placed. */
     public void setBaseBoard(int cols, int rows, float topY) {
         engine.addStatic(SnapBaseBoard.build(cols, rows, topY));
+        boardCols = cols;
+        boardRows = rows;
+        boardTopY = topY;
         hasBase = true;
         rebuild();
+    }
+
+    /** The nearest in-bounds board socket to world point {@code p} (x,z), or {@code null} if the nearest grid point
+     *  is off the board. Sockets are at {@code (col*PITCH, boardTopY, row*PITCH)}. */
+    private Vector3 nearestSocket(Vector3 p) {
+        int col = Math.round(p.x / PITCH);
+        int row = Math.round(p.z / PITCH);
+        if (col < 0 || col >= boardCols || row < 0 || row >= boardRows) {
+            return null;
+        }
+        return new Vector3(col * PITCH, boardTopY, row * PITCH);
+    }
+
+    /** True if world point {@code w} sits ON an in-bounds board socket (within {@link #ON_SOCKET_EPS2}). */
+    private boolean onSocket(Vector3 w) {
+        Vector3 s = nearestSocket(w);
+        return s != null && (s.x - w.x) * (s.x - w.x) + (s.z - w.z) * (s.z - w.z) <= ON_SOCKET_EPS2;
     }
 
     /** Commits a part at a world transform (assumes {@link #canPlace} was checked). Rebuilds the render scene. */
@@ -330,49 +356,32 @@ public final class PhysicalBoardView implements Disposable {
     }
 
     /**
-     * MAGNETIC SNAP with ROTATION-ALIGN: given a candidate transform for {@code modelId}, if one of its connectors
-     * is within {@link #SNAP_RADIUS} of a compatible placed connector, returns a transform that ROTATES the part so
-     * that connector's outward axis anti-aligns the target's (they face each other) AND translates so the pair
-     * coincides exactly — a clean end-to-end mate at any angle. Otherwise returns {@code candidate} unchanged.
+     * GRID SNAP: this is Snap Circuits — parts anchor to the board's DISCRETE socket grid, not to free continuous
+     * positions. Given a candidate transform for {@code modelId}, snap its yaw to the nearest 90° (so its two end
+     * terminals run along a grid axis) and translate so one terminal lands EXACTLY on the nearest in-bounds board
+     * socket; because the terminal span (±½·PITCH) equals one grid step, the other terminal auto-lands on the
+     * adjacent socket. Parts thus connect by SHARING a socket (coincident terminals → one circuit node). Returns
+     * {@code candidate} unchanged only when there's no board or the part has no connectors.
      */
     public Matrix4 snap(String modelId, Matrix4 candidate) {
         ComponentModel m = loader.model(modelId);
-        if (m.connectors.isEmpty()) {
+        if (m.connectors.isEmpty() || !hasBase) {
             return candidate;
         }
-        List<WorldConnector> targets = connectorsWorld();
-        if (targets.isEmpty()) {
-            return candidate;
+        // Snap yaw to the nearest quarter turn so the terminals align to the grid axes.
+        float yawDeg = candidate.getRotation(new com.badlogic.gdx.math.Quaternion(), true).getYaw();
+        float snapYaw = Math.round(yawDeg / 90f) * 90f;
+        Vector3 t = candidate.getTranslation(new Vector3());
+        Matrix4 base = new Matrix4().setToTranslation(t.x, boardTopY, t.z)
+                .rotate(0f, 1f, 0f, snapYaw); // model base on the board plane, grid-aligned
+        // Land the first terminal on its nearest socket; the rest follow by construction.
+        Vector3 p0 = new Vector3(m.connectors.get(0).local()).mul(base);
+        Vector3 s = nearestSocket(p0);
+        if (s == null) {
+            return base; // off the board → leave it (canPlace will reject → red ghost)
         }
-        float bestD = SNAP_RADIUS * SNAP_RADIUS;
-        Matrix4 best = null;
-        for (ComponentModel.Connector c : m.connectors) {
-            Vector3 gp = tmp.set(c.local()).mul(candidate); // ghost connector current world pos
-            for (WorldConnector t : targets) {
-                if (t.male() == c.male()) {
-                    continue; // typed: a stud mates a socket, not stud↔stud / socket↔socket
-                }
-                float d = gp.dst2(t.pos());
-                if (d < bestD) {
-                    bestD = d;
-                    best = alignConnector(c, t);
-                }
-            }
-        }
-        return best != null ? best : candidate;
-    }
-
-    /** Builds the transform that mates ghost connector {@code c} onto placed connector {@code t}: yaw so c's
-     *  outward axis anti-aligns t's (face-to-face), then translate so c lands exactly on t. */
-    private Matrix4 alignConnector(ComponentModel.Connector c, WorldConnector t) {
-        // Desired WORLD angle of c's outward axis = angle of (−t.axis); c's LOCAL outward angle = atan2(z, x).
-        float wantAng = (float) Math.atan2(-t.axis().z, -t.axis().x);
-        float localAng = (float) Math.atan2(c.axis().z, c.axis().x);
-        float yawRad = wantAng - localAng;
-        Matrix4 r = new Matrix4().setToRotationRad(0f, 1f, 0f, yawRad);
-        Vector3 rotated = new Vector3(c.local()).rot(r);          // c's pos after rotation (about origin)
-        Vector3 trans = new Vector3(t.pos()).sub(rotated);        // translate so rotated + trans = t.pos
-        return new Matrix4().setToTranslation(trans).mul(r);      // world = T · R
+        Vector3 d = new Vector3(s.x - p0.x, 0f, s.z - p0.z);
+        return new Matrix4().setToTranslation(d).mul(base);
     }
 
     private static final float MATE_EPS2 = 4f; // (2u)² — connectors this close count as mated (they coincide exactly)
@@ -385,6 +394,14 @@ public final class PhysicalBoardView implements Disposable {
      */
     public boolean canPlace(String modelId, Matrix4 transform) {
         ComponentModel m = loader.model(modelId);
+        // ANCHORING: on a board, every terminal must land ON a socket (Snap Circuits — no floating in free space).
+        if (hasBase && !m.connectors.isEmpty()) {
+            for (ComponentModel.Connector c : m.connectors) {
+                if (!onSocket(new Vector3(c.local()).mul(transform))) {
+                    return false;
+                }
+            }
+        }
         if (m.collision == null) {
             return true;
         }
