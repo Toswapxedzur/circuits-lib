@@ -118,6 +118,13 @@ public final class PhysicalBoardView implements Disposable {
         rebuild();
     }
 
+    /** Removes every placement (test/reset helper). */
+    public void clearAll() {
+        placed.clear();
+        deviceEdge.clear();
+        rebuild();
+    }
+
     /** One saved placement: model id + its 16-float world matrix. */
     private static final class SaveEntry { String id; float[] m; }
 
@@ -510,6 +517,61 @@ public final class PhysicalBoardView implements Disposable {
             }
         }
         return true;
+    }
+
+    /** What the cursor is hovering: a placed part ({@code subPart == -1}) or one of its movable SUB-PARTS (the
+     *  switch knob, a dial…), plus that element's world AABB for the highlight outline. */
+    public record Focus(int placementIndex, int subPart, float[] aabb) {}
+
+    /** Raycast the cursor {@code ray} against every placed part's base box AND each movable sub-part's box; returns
+     *  the NEAREST one entered (so the little knob on top wins over the base under it), or null if nothing is hit.
+     *  This is the per-face hitbox resolution — sub-parts are separate pick targets from the base. */
+    public Focus focusAt(com.badlogic.gdx.math.collision.Ray ray) {
+        Focus best = null;
+        float bestDist = Float.MAX_VALUE;
+        Vector3 hit = new Vector3();
+        for (int i = 0; i < placed.size(); i++) {
+            ComponentModel m = loader.model(placed.get(i).modelId());
+            Matrix4 tf = placed.get(i).transform();
+            for (int s = 0; s < m.movableParts.size(); s++) {
+                float[] ab = movableWorldAabb(m.movableParts.get(s), tf);
+                if (rayHitsAabb(ray, ab, hit)) {
+                    float d = ray.origin.dst2(hit);
+                    if (d < bestDist) { bestDist = d; best = new Focus(i, s, ab); }
+                }
+            }
+            if (m.collision != null) {
+                float[] ab = worldAabb(m.collision, tf);
+                if (rayHitsAabb(ray, ab, hit)) {
+                    float d = ray.origin.dst2(hit);
+                    if (d < bestDist) { bestDist = d; best = new Focus(i, -1, ab); }
+                }
+            }
+        }
+        return best;
+    }
+
+    private static boolean rayHitsAabb(com.badlogic.gdx.math.collision.Ray ray, float[] ab, Vector3 out) {
+        return com.badlogic.gdx.math.Intersector.intersectRayBounds(ray,
+                new com.badlogic.gdx.math.collision.BoundingBox(
+                        new Vector3(ab[0], ab[1], ab[2]), new Vector3(ab[3], ab[4], ab[5])), out);
+    }
+
+    /** World AABB of a movable sub-part (its boxes, at the component transform · the movable's local pose). */
+    private float[] movableWorldAabb(ComponentModel.MovablePart mv, Matrix4 placement) {
+        Matrix4 w = new Matrix4(placement).mul(mv.local());
+        float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
+        for (PartMesh.Box b : mv.type().boxes()) {
+            for (int c = 0; c < 8; c++) {
+                tmp2.set(b.cx() + ((c & 1) == 0 ? -b.sx() : b.sx()) / 2f,
+                        b.cy() + ((c & 2) == 0 ? -b.sy() : b.sy()) / 2f,
+                        b.cz() + ((c & 4) == 0 ? -b.sz() : b.sz()) / 2f).mul(w);
+                minx = Math.min(minx, tmp2.x); maxx = Math.max(maxx, tmp2.x);
+                miny = Math.min(miny, tmp2.y); maxy = Math.max(maxy, tmp2.y);
+                minz = Math.min(minz, tmp2.z); maxz = Math.max(maxz, tmp2.z);
+            }
+        }
+        return new float[]{minx, miny, minz, maxx, maxy, maxz};
     }
 
     /** World-space AABB {minx,miny,minz,maxx,maxy,maxz} of a collision box under {@code world} (8-corner bound). */
