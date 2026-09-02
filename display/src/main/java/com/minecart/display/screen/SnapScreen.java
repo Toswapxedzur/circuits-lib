@@ -169,28 +169,27 @@ public final class SnapScreen extends ScreenAdapter {
                         && Math.abs(inl.getTranslation(new Vector3()).y) < 0.01f;
                 // COVER same-footprint FLAT must be rejected (to stack you aim at the stud, below).
                 boolean coverBlocked = !physWorld.canPlace("wire_2", new com.badlogic.gdx.math.Matrix4(t));
-                // PORT ALIAS: a ray onto the wire's stud resolves to that port at the wire's TOP; snapToPort stacks
-                // a new wire ON TOP (elevated Y) and it's VALID (3D-clear of the wire below).
+                // PORT ALIAS: a ray onto the wire's FAR stud (c1) resolves to that port at the wire's OWN LEVEL (flat,
+                // y≈0); snapToPort connects a new wire FLAT extending outward (+X from c1), a valid joint (no climb).
                 com.badlogic.gdx.math.collision.Ray downRay = new com.badlogic.gdx.math.collision.Ray(
-                        new Vector3(c0.x, 200f, c0.z), new Vector3(0f, -1f, 0f));
+                        new Vector3(c1.x, 200f, c1.z), new Vector3(0f, -1f, 0f));
                 Vector3 picked = physWorld.pickTarget(downRay);
-                boolean portPicked = picked != null && picked.y > 1f
-                        && Math.abs(picked.x - c0.x) < 1.5f && Math.abs(picked.z - c0.z) < 1.5f;
-                com.badlogic.gdx.math.Matrix4 up = picked == null ? null : physWorld.snapToPort("wire_2", picked, 0f);
-                boolean stacksOnPort = up != null && up.getTranslation(new Vector3()).y > 1f
-                        && physWorld.canPlace("wire_2", up);
+                boolean portPicked = picked != null && Math.abs(picked.y) < 0.01f
+                        && Math.abs(picked.x - c1.x) < 1.5f && Math.abs(picked.z - c1.z) < 1.5f;
+                com.badlogic.gdx.math.Matrix4 pp = picked == null ? null : physWorld.snapToPort("wire_2", picked, 0f);
+                boolean portConnectsFlat = pp != null && Math.abs(pp.getTranslation(new Vector3()).y) < 0.01f
+                        && physWorld.canPlace("wire_2", pp);
                 // OFF-BOARD candidate (way past the grid edge) must be rejected.
                 boolean offBoardBlocked = !physWorld.canPlace("wire_2",
                         physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
                                 .setToTranslation(cx + 100000f, 0f, cz)));
                 if (inlineFlat) physWorld.place("wire_2", inl);
-                if (up != null && stacksOnPort) physWorld.place("wire_2", up);
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
                 physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
-                log.info("phystest: {} parts; grid-snapped-flat={} inline-flat={} cover-blocked={} port-picked={} stacks-on-port={} off-board-blocked={}; saved {}",
-                        physWorld.placements().size(), gridSnapped, inlineFlat, coverBlocked, portPicked, stacksOnPort, offBoardBlocked, physFile().path());
+                log.info("phystest: {} parts; grid-snapped-flat={} inline-flat={} cover-blocked={} port-picked-flat={} port-connects-flat={} off-board-blocked={}; saved {}",
+                        physWorld.placements().size(), gridSnapped, inlineFlat, coverBlocked, portPicked, portConnectsFlat, offBoardBlocked, physFile().path());
             }
             return;
         }
