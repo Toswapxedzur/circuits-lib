@@ -176,7 +176,7 @@ public final class SnapScreen extends ScreenAdapter {
                 com.badlogic.gdx.math.collision.Ray rFar = new com.badlogic.gdx.math.collision.Ray(
                         new Vector3(c1.x, 200f, c1.z), new Vector3(0f, -1f, 0f));
                 Vector3 pFar = physWorld.pickTarget(rFar);
-                com.badlogic.gdx.math.Matrix4 canti = pFar == null ? null : physWorld.snapToPort("wire_2", pFar, yawAxis);
+                com.badlogic.gdx.math.Matrix4 canti = pFar == null ? null : physWorld.snapToPort("wire_2", pFar, yawAxis, 0);
                 boolean cantileverBlocked = canti != null && !physWorld.canPlace("wire_2", canti);
                 // DIRECT STACK OK: aim at the NEAR stud c0 and stack a wire spanning c0→c1 (directly ON the wire) —
                 // both its studs sit over the wire below → fully supported → VALID.
@@ -184,7 +184,7 @@ public final class SnapScreen extends ScreenAdapter {
                         new Vector3(c0.x, 200f, c0.z), new Vector3(0f, -1f, 0f));
                 Vector3 pNear = physWorld.pickTarget(rNear);
                 boolean portOnTop = pNear != null && pNear.y > 1f;
-                com.badlogic.gdx.math.Matrix4 up = pNear == null ? null : physWorld.snapToPort("wire_2", pNear, yawAxis);
+                com.badlogic.gdx.math.Matrix4 up = pNear == null ? null : physWorld.snapToPort("wire_2", pNear, yawAxis, 0);
                 boolean directStackOk = up != null && up.getTranslation(new Vector3()).y > 1f
                         && physWorld.canPlace("wire_2", up);
                 // OFF-BOARD candidate (way past the grid edge) must be rejected.
@@ -326,7 +326,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (physical) {
             double i = physWorld.batteryCurrent();
             statusLabel.setText("PHYSICAL  |  Item: " + physEditor.toolLabel(physEditor.tool())
-                    + "   |   1-" + physEditor.toolCount() + " select   scroll/R/←→ rotate   LMB place   RMB remove   Esc cursor"
+                    + "   |   1-" + physEditor.toolCount() + " select   scroll/R rotate   ←→ terminal   LMB place   RMB remove   Esc cursor"
                     + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
                     + (i > 1e-4 ? String.format("    |    circuit LIVE: I = %.3f A", i) : ""));
             return;
@@ -550,7 +550,7 @@ public final class SnapScreen extends ScreenAdapter {
 
         @Override public boolean scrolled(float amountX, float amountY) {
             if (physical) {
-                physEditor.rotate(amountY > 0 ? 90f : -90f); // grid mode: quarter-turns (snap aligns to 90°)
+                physEditor.scrollRotate(amountY); // slowed: accumulates before each 90° turn (no spinning)
                 return true;
             }
             if (editor == null) {
@@ -567,11 +567,10 @@ public final class SnapScreen extends ScreenAdapter {
                 return true;
             }
             if (physical) {
-                if (keycode == Keys.R) { physEditor.rotate(90f); return true; }
-                // ←/→ arrows rotate the part in quarter-turns too — when aiming at a stud the part pivots AROUND
-                // that pinned terminal (Port Alias), so the arrows swing which way it extends from the connection.
-                if (keycode == Keys.LEFT) { physEditor.rotate(-90f); return true; }
-                if (keycode == Keys.RIGHT) { physEditor.rotate(90f); return true; }
+                if (keycode == Keys.R) { physEditor.rotate(90f); return true; } // quick 90° direction turn
+                // ←/→ cycle WHICH terminal pins to the cursor (scroll/R choose the extension direction).
+                if (keycode == Keys.LEFT) { physEditor.cycleTerminal(-1); return true; }
+                if (keycode == Keys.RIGHT) { physEditor.cycleTerminal(1); return true; }
                 if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {
                     physEditor.selectTool(keycode - Keys.NUM_1);
                     refreshHotbar();

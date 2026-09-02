@@ -25,15 +25,29 @@ public final class PhysicalEditor {
     private final Vector3 hit = new Vector3();
     private final Matrix4 ghost = new Matrix4();
     private int tool;
-    private float yawDeg;
+    private float yawDeg;      // extension DIRECTION (scroll / R / arrows do 90° turns)
+    private int anchor;        // WHICH terminal pins to the cursor (←/→ cycle it)
+    private float scrollAccum; // slows the scroll wheel: this much accumulated scroll = one 90° turn
+    private static final float SCROLL_PER_TURN = 3f;
     private boolean valid;
     private boolean present;
 
     public int toolCount() { return TOOL_MODEL.length; }
     public int tool() { return tool; }
     public String toolLabel(int i) { return TOOL_LABEL[i]; }
-    public void selectTool(int i) { if (i >= 0 && i < TOOL_MODEL.length) tool = i; }
+    public void selectTool(int i) { if (i >= 0 && i < TOOL_MODEL.length) { tool = i; anchor = 0; } }
     public void rotate(float deltaDeg) { yawDeg = (yawDeg + deltaDeg) % 360f; }
+
+    /** ←/→: cycle which of the part's terminals is pinned to the cursor. */
+    public void cycleTerminal(int dir) { anchor += dir; }
+
+    /** Mouse wheel: turn the extension direction in 90° steps, but SLOWLY — accumulate scroll and only turn once
+     *  {@link #SCROLL_PER_TURN} has built up, so a single flick doesn't spin the part. */
+    public void scrollRotate(float amountY) {
+        scrollAccum += amountY;
+        while (scrollAccum >= SCROLL_PER_TURN) { rotate(90f); scrollAccum -= SCROLL_PER_TURN; }
+        while (scrollAccum <= -SCROLL_PER_TURN) { rotate(-90f); scrollAccum += SCROLL_PER_TURN; }
+    }
 
     public boolean present() { return present; }
     public boolean valid() { return valid; }
@@ -53,7 +67,7 @@ public final class PhysicalEditor {
             }
             target = new Vector3(hit.x, 0f, hit.z); // …else the board point under the cursor (snapToPort grids it)
         }
-        Matrix4 snapped = world.snapToPort(modelId(), target, yawDeg);
+        Matrix4 snapped = world.snapToPort(modelId(), target, yawDeg, anchor);
         ghost.set(snapped);
         valid = world.canPlace(modelId(), snapped);
         present = true;
