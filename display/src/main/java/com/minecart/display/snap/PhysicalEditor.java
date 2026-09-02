@@ -43,13 +43,20 @@ public final class PhysicalEditor {
     /** Recomputes the ghost transform from the crosshair ray + snap + collision against {@code world}. */
     public void update(PerspectiveCamera cam, PhysicalBoardView world) {
         Ray ray = cam.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f);
-        if (!Intersector.intersectRayPlane(ray, ground, hit)) {
-            present = false;
-            return;
+        // PORT ALIAS: if the crosshair is on a placed part, target the stud (port) it's aiming at and place ONTO it
+        // (resting on top). Otherwise fall back to the board plane.
+        Vector3 port = world.pickTarget(ray);
+        Matrix4 snapped;
+        if (port != null) {
+            snapped = world.snapToPort(modelId(), port, yawDeg);
+        } else {
+            if (!Intersector.intersectRayPlane(ray, ground, hit)) {
+                present = false;
+                return;
+            }
+            Matrix4 candidate = new Matrix4().setToTranslation(hit.x, 0f, hit.z).rotate(0f, 1f, 0f, yawDeg);
+            snapped = world.snap(modelId(), candidate);
         }
-        // Candidate: at the hit point, yawed. (Model sits with its base on y=0.)
-        Matrix4 candidate = new Matrix4().setToTranslation(hit.x, 0f, hit.z).rotate(0f, 1f, 0f, yawDeg);
-        Matrix4 snapped = world.snap(modelId(), candidate);
         ghost.set(snapped);
         valid = world.canPlace(modelId(), snapped);
         present = true;

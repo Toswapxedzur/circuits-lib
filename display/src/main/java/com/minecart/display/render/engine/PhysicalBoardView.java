@@ -420,6 +420,64 @@ public final class PhysicalBoardView implements Disposable {
     }
 
     /**
+     * PORT-ALIAS TARGETING: casts the crosshair {@code ray} at the placed parts and resolves to the PORT (stud) it's
+     * aiming at. The nearest part the ray enters wins; within it, the port nearest the entry point is the target —
+     * i.e. a part's face is partitioned per-stud, and each stud's region <b>aliases</b> that stud's port (owner's
+     * "portion of a face = alias of a port"). Returns that stud's world x-z (with y = board level; {@link #snapToPort}
+     * recomputes the resting height). Returns {@code null} when the ray hits no part, so the caller can fall back to
+     * the board plane. This is what lets the user aim at a stud ON TOP of a stack, not just the ground.
+     */
+    public Vector3 pickTarget(com.badlogic.gdx.math.collision.Ray ray) {
+        Placed best = null;
+        float bestDist = Float.MAX_VALUE;
+        Vector3 hit = new Vector3(), bestHit = new Vector3();
+        for (Placed p : placed) {
+            ComponentModel pm = loader.model(p.modelId());
+            if (pm.collision == null) {
+                continue;
+            }
+            float[] ab = worldAabb(pm.collision, p.transform());
+            com.badlogic.gdx.math.collision.BoundingBox bb = new com.badlogic.gdx.math.collision.BoundingBox(
+                    new Vector3(ab[0], ab[1], ab[2]), new Vector3(ab[3], ab[4], ab[5]));
+            if (com.badlogic.gdx.math.Intersector.intersectRayBounds(ray, bb, hit)) {
+                float d = ray.origin.dst2(hit);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = p;
+                    bestHit.set(hit);
+                }
+            }
+        }
+        if (best == null) {
+            return null;
+        }
+        ComponentModel pm = loader.model(best.modelId());
+        Vector3 nearest = null;
+        float nd = Float.MAX_VALUE;
+        for (ComponentModel.Connector c : pm.connectors) {
+            Vector3 w = new Vector3(c.local()).mul(best.transform());
+            float d = (w.x - bestHit.x) * (w.x - bestHit.x) + (w.z - bestHit.z) * (w.z - bestHit.z);
+            if (d < nd) {
+                nd = d;
+                nearest = w;
+            }
+        }
+        return nearest == null ? null : new Vector3(nearest.x, boardTopY, nearest.z);
+    }
+
+    /** Places {@code modelId} so its FIRST connector lands on the targeted port {@code portXZ}, at the given yaw, then
+     *  runs it through {@link #snap} (grid-align + rest-on-top). Used when {@link #pickTarget} hit a port. */
+    public Matrix4 snapToPort(String modelId, Vector3 portXZ, float yawDeg) {
+        ComponentModel m = loader.model(modelId);
+        float ex = m.connectors.isEmpty() ? 0f : -m.connectors.get(0).local().x; // connector[0] sits at local −ex
+        Matrix4 rot = new Matrix4().setToRotation(Vector3.Y, yawDeg);
+        Vector3 off = new Vector3(ex, 0f, 0f).rot(rot); // where connector[0] ends up relative to the part centre
+        Matrix4 candidate = new Matrix4()
+                .setToTranslation(portXZ.x + off.x, boardTopY, portXZ.z + off.z).rotate(0f, 1f, 0f, yawDeg);
+        return snap(modelId, candidate);
+    }
+
+    /**
      * 3D validity: {@code modelId} at {@code transform} is placeable when every terminal lands on an in-bounds
      * board socket (x-z grid) AND its TRUE 3D bounding box doesn't intersect a placed part's. Because {@link #snap}
      * rests an overlapping part on top of what's below, a connection/crossing lands at a higher Y and its 3D box
