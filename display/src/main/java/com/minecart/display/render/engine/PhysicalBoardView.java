@@ -456,16 +456,25 @@ public final class PhysicalBoardView implements Disposable {
         return nearest == null ? null : new Vector3(nearest.x, bestTop, nearest.z);
     }
 
-    /** Places {@code modelId} so its FIRST connector lands on the targeted port {@code port} (x, top-y, z) at the
-     *  given yaw — ON TOP of the aimed part at the shared post — then grid-aligns via {@link #snap} (keeps the height). */
-    public Matrix4 snapToPort(String modelId, Vector3 port, float yawDeg) {
+    /** Places {@code modelId} so its <b>anchor</b> terminal (connector {@code anchorIdx}, mod the count) lands on the
+     *  targeted {@code port} (x, level-y, z) at the given yaw. The anchor is grid-snapped to the socket nearest the
+     *  port; the part extends per the yaw and the OTHER terminal auto-lands on its socket (spans are pitch multiples).
+     *  ←/→ pick which terminal anchors; scroll/R pick the direction. */
+    public Matrix4 snapToPort(String modelId, Vector3 port, float yawDeg, int anchorIdx) {
         ComponentModel m = loader.model(modelId);
-        float ex = m.connectors.isEmpty() ? 0f : -m.connectors.get(0).local().x; // connector[0] sits at local −ex
-        Matrix4 rot = new Matrix4().setToRotation(Vector3.Y, yawDeg);
-        Vector3 off = new Vector3(ex, 0f, 0f).rot(rot); // where connector[0] ends up relative to the part centre
-        Matrix4 candidate = new Matrix4()
-                .setToTranslation(port.x + off.x, port.y, port.z + off.z).rotate(0f, 1f, 0f, yawDeg);
-        return snap(modelId, candidate);
+        float snapYaw = Math.round(yawDeg / 90f) * 90f;
+        if (m.connectors.isEmpty() || !hasBase) {
+            return new Matrix4().setToTranslation(port.x, port.y, port.z).rotate(0f, 1f, 0f, snapYaw);
+        }
+        int n = m.connectors.size();
+        Vector3 aLocal = new Vector3(m.connectors.get(((anchorIdx % n) + n) % n).local());
+        Vector3 rotA = aLocal.rotate(Vector3.Y, snapYaw); // anchor's local offset, rotated (y stays 0)
+        Vector3 socket = nearestSocket(new Vector3(port.x, port.y, port.z)); // grid-snap the anchor (x-z)
+        float ax = socket != null ? socket.x : port.x;
+        float az = socket != null ? socket.z : port.z;
+        // centre so the anchor lands exactly on (ax, port.y, az)
+        return new Matrix4().setToTranslation(ax - rotA.x, port.y - rotA.y, az - rotA.z)
+                .rotate(0f, 1f, 0f, snapYaw);
     }
 
     /**
