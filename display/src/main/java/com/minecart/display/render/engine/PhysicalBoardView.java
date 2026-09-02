@@ -307,8 +307,8 @@ public final class PhysicalBoardView implements Disposable {
             this.world = world;
         }
 
-        private static String key(Vector3 p) { // round to 2u — mated connectors coincide, distinct ones don't
-            return Math.round(p.x / 2f) + "," + Math.round(p.y / 2f) + "," + Math.round(p.z / 2f);
+        private static String key(Vector3 p) { // round to 2u; Y DROPPED — a board post is one vertical conductor, so
+            return Math.round(p.x / 2f) + "," + Math.round(p.z / 2f); // stacked parts sharing an (x,z) post are one node
         }
 
         private int id(Vector3 p) {
@@ -381,16 +381,50 @@ public final class PhysicalBoardView implements Disposable {
             return base; // off the board → leave it (canPlace will reject → red ghost)
         }
         Vector3 d = new Vector3(s.x - p0.x, 0f, s.z - p0.z);
-        return new Matrix4().setToTranslation(d).mul(base);
+        Matrix4 grid = new Matrix4().setToTranslation(d).mul(base); // x-z aligned, y = boardTopY
+        // STACK IN 3D: this is a 3D game — a part that overlaps another in the ground plane rests ON TOP of it
+        // (their 3D boxes then don't intersect), instead of colliding. Lift the part so its body base sits on the
+        // top of the highest part it overlaps in x-z (board top if none).
+        float rest = restingY(m, grid);
+        if (rest != boardTopY) {
+            grid = new Matrix4().setToTranslation(0f, rest - boardTopY, 0f).mul(grid);
+        }
+        return grid;
     }
 
-    private static final float MATE_EPS2 = 4f; // (2u)² — connectors this close count as mated (they coincide exactly)
+    /** The Y at which {@code m}'s body base should sit given {@code grid} (its x-z-aligned pose at board level): the
+     *  TOP of the highest already-placed part it overlaps in the ground plane, or {@code boardTopY} if it's clear. */
+    private float restingY(ComponentModel m, Matrix4 grid) {
+        if (m.collision == null) {
+            return boardTopY;
+        }
+        float[] a = worldAabb(m.collision, grid);
+        float top = boardTopY;
+        for (Placed p : placed) {
+            ComponentModel pm = loader.model(p.modelId());
+            if (pm.collision == null) {
+                continue;
+            }
+            float[] b = worldAabb(pm.collision, p.transform());
+            if (xzOverlap(a, b)) {
+                top = Math.max(top, b[4]); // b[4] = that part's world top
+            }
+        }
+        return top;
+    }
+
+    /** Ground-plane (x-z) overlap of two world AABBs — Y ignored. */
+    private static boolean xzOverlap(float[] a, float[] b) {
+        float eps = 0.5f;
+        return a[0] < b[3] - eps && a[3] > b[0] + eps && a[2] < b[5] - eps && a[5] > b[2] + eps;
+    }
 
     /**
-     * Connection-aware validity: {@code modelId} at {@code transform} is placeable unless its collision box
-     * overlaps a placed part <b>without mating it</b>. Mated parts SHARE a terminal and their bodies legitimately
-     * overlap (like real Snap Circuits base tiles interlocking), so an overlap is allowed when the candidate has a
-     * connector coincident with one of that part's connectors.
+     * 3D validity: {@code modelId} at {@code transform} is placeable when every terminal lands on an in-bounds
+     * board socket (x-z grid) AND its TRUE 3D bounding box doesn't intersect a placed part's. Because {@link #snap}
+     * rests an overlapping part on top of what's below, a connection/crossing lands at a higher Y and its 3D box
+     * clears — only genuine same-height overlap (or off-board) is rejected. The small Y tolerance in {@link
+     * #overlap} lets the under-stud peg interlock at a joint pass.
      */
     public boolean canPlace(String modelId, Matrix4 transform) {
         ComponentModel m = loader.model(modelId);
@@ -406,54 +440,16 @@ public final class PhysicalBoardView implements Disposable {
             return true;
         }
         float[] a = worldAabb(m.collision, transform);
-        List<Vector3> mine = candidateConnectors(m, transform);
         for (Placed p : placed) {
             ComponentModel pm = loader.model(p.modelId());
             if (pm.collision == null) {
                 continue;
             }
-            float[] b = worldAabb(pm.collision, p.transform());
-            if (overlap(a, b)) {
-                // Bounding-box collision INVALIDATES placement (owner 2026-09-02) — you can't drop a part where
-                // another already sits. The ONE allowed overlap is a genuine connection: the parts must share a
-                // stud AND the overlap must be a thin end-to-end / T-junction overhang (≤ one pitch in each ground
-                // axis). Stacking two parts on the same footprint, or crossing/covering, overlaps by more → blocked.
-                if (!sharesConnector(mine, pm, p.transform()) || overlapExceedsPitch(a, b)) {
-                    return false;
-                }
+            if (overlap(a, worldAabb(pm.collision, p.transform()))) {
+                return false; // true 3D overlap — a part already occupies this space at this height
             }
         }
         return true;
-    }
-
-    /** True if AABBs {@code a},{@code b} overlap by more than one grid pitch in either ground axis (x/z) — i.e. one
-     *  part covers/stacks the other rather than just abutting it end-to-end at a shared stud. */
-    private static boolean overlapExceedsPitch(float[] a, float[] b) {
-        float ox = Math.min(a[3], b[3]) - Math.max(a[0], b[0]);
-        float oz = Math.min(a[5], b[5]) - Math.max(a[2], b[2]);
-        return ox > PITCH + 0.5f || oz > PITCH + 0.5f;
-    }
-
-    /** The world positions of {@code m}'s connectors under {@code world}. */
-    private List<Vector3> candidateConnectors(ComponentModel m, Matrix4 world) {
-        List<Vector3> out = new ArrayList<>(m.connectors.size());
-        for (ComponentModel.Connector c : m.connectors) {
-            out.add(new Vector3(c.local()).mul(world));
-        }
-        return out;
-    }
-
-    /** True if any of {@code mine} coincides (within {@link #MATE_EPS2}) with a connector of placed part {@code pm}. */
-    private boolean sharesConnector(List<Vector3> mine, ComponentModel pm, Matrix4 pWorld) {
-        for (ComponentModel.Connector c : pm.connectors) {
-            Vector3 w = new Vector3(c.local()).mul(pWorld);
-            for (Vector3 g : mine) {
-                if (g.dst2(w) <= MATE_EPS2) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     /** World-space AABB {minx,miny,minz,maxx,maxy,maxz} of a collision box under {@code world} (8-corner bound). */
@@ -471,9 +467,10 @@ public final class PhysicalBoardView implements Disposable {
     }
 
     private static boolean overlap(float[] a, float[] b) {
-        float eps = 0.5f; // touching (shared connector face) is allowed, not counted as overlap
+        float eps = 0.5f;    // x/z: touching faces allowed
+        float epsY = 1.5f;   // y: the under-stud PEG interlock at a stacked joint (~1u) is a connection, not a clash
         return a[0] < b[3] - eps && a[3] > b[0] + eps
-                && a[1] < b[4] - eps && a[4] > b[1] + eps
+                && a[1] < b[4] - epsY && a[4] > b[1] + epsY
                 && a[2] < b[5] - eps && a[5] > b[2] + eps;
     }
 
