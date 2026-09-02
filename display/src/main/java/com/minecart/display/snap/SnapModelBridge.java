@@ -30,6 +30,45 @@ public final class SnapModelBridge {
 
     private SnapModelBridge() {}
 
+    /**
+     * A placeable snap COMPONENT: its committed model id, hotbar label, and electrical {@code kind} char used by the
+     * physical board's circuit builder — {@code w}=wire/junction (unifies its terminals), {@code s}=switch (a closed
+     * conductor for now), {@code r}=resistor, {@code c}=capacitor, {@code d}=diode, {@code l}=LED (diode + light),
+     * {@code p}=lamp (resistor + light), {@code b}=battery, {@code .}=place-only (no 2-terminal electrical yet, e.g.
+     * a 3-pin transistor or an IC). This CATALOG is the single registration point — the hotbar, the atlas preload,
+     * and {@link #kindOf} all derive from it.
+     */
+    public record Comp(String modelId, String label, char kind) {}
+
+    /** Every component registered for the physical board. Order = hotbar order. */
+    public static final List<Comp> CATALOG = List.of(
+            new Comp("wire_2", "Wire", 'w'),
+            new Comp("tee_blue", "Tee", 'w'),
+            new Comp("resistor", "Resistor", 'r'),
+            new Comp("varres_bar", "Var.Res", 'r'),
+            new Comp("capacitor_small", "Cap S", 'c'),
+            new Comp("capacitor_medium", "Cap M", 'c'),
+            new Comp("capacitor_big", "Cap L", 'c'),
+            new Comp("diode", "Diode", 'd'),
+            new Comp("led", "LED", 'l'),
+            new Comp("lamp", "Lamp", 'p'),
+            new Comp("switch", "Switch", 's'),
+            new Comp("press", "Button", 's'),
+            new Comp("battery_cell", "Battery", 'b'),
+            new Comp("transistor_npn", "NPN", '.'),
+            new Comp("transistor_pnp", "PNP", '.'),
+            new Comp("ic", "IC", '.'));
+
+    /** The electrical kind of a model id (from the {@link #CATALOG}); '.' if unregistered / place-only. */
+    public static char kindOf(String modelId) {
+        for (Comp c : CATALOG) {
+            if (c.modelId().equals(modelId)) {
+                return c.kind();
+            }
+        }
+        return '.';
+    }
+
     /** One thing for the engine to draw: which model, and where. */
     public record Placed(String modelId, Matrix4 world) {}
 
@@ -49,7 +88,10 @@ public final class SnapModelBridge {
     /** Every model id {@link #modelId} can emit — so the renderer can pre-load them all (e.g. for the placement
      *  ghost, whose sprites must be in the atlas before any part of that type is placed). */
     public static List<String> allModelIds() {
-        return List.of("wire_2", DEFAULT_RESISTOR, "battery_cell", "base_teal", "led", "lamp", "capacitor_medium");
+        List<String> out = new ArrayList<>();
+        for (Comp c : CATALOG) out.add(c.modelId());
+        out.add("base_teal"); // the ghost-placeholder base tile
+        return out;
     }
 
     /**

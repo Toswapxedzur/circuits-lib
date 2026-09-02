@@ -17,9 +17,11 @@ import com.minecart.display.render.engine.PhysicalBoardView;
  */
 public final class PhysicalEditor {
 
-    /** The placeable tools → their model ids (free mode uses the model directly, no grid part-type). */
-    private static final String[] TOOL_MODEL = {"wire_2", "resistor", "battery_cell", "led", "lamp", "capacitor_medium"};
-    private static final String[] TOOL_LABEL = {"Wire", "Resistor", "Battery", "LED", "Lamp", "Capacitor"};
+    /** The placeable tools — every registered component, from the central {@link SnapModelBridge#CATALOG}. */
+    private static final String[] TOOL_MODEL = SnapModelBridge.CATALOG.stream()
+            .map(SnapModelBridge.Comp::modelId).toArray(String[]::new);
+    private static final String[] TOOL_LABEL = SnapModelBridge.CATALOG.stream()
+            .map(SnapModelBridge.Comp::label).toArray(String[]::new);
 
     private final Plane ground = new Plane(new Vector3(0f, 1f, 0f), 0f);
     private final Vector3 hit = new Vector3();

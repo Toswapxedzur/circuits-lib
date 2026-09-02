@@ -192,6 +192,26 @@ public final class SnapScreen extends ScreenAdapter {
                         physWorld.snap("wire_2", new com.badlogic.gdx.math.Matrix4()
                                 .setToTranslation(cx + 100000f, 0f, cz)));
                 if (up != null && directStackOk) physWorld.place("wire_2", up);
+                // HARDEN: every REGISTERED component must snap + be placeable on the empty grid (valid connectors,
+                // base-plate collision, on-grid) — flags any model with a bad connector/collision.
+                int placeable = 0; StringBuilder fails = new StringBuilder();
+                for (com.minecart.display.snap.SnapModelBridge.Comp comp : com.minecart.display.snap.SnapModelBridge.CATALOG) {
+                    com.badlogic.gdx.math.Matrix4 cm = physWorld.snap(comp.modelId(),
+                            new com.badlogic.gdx.math.Matrix4().setToTranslation(cx - 30f, 0f, cz - 30f));
+                    if (physWorld.canPlace(comp.modelId(), cm)) placeable++;
+                    else fails.append(comp.modelId()).append(' ');
+                }
+                // Exercise buildCircuit over each device KIND (place spaced, isolated devices → no crash on any kind).
+                String[][] dv = {{"resistor", "-30", "-30"}, {"capacitor_medium", "30", "-30"}, {"diode", "-30", "30"},
+                        {"led", "30", "30"}, {"lamp", "-30", "0"}, {"battery_cell", "30", "0"}};
+                for (String[] d : dv) {
+                    com.badlogic.gdx.math.Matrix4 cm = physWorld.snap(d[0], new com.badlogic.gdx.math.Matrix4()
+                            .setToTranslation(cx + Float.parseFloat(d[1]), 0f, cz + Float.parseFloat(d[2])));
+                    if (physWorld.canPlace(d[0], cm)) physWorld.place(d[0], cm);
+                }
+                log.info("HARDEN: {}/{} components placeable{}", placeable,
+                        com.minecart.display.snap.SnapModelBridge.CATALOG.size(),
+                        fails.length() == 0 ? "" : "  NOT-PLACEABLE: " + fails);
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
@@ -292,10 +312,12 @@ public final class SnapScreen extends ScreenAdapter {
         Table hotbar = new Table();
         hotbar.setFillParent(true);
         hotbar.bottom().pad(16f);
+        int perRow = 8; // wrap so a long catalogue doesn't overflow the window width
         for (int i = 0; i < n; i++) {
             final int idx = i;
             String label = physical ? physEditor.toolLabel(i) : SnapEditor.Tool.values()[i].label();
-            TextButton button = new TextButton((i + 1) + "  " + label, skin);
+            String key = i < 9 ? (i + 1) + "  " : ""; // only 1-9 have number-key shortcuts
+            TextButton button = new TextButton(key + label, skin);
             button.addListener(new ClickListener() {
                 @Override public void clicked(InputEvent e, float x, float y) {
                     if (physical) {
@@ -307,7 +329,8 @@ public final class SnapScreen extends ScreenAdapter {
                 }
             });
             hotbarButtons[i] = button;
-            hotbar.add(button).width(120f).height(44f).padLeft(6f).padRight(6f);
+            hotbar.add(button).width(112f).height(40f).padLeft(4f).padRight(4f).padBottom(4f);
+            if ((i + 1) % perRow == 0) hotbar.row();
         }
         uiStage.addActor(hotbar);
     }
@@ -326,7 +349,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (physical) {
             double i = physWorld.batteryCurrent();
             statusLabel.setText("PHYSICAL  |  Item: " + physEditor.toolLabel(physEditor.tool())
-                    + "   |   1-" + physEditor.toolCount() + " select   scroll/R rotate   ←→ terminal   LMB place   RMB remove   Esc cursor"
+                    + "   |   1-9/click tool   scroll/R rotate   ←→ terminal   LMB place   RMB remove   Esc cursor"
                     + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
                     + (i > 1e-4 ? String.format("    |    circuit LIVE: I = %.3f A", i) : ""));
             return;
