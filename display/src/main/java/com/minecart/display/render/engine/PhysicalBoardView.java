@@ -92,6 +92,26 @@ public final class PhysicalBoardView implements Disposable {
         return s != null && (s.x - w.x) * (s.x - w.x) + (s.z - w.z) * (s.z - w.z) <= ON_SOCKET_EPS2;
     }
 
+    /** DIAGNOSTIC: is a stud at world {@code s} actually SUPPORTED — resting on the board (y≈topY) or on the TOP of
+     *  a placed part directly beneath it — or is it FLOATING in mid-air? {@code exclude} skips one placement (the
+     *  part the stud belongs to). */
+    public boolean studSupported(Vector3 s, int exclude) {
+        if (Math.abs(s.y - boardTopY) < 1.5f && nearestSocket(s) != null) {
+            return true; // resting on the board
+        }
+        for (int i = 0; i < placed.size(); i++) {
+            if (i == exclude) continue;
+            ComponentModel pm = loader.model(placed.get(i).modelId());
+            if (pm.collision == null) continue;
+            float[] b = worldAabb(pm.collision, placed.get(i).transform());
+            boolean coversXZ = s.x > b[0] - 1f && s.x < b[3] + 1f && s.z > b[2] - 1f && s.z < b[5] + 1f;
+            if (coversXZ && Math.abs(b[4] - s.y) < 1.6f) {
+                return true; // resting on this part's top face
+            }
+        }
+        return false;
+    }
+
     /** Commits a part at a world transform (assumes {@link #canPlace} was checked). Rebuilds the render scene. */
     public void place(String modelId, Matrix4 transform) {
         placed.add(new Placed(modelId, new Matrix4(transform)));
@@ -457,10 +477,13 @@ public final class PhysicalBoardView implements Disposable {
      */
     public boolean canPlace(String modelId, Matrix4 transform) {
         ComponentModel m = loader.model(modelId);
-        // ANCHORING: on a board, every terminal must land ON a socket (Snap Circuits — no floating in free space).
+        // ANCHORING + SUPPORT: on a board, every terminal must land ON a socket (x-z grid) AND be SUPPORTED — resting
+        // on the board or on a placed part directly beneath it. No cantilevering: a part can't float with one end
+        // (or both) hanging in mid-air. So a stacked part must rest fully on what's below, not poke out over nothing.
         if (hasBase && !m.connectors.isEmpty()) {
             for (ComponentModel.Connector c : m.connectors) {
-                if (!onSocket(new Vector3(c.local()).mul(transform))) {
+                Vector3 w = new Vector3(c.local()).mul(transform);
+                if (!onSocket(w) || !studSupported(w, -1)) {
                     return false;
                 }
             }
