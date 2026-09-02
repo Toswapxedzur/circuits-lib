@@ -40,23 +40,20 @@ public final class PhysicalEditor {
     public String modelId() { return TOOL_MODEL[tool]; }
     public Matrix4 ghostTransform() { return ghost; }
 
-    /** Recomputes the ghost transform from the crosshair ray + snap + collision against {@code world}. */
+    /** Recomputes the ghost transform from the crosshair ray. The part is always PINNED BY A TERMINAL to the
+     *  target the crosshair resolves to — a stud on a placed part (Port Alias), else the board socket under the
+     *  cursor — so the terminal follows the crosshair and R / scroll / ←→ swing the part AROUND that pinned terminal. */
     public void update(PerspectiveCamera cam, PhysicalBoardView world) {
         Ray ray = cam.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f);
-        // PORT ALIAS: if the crosshair is on a placed part, target the stud (port) it's aiming at and place ONTO it
-        // (resting on top). Otherwise fall back to the board plane.
-        Vector3 port = world.pickTarget(ray);
-        Matrix4 snapped;
-        if (port != null) {
-            snapped = world.snapToPort(modelId(), port, yawDeg);
-        } else {
+        Vector3 target = world.pickTarget(ray); // a stud on a placed part the crosshair is over…
+        if (target == null) {
             if (!Intersector.intersectRayPlane(ray, ground, hit)) {
                 present = false;
                 return;
             }
-            Matrix4 candidate = new Matrix4().setToTranslation(hit.x, 0f, hit.z).rotate(0f, 1f, 0f, yawDeg);
-            snapped = world.snap(modelId(), candidate);
+            target = new Vector3(hit.x, 0f, hit.z); // …else the board point under the cursor (snapToPort grids it)
         }
+        Matrix4 snapped = world.snapToPort(modelId(), target, yawDeg);
         ghost.set(snapped);
         valid = world.canPlace(modelId(), snapped);
         present = true;
