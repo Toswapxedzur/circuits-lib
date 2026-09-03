@@ -632,8 +632,10 @@ public final class PhysicalBoardView implements Disposable {
      *        aim onto the axis and discarding the perpendicular. This is robust for ANY axis orientation (a
      *        horizontal slider or a vertically-pressed button alike) and has none of the parallax a fixed-height
      *        plane suffers when you look along it.</li>
-     *    <li><b>drag_pivot</b> — the pointer turns in the horizontal plane at the knob's height; we take the aim's
-     *        angle about the pivot / degPerUnit.</li>
+     *    <li><b>drag_pivot</b> — SAME handle, angular form: the dial turns so the grabbed point stays collinear with
+     *        the cursor and the pivot CENTRE. We sample the cursor angle in the dial's ACTUAL rotation plane (through
+     *        the pivot, normal = the world rotation axis), so viewing the dial at a shallow angle doesn't parallax
+     *        the collinearity. Angle (right-handed about the axis, matching the binding's rotation sense) / degPerUnit.</li>
      *  </ul>
      *  NaN if the ray can't resolve (misses the pivot plane, or runs parallel to the slide axis). */
     private float rawAim(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
@@ -645,15 +647,27 @@ public final class PhysicalBoardView implements Disposable {
         Vector3 rest = mv.local().getTranslation(new Vector3()).mul(tf);
 
         if (it.type().equals("drag_pivot")) {
+            float deg = mv.binding().degPerUnit();
+            if (deg == 0f) return 0f;
+            float[] ax = mv.binding().axis();
+            float[] pv = mv.binding().pivot();
+            Vector3 n = new Vector3(ax[0], ax[1], ax[2]).rot(tf).nor();     // world rotation axis
+            Vector3 pivot = new Vector3(pv[0], pv[1], pv[2]).mul(tf);
+            // Sample on the rotation plane THROUGH the pointer's height (project rest onto the axis from the pivot),
+            // so the hit is the real on-face point the cursor is over — parallax-free at any view angle.
+            Vector3 planePt = new Vector3(pivot).add(new Vector3(n).scl(new Vector3(rest).sub(pivot).dot(n)));
             Vector3 hit = new Vector3();
             if (!com.badlogic.gdx.math.Intersector.intersectRayPlane(ray,
-                    new com.badlogic.gdx.math.Plane(new Vector3(0f, 1f, 0f), rest.y), hit)) {
+                    new com.badlogic.gdx.math.Plane(n, planePt), hit)) {
                 return Float.NaN;
             }
-            float[] pv = mv.binding().pivot();
-            Vector3 pivot = new Vector3(pv[0], pv[1], pv[2]).mul(tf);
-            float deg = mv.binding().degPerUnit();
-            return deg == 0f ? 0f : (float) Math.toDegrees(Math.atan2(hit.z - pivot.z, hit.x - pivot.x)) / deg;
+            // Right-handed angle of (hit - pivot) about n, via an orthonormal in-plane basis (u, w = n×u). Matches
+            // the binding, which rotates by +channel·deg about +n, so the pointer tracks the cursor's swing.
+            Vector3 ref = Math.abs(n.y) < 0.99f ? new Vector3(0f, 1f, 0f) : new Vector3(1f, 0f, 0f);
+            Vector3 u = new Vector3(ref).sub(new Vector3(n).scl(ref.dot(n))).nor();
+            Vector3 w = new Vector3(n).crs(u);
+            Vector3 v = new Vector3(hit).sub(pivot);
+            return (float) Math.toDegrees(Math.atan2(v.dot(w), v.dot(u))) / deg;
         }
         // drag_axis: closest point between the pick ray (origin o, unit dir B) and the slide line (rest, A), where
         // A = worldAxis = one channel unit. Solving the 2-DOF least-squares gives the line param t straight in
@@ -687,7 +701,13 @@ public final class PhysicalBoardView implements Disposable {
         if (!grabValid || it == null) return false;
         float now = rawAim(f, ray);
         if (Float.isNaN(now)) return false;
-        float c = Math.max(it.min(), Math.min(it.max(), grabChannel + (now - grabProj)));
+        float delta = now - grabProj;
+        if (it.type().equals("drag_pivot")) { // unwrap across the atan2 ±180° seam → shortest arc, never a jump
+            float deg = Math.abs(loader.model(placed.get(f.placementIndex()).modelId())
+                    .movableParts.get(f.subPart()).binding().degPerUnit());
+            if (deg > 0f) { float rev = 360f / deg; delta -= Math.round(delta / rev) * rev; }
+        }
+        float c = Math.max(it.min(), Math.min(it.max(), grabChannel + delta));
         float prev = subState.getOrDefault(f.placementIndex(), it.min());
         if (Math.abs(c - prev) < 1e-4f) return false;
         subState.put(f.placementIndex(), c);
