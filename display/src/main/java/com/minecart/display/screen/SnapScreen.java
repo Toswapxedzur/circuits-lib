@@ -674,7 +674,9 @@ public final class SnapScreen extends ScreenAdapter {
         // pivot near the bottom; cards face you and ROLL about the view axis into a poker-hand fan (selected upright,
         // centered, raised + floated forward). Args: pivotY, arm, deg-per-width(spread), cardSize, tilt, selRaise, selFwd, selScale.
         int sel = physEditor.deckSelected();
-        drawFan(deckCam, ids, sel, sel, -26f, 18f, 5f, 13f, 8f, 3f, 8f, 1.3f); // deck: selected is centered AND raised
+        // deck: selected is centered AND raised. Pivot low enough that cards hug the BOTTOM edge of the screen
+        // (viewport half-height at the card depth ≈ 26–30 world units), like a hand of cards held at the table rim.
+        drawFan(deckCam, ids, sel, sel, -40f, 18f, 5f, 13f, 8f, 3f, 8f, 1.3f);
         if (deckPicker) drawPicker(w, h);
     }
 
