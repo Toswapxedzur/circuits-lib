@@ -40,8 +40,10 @@ public final class SnapModelBridge {
      */
     public record Comp(String modelId, String label, char kind) {}
 
-    /** Every component registered for the physical board. Order = hotbar order. */
+    /** Every component registered for the physical board. Order = hotbar order. The first entry is the CURSOR — an
+     *  empty tool (no model) that places nothing; it just lets you look/focus and interact (drag knobs, etc.). */
     public static final List<Comp> CATALOG = List.of(
+            new Comp("", "Cursor", '.'),
             new Comp("wire_2", "Wire", 'w'),
             new Comp("tee_blue", "Tee", 'w'),
             new Comp("resistor", "Resistor", 'r'),
@@ -90,7 +92,7 @@ public final class SnapModelBridge {
      *  ghost, whose sprites must be in the atlas before any part of that type is placed). */
     public static List<String> allModelIds() {
         List<String> out = new ArrayList<>();
-        for (Comp c : CATALOG) out.add(c.modelId());
+        for (Comp c : CATALOG) if (!c.modelId().isEmpty()) out.add(c.modelId()); // skip the empty CURSOR tool
         out.add("base_teal"); // the ghost-placeholder base tile
         return out;
     }
