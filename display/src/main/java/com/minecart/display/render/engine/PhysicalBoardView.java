@@ -32,6 +32,9 @@ public final class PhysicalBoardView implements Disposable {
     private final List<EngineRenderer.DynamicEntity> ents = new ArrayList<>(); // parallel to placed (render entities)
     // Populated on the server thread (buildCircuit), read on the render thread (glow) — concurrent-safe.
     private final java.util.Map<Integer, com.minecart.logic.CircuitEdge> deviceEdge = new java.util.concurrent.ConcurrentHashMap<>();
+    // Interactive sub-part state: placementIndex → the driven channel value (switch position, dial angle…). Written
+    // on the render thread (drag), read on the server thread (buildCircuit) — concurrent-safe.
+    private final java.util.Map<Integer, Float> subState = new java.util.concurrent.ConcurrentHashMap<>();
     private boolean built;
     private boolean hasBase;
 
@@ -122,6 +125,7 @@ public final class PhysicalBoardView implements Disposable {
     public void clearAll() {
         placed.clear();
         deviceEdge.clear();
+        subState.clear();
         rebuild();
     }
 
@@ -173,6 +177,7 @@ public final class PhysicalBoardView implements Disposable {
         }
         if (best >= 0) {
             placed.remove(best);
+            subState.clear(); // indices shift on remove — reset interactive states (rare, acceptable)
             rebuild();
             return true;
         }
@@ -239,11 +244,11 @@ public final class PhysicalBoardView implements Disposable {
         lastBattery = null;
         deviceEdge.clear();
         ConnectorField field = new ConnectorField(world);
-        // Pass 1: pure conductors union their two terminals (a wire/tee-junction run — and a closed switch —
-        // collapses to one node).
-        for (Placed p : placed) {
+        // Pass 1: pure conductors union their two terminals — a wire/tee run always; a switch ONLY when closed.
+        for (int i = 0; i < placed.size(); i++) {
+            Placed p = placed.get(i);
             char k = kind(p.modelId());
-            if (k == 'w' || k == 's') {
+            if (k == 'w' || (k == 's' && switchClosed(i, loader.model(p.modelId())))) {
                 Vector3[] t = terminals(p);
                 if (t != null) field.union(t[0], t[1]);
             }
@@ -259,7 +264,7 @@ public final class PhysicalBoardView implements Disposable {
                 if (a == bb) continue; // terminals shorted onto one net
                 switch (k) {
                     case 'r' -> deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
-                            new com.minecart.variant.Informations.ResistorInfo(100.0)));
+                            new com.minecart.variant.Informations.ResistorInfo(resistanceOhms(i, loader.model(p.modelId())))));
                     case 'l' -> // LED: a true DIODE — forward ~220Ω limits current + lights; reverse ~1MΩ blocks
                             deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.DIODE, a, bb,
                                     new com.minecart.variant.Informations.DiodeInfo(220.0, 1.0e6)));
@@ -572,6 +577,78 @@ public final class PhysicalBoardView implements Disposable {
             }
         }
         return new float[]{minx, miny, minz, maxx, maxy, maxz};
+    }
+
+    /** True if the focused sub-part is interactive (has any behaviour). */
+    public boolean isInteractive(Focus f) { return interactionOf(f) != null; }
+
+    /** TEST: is the switch at placement {@code i} currently closed (conducting)? */
+    public boolean debugSwitchClosed(int i) { return switchClosed(i, loader.model(placed.get(i).modelId())); }
+
+    /** True if the focused sub-part is DRAG-able (drag_axis / drag_pivot). */
+    public boolean isDraggable(Focus f) {
+        ComponentModel.Interaction it = interactionOf(f);
+        return it != null && (it.type().equals("drag_axis") || it.type().equals("drag_pivot"));
+    }
+
+    /** True if the focused sub-part opens a UI on click (click_ui). */
+    public boolean isClickUi(Focus f) {
+        ComponentModel.Interaction it = interactionOf(f);
+        return it != null && it.type().equals("click_ui");
+    }
+
+    /** The interaction spec of the sub-part a {@link Focus} points at (null if it's a base or non-interactive). */
+    ComponentModel.Interaction interactionOf(Focus f) {
+        if (f == null || f.subPart() < 0) {
+            return null;
+        }
+        ComponentModel m = loader.model(placed.get(f.placementIndex()).modelId());
+        return f.subPart() < m.movableParts.size() ? m.movableParts.get(f.subPart()).interaction() : null;
+    }
+
+    /** Drags the focused sub-part's channel by a screen-space delta (drag_axis / drag_pivot): moves the knob and
+     *  stores the value. Returns true if the electrical state may have changed (caller rebuilds the circuit). */
+    public boolean dragSubPart(Focus f, float screenDx) {
+        ComponentModel.Interaction it = interactionOf(f);
+        if (it == null || (!it.type().equals("drag_axis") && !it.type().equals("drag_pivot"))) {
+            return false;
+        }
+        ComponentModel m = loader.model(placed.get(f.placementIndex()).modelId());
+        ComponentModel.MovablePart mv = m.movableParts.get(f.subPart());
+        float cur = subState.getOrDefault(f.placementIndex(), it.min());
+        float v = Math.max(it.min(), Math.min(it.max(), cur + screenDx * (it.max() - it.min()) / 120f)); // ~120px = full
+        if (v == cur) {
+            return false;
+        }
+        subState.put(f.placementIndex(), v);
+        ents.get(f.placementIndex()).anim.set(mv.binding().channel(), v);
+        return true;
+    }
+
+    /** The resistance (Ω) of placement {@code i}: if it has a movable that {@code drives="resistance"} (a variable
+     *  resistor), its channel maps 0..1 → 10Ω..1000Ω; otherwise the fixed 100Ω. */
+    private double resistanceOhms(int i, ComponentModel m) {
+        for (ComponentModel.MovablePart mv : m.movableParts) {
+            ComponentModel.Interaction it = mv.interaction();
+            if (it != null && "resistance".equals(it.drives())) {
+                float frac = it.max() == it.min() ? 0f
+                        : (subState.getOrDefault(i, it.min()) - it.min()) / (it.max() - it.min());
+                return 10.0 + Math.max(0f, Math.min(1f, frac)) * 990.0;
+            }
+        }
+        return 100.0;
+    }
+
+    /** A switch part's closed/open state (a movable that {@code drives="switch"}): closed when its channel is past
+     *  the mid-travel. Defaults to OPEN (rest). Non-switch conductors (plain wire/tee) always conduct. */
+    private boolean switchClosed(int i, ComponentModel m) {
+        for (ComponentModel.MovablePart mv : m.movableParts) {
+            ComponentModel.Interaction it = mv.interaction();
+            if (it != null && "switch".equals(it.drives())) {
+                return subState.getOrDefault(i, it.min()) > (it.min() + it.max()) / 2f;
+            }
+        }
+        return true;
     }
 
     /** World-space AABB {minx,miny,minz,maxx,maxy,maxz} of a collision box under {@code world} (8-corner bound). */

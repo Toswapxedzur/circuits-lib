@@ -518,8 +518,8 @@
       ],
       "degPerUnit": 0.0,
       "interaction": "drag_axis",
-      "interMin": 0.0,
-      "interMax": 1.0,
+      "interMin": -2.0,
+      "interMax": 2.0,
       "drives": "switch"
     }
   ],

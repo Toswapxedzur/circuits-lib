@@ -531,7 +531,7 @@ final class Parts {
                 .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
                         new Vector3(-5.5f - s5, 4f, -0.5f), new Vector3(-5.5f, 6f, -0.5f), fence(905L), 3, 1); // −X lead
         b = raisedSwitch(b, 3f, 610L);
-        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 2f, 0f, 0f), new ComponentModel.Interaction("click_ui", 0f, 1f, "resistance")).build();
+        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 2f, 0f, 0f), new ComponentModel.Interaction("click_ui", 0f, 2f, "resistance")).build();
     }
 
     /**
@@ -583,7 +583,7 @@ final class Parts {
                 .box(OX, 4f, hz0 + 0.5f, 4f, 2f, 1f, fence(230L))                      // fence front
                 .box(OX, 4f, hz1 - 0.5f, 4f, 2f, 1f, fence(240L))                      // fence back
                 .box(OX, 3.5f, OZ, 4f, 1f, 2f, knob(250L)))                            // black well floor y3..4
-                .movable(slider, OX, 5f, OZ, BindingSpec.translate("slide", 1f, 0f, 0f), new ComponentModel.Interaction("drag_axis", 0f, 1f, "switch"))
+                .movable(slider, OX, 5f, OZ, BindingSpec.translate("slide", 1f, 0f, 0f), new ComponentModel.Interaction("drag_axis", -2f, 2f, "switch"))
                 .build();
     }
 

@@ -46,6 +46,7 @@ public final class SnapModelBridge {
             new Comp("tee_blue", "Tee", 'w'),
             new Comp("resistor", "Resistor", 'r'),
             new Comp("varres_bar", "Var.Res", 'r'),
+            new Comp("varres_clock", "Dial", 'r'),
             new Comp("capacitor_small", "Cap S", 'c'),
             new Comp("capacitor_medium", "Cap M", 'c'),
             new Comp("capacitor_big", "Cap L", 'c'),
