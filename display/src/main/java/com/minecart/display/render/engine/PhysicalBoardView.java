@@ -802,6 +802,32 @@ public final class PhysicalBoardView implements Disposable {
         }
     }
 
+    /** Draws one deck CARD: a registered model at an arbitrary HUD pose + camera, opaque. Reuses the ghost mesh
+     *  path (all catalog models are registered as ghost models at construction). No-op for the empty Cursor card.
+     *  Call inside a HUD pass (its own camera, depth buffer cleared) AFTER {@link #render}. */
+    public void drawCard(Camera cam, String modelId, Matrix4 pose) {
+        if (modelId == null || modelId.isEmpty() || !built) return;
+        engine.drawGhost(cam, modelId, pose, 1f, 1f, 1f, 1f);
+    }
+
+    /** The visual AABB of a model (min xyz, max xyz — full art extent, not the base-plate collision box), for
+     *  sizing/centering a deck card. Returns a 6-float {minX,minY,minZ,maxX,maxY,maxZ}; a unit box if unknown. */
+    public float[] modelExtent(String modelId) {
+        float[] r = {-1f, 0f, -1f, 1f, 1f, 1f};
+        if (modelId == null || modelId.isEmpty()) return r;
+        ComponentModel m = loader.model(modelId);
+        boolean any = false;
+        float minx = Float.MAX_VALUE, miny = Float.MAX_VALUE, minz = Float.MAX_VALUE;
+        float maxx = -Float.MAX_VALUE, maxy = -Float.MAX_VALUE, maxz = -Float.MAX_VALUE;
+        for (PartMesh.Box b : m.staticBoxes) {
+            any = true;
+            minx = Math.min(minx, b.cx() - b.sx() / 2f); maxx = Math.max(maxx, b.cx() + b.sx() / 2f);
+            miny = Math.min(miny, b.cy() - b.sy() / 2f); maxy = Math.max(maxy, b.cy() + b.sy() / 2f);
+            minz = Math.min(minz, b.cz() - b.sz() / 2f); maxz = Math.max(maxz, b.cz() + b.sz() / 2f);
+        }
+        return any ? new float[]{minx, miny, minz, maxx, maxy, maxz} : r;
+    }
+
     public List<Placed> placements() {
         return placed;
     }

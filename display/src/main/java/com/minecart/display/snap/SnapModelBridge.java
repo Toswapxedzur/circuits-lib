@@ -62,6 +62,34 @@ public final class SnapModelBridge {
             new Comp("transistor_pnp", "PNP", '.'),
             new Comp("ic", "IC", '.'));
 
+    /** The hotbar label of a model id (from the {@link #CATALOG}); the id itself if unregistered. */
+    public static String labelOf(String modelId) {
+        for (Comp c : CATALOG) if (c.modelId().equals(modelId)) return c.label();
+        return modelId.isEmpty() ? "Cursor" : modelId;
+    }
+
+    // ── Deck (the 3D "poker-hand" inventory) presentation registry ────────────────────────────────────────────
+    // Each held card occupies some ARC in the hand (its "width", in stud units — a standard 2-stud part = 2.0) and
+    // is HELD at some angle (degrees; most share the default, a few override for art). Widths keep cards from
+    // OVERLAPPING in the fan; the hold angle tilts an individual card in the hand. Authored per component here (a
+    // registry, exactly as designed) so the deck layout stays engine-free.
+    private static final float DEFAULT_DECK_WIDTH = 2f;
+    private static final float DEFAULT_HOLD_DEG = 0f;
+    /** Occupancy width overrides (stud units). Bigger parts take more of the fan; default {@link #DEFAULT_DECK_WIDTH}. */
+    private static final java.util.Map<String, Float> DECK_WIDTH = java.util.Map.of(
+            "", 2f,                    // the Cursor card
+            "ic", 5f,
+            "transistor_npn", 3f,
+            "transistor_pnp", 3f,
+            "battery_cell", 3f);
+    /** Hold-angle overrides (degrees). Most cards share {@link #DEFAULT_HOLD_DEG}; override only where art needs it. */
+    private static final java.util.Map<String, Float> HOLD_DEG = java.util.Map.of();
+
+    /** How much arc (stud units) a card occupies in the deck hand — authored, default {@link #DEFAULT_DECK_WIDTH}. */
+    public static float deckWidth(String modelId) { return DECK_WIDTH.getOrDefault(modelId, DEFAULT_DECK_WIDTH); }
+    /** The angle (deg) a card is held at in the deck hand — authored, default {@link #DEFAULT_HOLD_DEG}. */
+    public static float holdAngle(String modelId) { return HOLD_DEG.getOrDefault(modelId, DEFAULT_HOLD_DEG); }
+
     /** The electrical kind of a model id (from the {@link #CATALOG}); '.' if unregistered / place-only. */
     public static char kindOf(String modelId) {
         for (Comp c : CATALOG) {

@@ -156,6 +156,7 @@ tasks.register<JavaExec>("runsnap") {
     (project.findProperty("fixedcam") as String?)?.let { systemProperty("snap.fixedcam", it) }
     (project.findProperty("physical") as String?)?.let { systemProperty("snap.physical", it) }
     (project.findProperty("phystest") as String?)?.let { systemProperty("snap.phystest", it) }
+    (project.findProperty("deckdemo") as String?)?.let { systemProperty("snap.deckdemo", it) }
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
     }
