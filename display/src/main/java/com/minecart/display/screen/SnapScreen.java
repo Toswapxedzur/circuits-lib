@@ -235,9 +235,17 @@ public final class SnapScreen extends ScreenAdapter {
                         new com.badlogic.gdx.math.collision.Ray(new Vector3(knob.x + 14f, 200f, knob.z), new Vector3(0, -1, 0)));
                 log.info("SUBPART-FOCUS: onKnob subPart={} (>=0 good)  onBasePlate subPart={} (-1 good)",
                         fKnob == null ? "null" : fKnob.subPart(), fEdge == null ? "null" : fEdge.subPart());
-                // SWITCH TOGGLE: open by default; dragging the knob toward its 'on' end closes it (drives the circuit).
+                // SWITCH TOGGLE: open by default; GRAB at rest then AIM +5u along the slide axis → knob follows the
+                // delta past mid-travel → closed (drives circuit).
                 boolean openDefault = !physWorld.debugSwitchClosed(0);
-                if (fKnob != null) physWorld.dragSubPart(fKnob, 240f);
+                Vector3 kRest = new Vector3(0.5f, 5f, 0.5f).mul(sw);
+                Vector3 wax = new Vector3(1f, 0f, 0f).rot(sw).nor();
+                Vector3 onPt = new Vector3(kRest).add(new Vector3(wax).scl(5f));
+                com.badlogic.gdx.math.collision.Ray restRay = new com.badlogic.gdx.math.collision.Ray(
+                        new Vector3(kRest.x, 200f, kRest.z), new Vector3(0f, -1f, 0f));
+                com.badlogic.gdx.math.collision.Ray aimRay = new com.badlogic.gdx.math.collision.Ray(
+                        new Vector3(onPt.x, 200f, onPt.z), new Vector3(0f, -1f, 0f));
+                if (fKnob != null) { physWorld.beginGrab(fKnob, restRay); physWorld.aimSubPart(fKnob, aimRay); }
                 boolean closedAfterDrag = physWorld.debugSwitchClosed(0);
                 log.info("SWITCH-TOGGLE: open-by-default={} closed-after-drag={}", openDefault, closedAfterDrag);
                 if (serverWorld != null && integrated != null) {
@@ -544,16 +552,18 @@ public final class SnapScreen extends ScreenAdapter {
     private void renderPhysical(float dt) {
         boolean ready = physWorld != null && camera != null;
         if (ready) {
-            // While GRABBING a knob, mouse motion drives IT — so turn camera-look OFF (set before the cam update
-            // reads the delta). LMB is released → grab ends in touchUp.
+            // While GRABBING a knob, the camera keeps turning FREELY and the knob FOLLOWS the crosshair (line of
+            // sight) — it does NOT lock the view. LMB is released → grab ends in touchUp.
             boolean grabbing = grabbed != null && Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT);
             if (!grabbing) grabbed = null;
-            flyCam.setLookEnabled(cursorCaught && !fixedCam && !grabbing);
+            flyCam.setLookEnabled(cursorCaught && !fixedCam);
             flyCam.update(dt);
             physEditor.update(camera, physWorld);
-            physFocus = physWorld.focusAt(camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
-            if (grabbing && physWorld.dragSubPart(grabbed, Gdx.input.getDeltaX())) {
-                rebuildPhysCircuit(); // the drag changed the knob → re-solve
+            com.badlogic.gdx.math.collision.Ray cross =
+                    camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f);
+            physFocus = physWorld.focusAt(cross);
+            if (grabbing && physWorld.aimSubPart(grabbed, cross)) {
+                rebuildPhysCircuit(); // the knob followed the aim → re-solve
             }
             // Suppress the placement ghost while hovering (or dragging) an interactive sub-part — LMB interacts.
             boolean interactive = grabbing || physWorld.isInteractive(physFocus);
@@ -629,6 +639,8 @@ public final class SnapScreen extends ScreenAdapter {
                     // per-frame in renderPhysical while held), or open a click-UI one (stub). Else place.
                     if (physWorld.isDraggable(physFocus)) {
                         grabbed = physFocus;
+                        physWorld.beginGrab(physFocus, // record the grabbed point so it stays under the cursor
+                                camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
                     } else if (physWorld.isClickUi(physFocus)) {
                         log.info("interact: click-UI on sub-part {} of placement {} (panel TODO)",
                                 physFocus.subPart(), physFocus.placementIndex());

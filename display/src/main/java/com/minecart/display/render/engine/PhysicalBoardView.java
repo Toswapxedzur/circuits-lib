@@ -35,6 +35,10 @@ public final class PhysicalBoardView implements Disposable {
     // Interactive sub-part state: placementIndex → the driven channel value (switch position, dial angle…). Written
     // on the render thread (drag), read on the server thread (buildCircuit) — concurrent-safe.
     private final java.util.Map<Integer, Float> subState = new java.util.concurrent.ConcurrentHashMap<>();
+    // Grab reference (drag-handle): the aim projection + channel value AT grab time, so the grabbed point stays under
+    // the cursor as it moves (relative drag, not absolute snap).
+    private float grabProj, grabChannel;
+    private boolean grabValid;
     private boolean built;
     private boolean hasBase;
 
@@ -538,8 +542,9 @@ public final class PhysicalBoardView implements Disposable {
         for (int i = 0; i < placed.size(); i++) {
             ComponentModel m = loader.model(placed.get(i).modelId());
             Matrix4 tf = placed.get(i).transform();
+            EngineRenderer.DynamicEntity ent = i < ents.size() ? ents.get(i) : null;
             for (int s = 0; s < m.movableParts.size(); s++) {
-                float[] ab = movableWorldAabb(m.movableParts.get(s), tf);
+                float[] ab = movableWorldAabb(m.movableParts.get(s), tf, ent);
                 if (rayHitsAabb(ray, ab, hit)) {
                     float d = ray.origin.dst2(hit);
                     if (d < bestDist) { bestDist = d; best = new Focus(i, s, ab); }
@@ -562,9 +567,13 @@ public final class PhysicalBoardView implements Disposable {
                         new Vector3(ab[0], ab[1], ab[2]), new Vector3(ab[3], ab[4], ab[5])), out);
     }
 
-    /** World AABB of a movable sub-part (its boxes, at the component transform · the movable's local pose). */
-    private float[] movableWorldAabb(ComponentModel.MovablePart mv, Matrix4 placement) {
+    /** World AABB of a movable sub-part (its boxes, at component transform · local · current channel motion), so
+     *  the pick hitbox FOLLOWS the moved knob (matches what's rendered). */
+    private float[] movableWorldAabb(ComponentModel.MovablePart mv, Matrix4 placement, EngineRenderer.DynamicEntity ent) {
         Matrix4 w = new Matrix4(placement).mul(mv.local());
+        if (ent != null) {
+            w.mul(mv.binding().toBinding().motion(ent.anim, new Matrix4())); // same motion the renderer applies
+        }
         float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
         for (PartMesh.Box b : mv.type().boxes()) {
             for (int c = 0; c < 8; c++) {
@@ -581,6 +590,15 @@ public final class PhysicalBoardView implements Disposable {
 
     /** True if the focused sub-part is interactive (has any behaviour). */
     public boolean isInteractive(Focus f) { return interactionOf(f) != null; }
+
+    /** DEBUG: "modelId movables=N inter=type" for the focused part. */
+    public String debugFocusInfo(Focus f) {
+        if (f == null) return "null";
+        ComponentModel m = loader.model(placed.get(f.placementIndex()).modelId());
+        ComponentModel.Interaction it = interactionOf(f);
+        return placed.get(f.placementIndex()).modelId() + " movables=" + m.movableParts.size()
+                + " inter=" + (it == null ? "none" : it.type());
+    }
 
     /** TEST: is the switch at placement {@code i} currently closed (conducting)? */
     public boolean debugSwitchClosed(int i) { return switchClosed(i, loader.model(placed.get(i).modelId())); }
@@ -606,22 +624,56 @@ public final class PhysicalBoardView implements Disposable {
         return f.subPart() < m.movableParts.size() ? m.movableParts.get(f.subPart()).interaction() : null;
     }
 
-    /** Drags the focused sub-part's channel by a screen-space delta (drag_axis / drag_pivot): moves the knob and
-     *  stores the value. Returns true if the electrical state may have changed (caller rebuilds the circuit). */
-    public boolean dragSubPart(Focus f, float screenDx) {
+    /** The aim's raw projection in CHANNEL units — drag_axis: the crosshair's board-hit projected onto the knob's
+     *  world slide axis; drag_pivot: the aim's angle about the pivot / degPerUnit. NaN if the ray misses. */
+    private float rawAim(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
         ComponentModel.Interaction it = interactionOf(f);
-        if (it == null || (!it.type().equals("drag_axis") && !it.type().equals("drag_pivot"))) {
-            return false;
+        if (it == null) return Float.NaN;
+        Placed p = placed.get(f.placementIndex());
+        ComponentModel.MovablePart mv = loader.model(p.modelId()).movableParts.get(f.subPart());
+        Matrix4 tf = p.transform();
+        Vector3 rest = mv.local().getTranslation(new Vector3()).mul(tf);
+        Vector3 hit = new Vector3();
+        if (!com.badlogic.gdx.math.Intersector.intersectRayPlane(ray,
+                new com.badlogic.gdx.math.Plane(new Vector3(0f, 1f, 0f), rest.y), hit)) {
+            return Float.NaN;
         }
-        ComponentModel m = loader.model(placed.get(f.placementIndex()).modelId());
-        ComponentModel.MovablePart mv = m.movableParts.get(f.subPart());
-        float cur = subState.getOrDefault(f.placementIndex(), it.min());
-        float v = Math.max(it.min(), Math.min(it.max(), cur + screenDx * (it.max() - it.min()) / 120f)); // ~120px = full
-        if (v == cur) {
-            return false;
+        if (it.type().equals("drag_pivot")) {
+            float[] pv = mv.binding().pivot();
+            Vector3 pivot = new Vector3(pv[0], pv[1], pv[2]).mul(tf);
+            float deg = mv.binding().degPerUnit();
+            return deg == 0f ? 0f : (float) Math.toDegrees(Math.atan2(hit.z - pivot.z, hit.x - pivot.x)) / deg;
         }
-        subState.put(f.placementIndex(), v);
-        ents.get(f.placementIndex()).anim.set(mv.binding().channel(), v);
+        float[] ax = mv.binding().axis();
+        Vector3 worldAxis = new Vector3(ax[0], ax[1], ax[2]).rot(tf);
+        float len2 = worldAxis.len2();
+        return len2 < 1e-6f ? Float.NaN : new Vector3(hit).sub(rest).dot(worldAxis) / len2;
+    }
+
+    /** Starts a drag on the focused sub-part: records the aim + channel at grab time, so subsequent {@link
+     *  #aimSubPart} moves the knob by the DELTA (the grabbed point stays under the cursor). */
+    public void beginGrab(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
+        ComponentModel.Interaction it = interactionOf(f);
+        grabValid = it != null && (it.type().equals("drag_axis") || it.type().equals("drag_pivot"));
+        if (!grabValid) return;
+        grabProj = rawAim(f, ray);
+        grabChannel = subState.getOrDefault(f.placementIndex(), it.min());
+        if (Float.isNaN(grabProj)) grabValid = false;
+    }
+
+    /** AIM-drives the grabbed sub-part: the knob FOLLOWS the crosshair (camera keeps turning freely) by the aim's
+     *  DELTA from the grab, so the grabbed point stays under the cursor. Returns true if its state changed. */
+    public boolean aimSubPart(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
+        ComponentModel.Interaction it = interactionOf(f);
+        if (!grabValid || it == null) return false;
+        float now = rawAim(f, ray);
+        if (Float.isNaN(now)) return false;
+        float c = Math.max(it.min(), Math.min(it.max(), grabChannel + (now - grabProj)));
+        float prev = subState.getOrDefault(f.placementIndex(), it.min());
+        if (Math.abs(c - prev) < 1e-4f) return false;
+        subState.put(f.placementIndex(), c);
+        ents.get(f.placementIndex()).anim.set(
+                loader.model(placed.get(f.placementIndex()).modelId()).movableParts.get(f.subPart()).binding().channel(), c);
         return true;
     }
 
