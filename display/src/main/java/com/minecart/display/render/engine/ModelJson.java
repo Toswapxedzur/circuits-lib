@@ -73,6 +73,11 @@ final class ModelJson {
         float[] axis;
         float[] pivot;                     // rotate only: pivot point [x,y,z] (null for translate)
         float degPerUnit;                  // rotate only: degrees per channel unit (0 for translate)
+        // Interaction (null/absent = not interactive): how the user drives this sub-part.
+        String interaction;               // "drag_axis" | "drag_pivot" | "click_ui" | null
+        float interMin;                    // driven channel min
+        float interMax;                    // driven channel max
+        String drives;                     // electrical hook: "switch" | "resistance" | null
     }
 
     static int faceId(String key) {
@@ -118,6 +123,12 @@ final class ModelJson {
             mv.axis = m.binding().axis();
             mv.pivot = m.binding().pivot();
             mv.degPerUnit = m.binding().degPerUnit();
+            if (m.interaction() != null) {
+                mv.interaction = m.interaction().type();
+                mv.interMin = m.interaction().min();
+                mv.interMax = m.interaction().max();
+                mv.drives = m.interaction().drives();
+            }
             j.movables.add(mv);
         }
         j.collision = aabb(boxes, quads); // the single axis-aligned collision box over the visible extent

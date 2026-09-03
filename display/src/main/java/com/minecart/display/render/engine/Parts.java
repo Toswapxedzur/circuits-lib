@@ -531,7 +531,7 @@ final class Parts {
                 .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
                         new Vector3(-5.5f - s5, 4f, -0.5f), new Vector3(-5.5f, 6f, -0.5f), fence(905L), 3, 1); // −X lead
         b = raisedSwitch(b, 3f, 610L);
-        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 2f, 0f, 0f)).build();
+        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 2f, 0f, 0f), new ComponentModel.Interaction("click_ui", 0f, 1f, "resistance")).build();
     }
 
     /**
@@ -543,7 +543,7 @@ final class Parts {
     private ComponentModel buildVarresClock(Color[] pal) {
         return base("varres_clock", pal, redTrace())
                 .box(0f, 5f, 0f, 7f, 2f, 7f, plastic(620L, WHITE_PLASTIC))                        // white clock platform y4..6
-                .movable(pointer, 0f, 6f, 0f, BindingSpec.rotate("spin", 0f, 0f, 0f, 0f, 1f, 0f, 90f))
+                .movable(pointer, 0f, 6f, 0f, BindingSpec.rotate("spin", 0f, 0f, 0f, 0f, 1f, 0f, 90f), new ComponentModel.Interaction("drag_pivot", 0f, 1f, "resistance"))
                 .build();
     }
 
@@ -583,7 +583,7 @@ final class Parts {
                 .box(OX, 4f, hz0 + 0.5f, 4f, 2f, 1f, fence(230L))                      // fence front
                 .box(OX, 4f, hz1 - 0.5f, 4f, 2f, 1f, fence(240L))                      // fence back
                 .box(OX, 3.5f, OZ, 4f, 1f, 2f, knob(250L)))                            // black well floor y3..4
-                .movable(slider, OX, 5f, OZ, BindingSpec.translate("slide", 1f, 0f, 0f))
+                .movable(slider, OX, 5f, OZ, BindingSpec.translate("slide", 1f, 0f, 0f), new ComponentModel.Interaction("drag_axis", 0f, 1f, "switch"))
                 .build();
     }
 
@@ -607,7 +607,7 @@ final class Parts {
                 .box(0f, 4f, hz0 + 0.5f, 5f, 2f, 1f, fence(230L))                      // fence front
                 .box(0f, 4f, hz1 - 0.5f, 5f, 2f, 1f, fence(240L))                      // fence back
                 .box(0f, 3.5f, 0f, 3f, 1f, 3f, knob(250L)))                            // black well floor 3×3
-                .movable(button, 0f, 5.5f, 0f, BindingSpec.translate("press", 0f, -2f, 0f))
+                .movable(button, 0f, 5.5f, 0f, BindingSpec.translate("press", 0f, -2f, 0f), new ComponentModel.Interaction("drag_axis", 0f, 1f, "switch"))
                 .build();
     }
 
