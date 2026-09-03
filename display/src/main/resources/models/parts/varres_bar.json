@@ -505,7 +505,11 @@
         0.0,
         0.0
       ],
-      "degPerUnit": 0.0
+      "degPerUnit": 0.0,
+      "interaction": "click_ui",
+      "interMin": 0.0,
+      "interMax": 1.0,
+      "drives": "resistance"
     }
   ],
   "collision": {
