@@ -506,7 +506,7 @@
         0.0
       ],
       "degPerUnit": 0.0,
-      "interaction": "click_ui",
+      "interaction": "drag_axis",
       "interMin": 0.0,
       "interMax": 2.0,
       "drives": "resistance"

@@ -531,7 +531,7 @@ final class Parts {
                 .quad(new Vector3(-5.5f, 6f, 0.5f), new Vector3(-5.5f - s5, 4f, 0.5f),
                         new Vector3(-5.5f - s5, 4f, -0.5f), new Vector3(-5.5f, 6f, -0.5f), fence(905L), 3, 1); // −X lead
         b = raisedSwitch(b, 3f, 610L);
-        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 2f, 0f, 0f), new ComponentModel.Interaction("click_ui", 0f, 2f, "resistance")).build();
+        return b.movable(slider, OX, 6f, OZ, BindingSpec.translate("slide", 2f, 0f, 0f), new ComponentModel.Interaction("drag_axis", 0f, 2f, "resistance")).build();
     }
 
     /**
