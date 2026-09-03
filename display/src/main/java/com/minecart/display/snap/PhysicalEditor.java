@@ -17,16 +17,15 @@ import com.minecart.display.render.engine.PhysicalBoardView;
  */
 public final class PhysicalEditor {
 
-    /** The placeable tools — every registered component, from the central {@link SnapModelBridge#CATALOG}. */
-    private static final String[] TOOL_MODEL = SnapModelBridge.CATALOG.stream()
-            .map(SnapModelBridge.Comp::modelId).toArray(String[]::new);
-    private static final String[] TOOL_LABEL = SnapModelBridge.CATALOG.stream()
-            .map(SnapModelBridge.Comp::label).toArray(String[]::new);
+    /** The DECK — the 3D "poker-hand" inventory of held cards (each an engine model id; {@code ""} = the Cursor
+     *  tool, which places nothing). Starts holding only the Cursor; the E-panel curates it (add to either end /
+     *  replace the selected). {@link #selected} is the centered, raised card whose model the crosshair places. */
+    private final java.util.List<String> deck = new java.util.ArrayList<>(java.util.List.of(""));
+    private int selected;
 
     private final Plane ground = new Plane(new Vector3(0f, 1f, 0f), 0f);
     private final Vector3 hit = new Vector3();
     private final Matrix4 ghost = new Matrix4();
-    private int tool;
     private float yawDeg;      // extension DIRECTION (scroll / R / arrows do 90° turns)
     private int anchor;        // WHICH terminal pins to the cursor (←/→ cycle it)
     private float scrollAccum; // slows the scroll wheel: this much accumulated scroll = one 90° turn
@@ -34,11 +33,29 @@ public final class PhysicalEditor {
     private boolean valid;
     private boolean present;
 
-    public int toolCount() { return TOOL_MODEL.length; }
-    public int tool() { return tool; }
-    public String toolLabel(int i) { return TOOL_LABEL[i]; }
-    public void selectTool(int i) { if (i >= 0 && i < TOOL_MODEL.length) { tool = i; anchor = 0; } }
     public void rotate(float deltaDeg) { yawDeg = (yawDeg + deltaDeg) % 360f; }
+
+    // ── Deck access + editing ─────────────────────────────────────────────────────────────────────────────────
+    public int deckSize() { return deck.size(); }
+    public String deckCard(int i) { return deck.get(i); }
+    public int deckSelected() { return selected; }
+    /** Move the selection one card left (−1) or right (+1), wrapping; resets the pinned terminal. */
+    public void deckSelect(int dir) {
+        if (deck.isEmpty()) return;
+        selected = ((selected + dir) % deck.size() + deck.size()) % deck.size();
+        anchor = 0;
+    }
+    public void deckSetSelected(int i) { if (i >= 0 && i < deck.size()) { selected = i; anchor = 0; } }
+    /** Add a card at the LEFT end; keep the same card selected (its index shifts up by one). */
+    public void deckAddLeft(String modelId) { deck.add(0, modelId); selected++; }
+    /** Add a card at the RIGHT end. */
+    public void deckAddRight(String modelId) { deck.add(modelId); }
+    /** Replace the selected card's component. */
+    public void deckReplace(String modelId) { if (!deck.isEmpty()) deck.set(selected, modelId); }
+    /** Remove the selected card (never empties the deck — the last card stays). */
+    public void deckRemove() {
+        if (deck.size() > 1) { deck.remove(selected); if (selected >= deck.size()) selected = deck.size() - 1; anchor = 0; }
+    }
 
     /** ←/→: cycle which of the part's terminals is pinned to the cursor. */
     public void cycleTerminal(int dir) { anchor += dir; }
@@ -53,7 +70,7 @@ public final class PhysicalEditor {
 
     public boolean present() { return present; }
     public boolean valid() { return valid; }
-    public String modelId() { return TOOL_MODEL[tool]; }
+    public String modelId() { return deck.isEmpty() ? "" : deck.get(selected); }
     public Matrix4 ghostTransform() { return ghost; }
 
     /** Recomputes the ghost transform from the crosshair ray. The part is always PINNED BY A TERMINAL to the
