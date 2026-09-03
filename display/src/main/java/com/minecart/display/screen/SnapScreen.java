@@ -676,7 +676,9 @@ public final class SnapScreen extends ScreenAdapter {
         int sel = physEditor.deckSelected();
         // deck: selected is centered AND raised. Pivot low enough that cards hug the BOTTOM edge of the screen
         // (viewport half-height at the card depth ≈ 26–30 world units), like a hand of cards held at the table rim.
-        drawFan(deckCam, ids, sel, sel, -40f, 18f, 5f, 13f, 8f, 3f, 8f, 1.3f);
+        // tilt ~60°: owner-set lean toward the viewer; -Dsnap.decktilt overrides for side-by-side tuning shots
+        float deckTilt = Float.parseFloat(System.getProperty("snap.decktilt", "60"));
+        drawFan(deckCam, ids, sel, sel, -40f, 18f, 5f, 13f, deckTilt, 3f, 8f, 1.3f);
         if (deckPicker) drawPicker(w, h);
     }
 
