@@ -624,8 +624,18 @@ public final class PhysicalBoardView implements Disposable {
         return f.subPart() < m.movableParts.size() ? m.movableParts.get(f.subPart()).interaction() : null;
     }
 
-    /** The aim's raw projection in CHANNEL units — drag_axis: the crosshair's board-hit projected onto the knob's
-     *  world slide axis; drag_pivot: the aim's angle about the pivot / degPerUnit. NaN if the ray misses. */
+    /** The aim's raw projection in CHANNEL units. A one-axis drag has 2 DOF from the mouse but only 1 the knob may
+     *  use, so we SACRIFICE the perpendicular freedom and keep only the slide axis:
+     *  <ul>
+     *    <li><b>drag_axis</b> — the knob is fixed to its world slide LINE {@code rest + t·worldAxis} (t in channel
+     *        units). We map the mouse to it by the closest point between the pick RAY and that line — projecting the
+     *        aim onto the axis and discarding the perpendicular. This is robust for ANY axis orientation (a
+     *        horizontal slider or a vertically-pressed button alike) and has none of the parallax a fixed-height
+     *        plane suffers when you look along it.</li>
+     *    <li><b>drag_pivot</b> — the pointer turns in the horizontal plane at the knob's height; we take the aim's
+     *        angle about the pivot / degPerUnit.</li>
+     *  </ul>
+     *  NaN if the ray can't resolve (misses the pivot plane, or runs parallel to the slide axis). */
     private float rawAim(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
         ComponentModel.Interaction it = interactionOf(f);
         if (it == null) return Float.NaN;
@@ -633,21 +643,30 @@ public final class PhysicalBoardView implements Disposable {
         ComponentModel.MovablePart mv = loader.model(p.modelId()).movableParts.get(f.subPart());
         Matrix4 tf = p.transform();
         Vector3 rest = mv.local().getTranslation(new Vector3()).mul(tf);
-        Vector3 hit = new Vector3();
-        if (!com.badlogic.gdx.math.Intersector.intersectRayPlane(ray,
-                new com.badlogic.gdx.math.Plane(new Vector3(0f, 1f, 0f), rest.y), hit)) {
-            return Float.NaN;
-        }
+
         if (it.type().equals("drag_pivot")) {
+            Vector3 hit = new Vector3();
+            if (!com.badlogic.gdx.math.Intersector.intersectRayPlane(ray,
+                    new com.badlogic.gdx.math.Plane(new Vector3(0f, 1f, 0f), rest.y), hit)) {
+                return Float.NaN;
+            }
             float[] pv = mv.binding().pivot();
             Vector3 pivot = new Vector3(pv[0], pv[1], pv[2]).mul(tf);
             float deg = mv.binding().degPerUnit();
             return deg == 0f ? 0f : (float) Math.toDegrees(Math.atan2(hit.z - pivot.z, hit.x - pivot.x)) / deg;
         }
+        // drag_axis: closest point between the pick ray (origin o, unit dir B) and the slide line (rest, A), where
+        // A = worldAxis = one channel unit. Solving the 2-DOF least-squares gives the line param t straight in
+        // channel units: t = ((A·B)(B·W0) - (A·W0)) / ((A·A) - (A·B)²), with W0 = rest - o and B normalised.
         float[] ax = mv.binding().axis();
-        Vector3 worldAxis = new Vector3(ax[0], ax[1], ax[2]).rot(tf);
-        float len2 = worldAxis.len2();
-        return len2 < 1e-6f ? Float.NaN : new Vector3(hit).sub(rest).dot(worldAxis) / len2;
+        Vector3 axisW = new Vector3(ax[0], ax[1], ax[2]).rot(tf);
+        if (axisW.len2() < 1e-6f) return Float.NaN;
+        Vector3 dir = new Vector3(ray.direction).nor();
+        Vector3 w0 = new Vector3(rest).sub(ray.origin);
+        float aa = axisW.dot(axisW), ab = axisW.dot(dir), bw = dir.dot(w0), aw = axisW.dot(w0);
+        float denom = aa - ab * ab;
+        if (Math.abs(denom) < 1e-6f) return Float.NaN; // ray runs parallel to the slide axis — no stable answer
+        return (ab * bw - aw) / denom;
     }
 
     /** Starts a drag on the focused sub-part: records the aim + channel at grab time, so subsequent {@link
