@@ -60,6 +60,10 @@ public final class PhysicalEditor {
      *  target the crosshair resolves to — a stud on a placed part (Port Alias), else the board socket under the
      *  cursor — so the terminal follows the crosshair and R / scroll / ←→ swing the part AROUND that pinned terminal. */
     public void update(PerspectiveCamera cam, PhysicalBoardView world) {
+        if (modelId().isEmpty()) { // the CURSOR tool: nothing to place, no ghost — just look / interact
+            present = false;
+            return;
+        }
         Ray ray = cam.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f);
         Vector3 target = world.pickTarget(ray); // a stud on a placed part the crosshair is over…
         if (target == null) {

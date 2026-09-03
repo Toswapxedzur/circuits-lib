@@ -199,6 +199,7 @@ public final class SnapScreen extends ScreenAdapter {
                 // base-plate collision, on-grid) — flags any model with a bad connector/collision.
                 int placeable = 0; StringBuilder fails = new StringBuilder();
                 for (com.minecart.display.snap.SnapModelBridge.Comp comp : com.minecart.display.snap.SnapModelBridge.CATALOG) {
+                    if (comp.modelId().isEmpty()) continue; // the CURSOR tool places nothing
                     com.badlogic.gdx.math.Matrix4 cm = physWorld.snap(comp.modelId(),
                             new com.badlogic.gdx.math.Matrix4().setToTranslation(cx - 30f, 0f, cz - 30f));
                     if (physWorld.canPlace(comp.modelId(), cm)) placeable++;
@@ -212,8 +213,9 @@ public final class SnapScreen extends ScreenAdapter {
                             .setToTranslation(cx + Float.parseFloat(d[1]), 0f, cz + Float.parseFloat(d[2])));
                     if (physWorld.canPlace(d[0], cm)) physWorld.place(d[0], cm);
                 }
-                log.info("HARDEN: {}/{} components placeable{}", placeable,
-                        com.minecart.display.snap.SnapModelBridge.CATALOG.size(),
+                long eligible = com.minecart.display.snap.SnapModelBridge.CATALOG.stream()
+                        .filter(c -> !c.modelId().isEmpty()).count();
+                log.info("HARDEN: {}/{} components placeable{}", placeable, eligible,
                         fails.length() == 0 ? "" : "  NOT-PLACEABLE: " + fails);
                 // SUB-PART FOCUS: a switch's knob is a separate hitbox — a ray onto it must focus the SUB-PART, and a
                 // ray onto the base plate (off the knob) must focus the BASE (subPart == -1).
