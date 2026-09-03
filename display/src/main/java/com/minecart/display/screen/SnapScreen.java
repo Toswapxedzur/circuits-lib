@@ -673,7 +673,8 @@ public final class SnapScreen extends ScreenAdapter {
         for (int i = 0; i < physEditor.deckSize(); i++) ids.add(physEditor.deckCard(i));
         // pivot near the bottom; cards face you and ROLL about the view axis into a poker-hand fan (selected upright,
         // centered, raised + floated forward). Args: pivotY, arm, deg-per-width(spread), cardSize, tilt, selRaise, selFwd, selScale.
-        drawFan(deckCam, ids, physEditor.deckSelected(), -26f, 18f, 5f, 13f, 8f, 3f, 8f, 1.3f);
+        int sel = physEditor.deckSelected();
+        drawFan(deckCam, ids, sel, sel, -26f, 18f, 5f, 13f, 8f, 3f, 8f, 1.3f); // deck: selected is centered AND raised
         if (deckPicker) drawPicker(w, h);
     }
 
@@ -690,38 +691,44 @@ public final class SnapScreen extends ScreenAdapter {
         Gdx.gl.glClear(GL20.GL_DEPTH_BUFFER_BIT);
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
-        deckCam.position.set(0f, 0f, 60f); // re-aim the HUD camera to a centered, straight-on view for the picker
-        deckCam.lookAt(0f, 0f, 0f);
+        deckCam.position.set(0f, 6f, 96f); // re-aim the HUD camera to a centered, straight-on view for the picker
+        deckCam.lookAt(0f, 6f, 0f);
         deckCam.update();
-        drawFan(deckCam, pickerIds(), pickerIndex, -34f, 26f, 3.2f, 15f, 6f, 4f, 10f, 1.3f);
+        // picker: the strip stays centered on the MIDDLE (symmetric); the highlighted card is raised where it sits.
+        drawFan(deckCam, pickerIds(), pickerIds().size() / 2, pickerIndex, -34f, 34f, 2.5f, 9f, 6f, 5f, 14f, 1.45f);
     }
 
     /** Lays {@code ids} out as a poker fan (cumulative width → slot angle, so cards never overlap) and draws each
      *  as a 3D card via {@link com.minecart.display.render.engine.PhysicalBoardView#drawCard}. {@code sel} is
      *  centered + raised. Far cards draw first so the selected one lands on top. */
-    private void drawFan(com.badlogic.gdx.graphics.Camera cam, java.util.List<String> ids, int sel,
+    private void drawFan(com.badlogic.gdx.graphics.Camera cam, java.util.List<String> ids, int centerIdx, int raiseIdx,
                          float pivotY, float armLen, float degPerWidth, float cardSize, float tiltDeg,
                          float selRaise, float selForward, float selScale) {
         int n = ids.size();
         if (n == 0) return;
-        sel = Math.max(0, Math.min(sel, n - 1));
+        centerIdx = Math.max(0, Math.min(centerIdx, n - 1));
         float[] wdt = new float[n];
         for (int i = 0; i < n; i++) wdt[i] = com.minecart.display.snap.SnapModelBridge.deckWidth(ids.get(i));
-        float[] ang = new float[n];
-        ang[sel] = 0f;
+        float[] ang = new float[n]; // roll about the view axis, 0 at the centered card, cumulative-width spacing
+        ang[centerIdx] = 0f;
         float acc = 0f;
-        for (int i = sel + 1; i < n; i++) { acc += (wdt[i - 1] + wdt[i]) / 2f; ang[i] = acc * degPerWidth; }
+        for (int i = centerIdx + 1; i < n; i++) { acc += (wdt[i - 1] + wdt[i]) / 2f; ang[i] = acc * degPerWidth; }
         acc = 0f;
-        for (int i = sel - 1; i >= 0; i--) { acc += (wdt[i + 1] + wdt[i]) / 2f; ang[i] = -acc * degPerWidth; }
+        for (int i = centerIdx - 1; i >= 0; i--) { acc += (wdt[i + 1] + wdt[i]) / 2f; ang[i] = -acc * degPerWidth; }
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
         final float[] angF = ang;
-        java.util.Arrays.sort(order, (a, b) -> Float.compare(Math.abs(angF[b]), Math.abs(angF[a])));
+        final int raise = raiseIdx;
+        // draw far-from-center first, but the RAISED card always last so it sits on top
+        java.util.Arrays.sort(order, (a, b) -> {
+            if (a == raise) return 1;
+            if (b == raise) return -1;
+            return Float.compare(Math.abs(angF[b]), Math.abs(angF[a]));
+        });
         for (int idx : order) {
             String id = ids.get(idx);
             if (id == null || id.isEmpty()) continue; // Cursor card: no model
-            boolean raised = idx == sel;
-            physWorld.drawCard(cam, id, cardPose(id, ang[idx], raised, pivotY, armLen,
+            physWorld.drawCard(cam, id, cardPose(id, ang[idx], idx == raise, pivotY, armLen,
                     cardSize, tiltDeg, selRaise, selForward, selScale));
         }
     }
