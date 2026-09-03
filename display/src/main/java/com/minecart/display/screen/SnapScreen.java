@@ -93,6 +93,7 @@ public final class SnapScreen extends ScreenAdapter {
     private com.minecart.display.snap.PhysicalEditor physEditor;
     private com.badlogic.gdx.graphics.glutils.ShapeRenderer outline; // Minecraft-style focus highlight
     private com.minecart.display.render.engine.PhysicalBoardView.Focus physFocus; // what the crosshair is over
+    private com.minecart.display.render.engine.PhysicalBoardView.Focus grabbed;    // a sub-part being dragged (LMB held)
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -541,18 +542,19 @@ public final class SnapScreen extends ScreenAdapter {
     private void renderPhysical(float dt) {
         boolean ready = physWorld != null && camera != null;
         if (ready) {
+            // While GRABBING a knob, mouse motion drives IT — so turn camera-look OFF (set before the cam update
+            // reads the delta). LMB is released → grab ends in touchUp.
+            boolean grabbing = grabbed != null && Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT);
+            if (!grabbing) grabbed = null;
+            flyCam.setLookEnabled(cursorCaught && !fixedCam && !grabbing);
             flyCam.update(dt);
             physEditor.update(camera, physWorld);
-            // INTERACTION: what's under the crosshair? If it's an interactive sub-part, suppress the placement
-            // ghost (LMB interacts, not places) and, while LMB is held on a draggable one, drive its channel.
             physFocus = physWorld.focusAt(camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
-            boolean interactive = physWorld.isInteractive(physFocus);
-            if (interactive && cursorCaught && physWorld.isDraggable(physFocus)
-                    && Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT)) {
-                if (physWorld.dragSubPart(physFocus, Gdx.input.getDeltaX())) {
-                    rebuildPhysCircuit();
-                }
+            if (grabbing && physWorld.dragSubPart(grabbed, Gdx.input.getDeltaX())) {
+                rebuildPhysCircuit(); // the drag changed the knob → re-solve
             }
+            // Suppress the placement ghost while hovering (or dragging) an interactive sub-part — LMB interacts.
+            boolean interactive = grabbing || physWorld.isInteractive(physFocus);
             physWorld.setGhost(!interactive && physEditor.present() && cursorCaught, physEditor.modelId(),
                     physEditor.ghostTransform(), physEditor.valid(), dt);
             updateStatus();
@@ -621,13 +623,13 @@ public final class SnapScreen extends ScreenAdapter {
             }
             if (button == Buttons.LEFT) {
                 if (physical) {
-                    // If the crosshair is on an interactive sub-part, LMB INTERACTS, it does not place. A draggable
-                    // one is driven per-frame in renderPhysical; a click-UI one opens its panel here (stub for now).
-                    if (physWorld.isInteractive(physFocus)) {
-                        if (physWorld.isClickUi(physFocus)) {
-                            log.info("interact: click-UI on sub-part {} of placement {} (panel TODO)",
-                                    physFocus.subPart(), physFocus.placementIndex());
-                        }
+                    // On an interactive sub-part, LMB INTERACTS (does not place): grab a draggable one (dragged
+                    // per-frame in renderPhysical while held), or open a click-UI one (stub). Else place.
+                    if (physWorld.isDraggable(physFocus)) {
+                        grabbed = physFocus;
+                    } else if (physWorld.isClickUi(physFocus)) {
+                        log.info("interact: click-UI on sub-part {} of placement {} (panel TODO)",
+                                physFocus.subPart(), physFocus.placementIndex());
                     } else if (physEditor.place(physWorld)) {
                         rebuildPhysCircuit();
                     }
@@ -642,6 +644,13 @@ public final class SnapScreen extends ScreenAdapter {
                     }
                 } else { removeAction(); }
                 return true;
+            }
+            return false;
+        }
+
+        @Override public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+            if (physical && button == Buttons.LEFT) {
+                grabbed = null; // release a dragged knob → camera-look resumes next frame
             }
             return false;
         }
