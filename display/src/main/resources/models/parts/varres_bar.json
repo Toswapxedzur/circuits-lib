@@ -508,7 +508,7 @@
       "degPerUnit": 0.0,
       "interaction": "click_ui",
       "interMin": 0.0,
-      "interMax": 1.0,
+      "interMax": 2.0,
       "drives": "resistance"
     }
   ],

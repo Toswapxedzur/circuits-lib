@@ -232,6 +232,11 @@ public final class SnapScreen extends ScreenAdapter {
                         new com.badlogic.gdx.math.collision.Ray(new Vector3(knob.x + 14f, 200f, knob.z), new Vector3(0, -1, 0)));
                 log.info("SUBPART-FOCUS: onKnob subPart={} (>=0 good)  onBasePlate subPart={} (-1 good)",
                         fKnob == null ? "null" : fKnob.subPart(), fEdge == null ? "null" : fEdge.subPart());
+                // SWITCH TOGGLE: open by default; dragging the knob toward its 'on' end closes it (drives the circuit).
+                boolean openDefault = !physWorld.debugSwitchClosed(0);
+                if (fKnob != null) physWorld.dragSubPart(fKnob, 240f);
+                boolean closedAfterDrag = physWorld.debugSwitchClosed(0);
+                log.info("SWITCH-TOGGLE: open-by-default={} closed-after-drag={}", openDefault, closedAfterDrag);
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
@@ -538,7 +543,17 @@ public final class SnapScreen extends ScreenAdapter {
         if (ready) {
             flyCam.update(dt);
             physEditor.update(camera, physWorld);
-            physWorld.setGhost(physEditor.present() && cursorCaught, physEditor.modelId(),
+            // INTERACTION: what's under the crosshair? If it's an interactive sub-part, suppress the placement
+            // ghost (LMB interacts, not places) and, while LMB is held on a draggable one, drive its channel.
+            physFocus = physWorld.focusAt(camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
+            boolean interactive = physWorld.isInteractive(physFocus);
+            if (interactive && cursorCaught && physWorld.isDraggable(physFocus)
+                    && Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT)) {
+                if (physWorld.dragSubPart(physFocus, Gdx.input.getDeltaX())) {
+                    rebuildPhysCircuit();
+                }
+            }
+            physWorld.setGhost(!interactive && physEditor.present() && cursorCaught, physEditor.modelId(),
                     physEditor.ghostTransform(), physEditor.valid(), dt);
             updateStatus();
         }
@@ -557,8 +572,7 @@ public final class SnapScreen extends ScreenAdapter {
     /** Minecraft-style highlight: outline whatever the crosshair is over — a placed part (black) or one of its
      *  movable sub-parts / knobs (cyan). {@link #physFocus} is remembered for the interaction layer. */
     private void drawFocusOutline() {
-        physFocus = physWorld.focusAt(camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
-        if (physFocus == null) {
+        if (physFocus == null) { // computed in renderPhysical
             return;
         }
         if (outline == null) {
@@ -607,7 +621,16 @@ public final class SnapScreen extends ScreenAdapter {
             }
             if (button == Buttons.LEFT) {
                 if (physical) {
-                    if (physEditor.place(physWorld)) rebuildPhysCircuit();
+                    // If the crosshair is on an interactive sub-part, LMB INTERACTS, it does not place. A draggable
+                    // one is driven per-frame in renderPhysical; a click-UI one opens its panel here (stub for now).
+                    if (physWorld.isInteractive(physFocus)) {
+                        if (physWorld.isClickUi(physFocus)) {
+                            log.info("interact: click-UI on sub-part {} of placement {} (panel TODO)",
+                                    physFocus.subPart(), physFocus.placementIndex());
+                        }
+                    } else if (physEditor.place(physWorld)) {
+                        rebuildPhysCircuit();
+                    }
                 } else { placeAction(); }
                 return true;
             }
