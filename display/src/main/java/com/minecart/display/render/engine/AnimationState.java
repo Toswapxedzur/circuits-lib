@@ -28,6 +28,15 @@ final class AnimationState {
         }
     }
 
+    /** Sets a channel's value IMMEDIATELY (current == target), no easing — for direct user drag. */
+    void set(String name, float value) {
+        float[] c = channels.get(name);
+        if (c != null) {
+            c[0] = value;
+            c[1] = value;
+        }
+    }
+
     /** The channel's current (eased) value; 0 if the channel doesn't exist. */
     float value(String name) {
         float[] c = channels.get(name);

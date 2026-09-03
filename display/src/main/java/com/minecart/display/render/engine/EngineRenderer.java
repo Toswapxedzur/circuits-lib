@@ -46,9 +46,25 @@ final class EngineRenderer implements Disposable {
         Color light = null;       // optional point-light emission (a moving entity that glows); null = none
         float lightRange = 0f;
         Color bodyTint = null;    // optional whole-body colour multiplier (e.g. a red LED); null = untinted
+        // Movable sub-parts (switch knob, dial…): each recomputes its world = pose · local · motion(anim) so a
+        // user-driven channel actually moves the piece. Empty for parts with no movables.
+        final AnimationState anim = new AnimationState();
+        final List<ComponentInstance.PartInstance> movables = new ArrayList<>();
+        private final Matrix4 motionTmp = new Matrix4();
 
         DynamicEntity(ComponentModel model) {
             this.model = model;
+            for (ComponentModel.MovablePart m : model.movableParts) {
+                anim.channel(m.binding().channel(), 0f, 0f, 8f); // declared at rest; the interaction drives it
+                movables.add(new ComponentInstance.PartInstance(m.type(), m.local(), m.binding().toBinding()));
+            }
+        }
+
+        /** Recomputes each movable's world matrix from the current pose + animation (call after pose/channel change). */
+        void updateMovables() {
+            for (ComponentInstance.PartInstance p : movables) {
+                p.world.set(pose).mul(p.local).mul(p.binding.motion(anim, motionTmp));
+            }
         }
 
         /** Makes this entity a point light of {@code colour} / {@code range} world units (fluent). */
@@ -109,6 +125,7 @@ final class EngineRenderer implements Disposable {
     private final Map<PartType, PartMesh> movableMeshes = new LinkedHashMap<>();
     private final List<DynamicEntity> entities = new ArrayList<>();
     private final Map<DynamicEntity, PartMesh> entityMeshes = new IdentityHashMap<>();
+    private final Map<PartType, PartMesh> entityMovableMeshes = new LinkedHashMap<>(); // one instanced mesh per knob type
     private PartAtlas atlas;
     private PartMesh staticOpaque;
     private PartMesh staticTranslucent;
@@ -175,6 +192,7 @@ final class EngineRenderer implements Disposable {
         for (DynamicEntity e : entities) {
             forAtlas.addAll(e.model.staticBoxes);
             quadsForAtlas.addAll(e.model.staticQuads);
+            for (ComponentInstance.PartInstance p : e.movables) forAtlas.addAll(p.type.boxes()); // knob sprites
         }
         for (ComponentModel g : ghostModels.values()) { // ghost-preview models — sprites must be in the atlas
             forAtlas.addAll(g.staticBoxes);
@@ -200,6 +218,15 @@ final class EngineRenderer implements Disposable {
         // opaque/translucent split as the scene mesh, added when one exists.)
         for (DynamicEntity e : entities) {
             entityMeshes.put(e, PartMesh.of(e.model.staticBoxes, e.model.staticQuads, 1, atlas, instanced));
+        }
+        // A mesh per movable knob type across all entities (instanced — one draw per type, one instance per knob).
+        entityMovableMeshes.clear();
+        Map<PartType, Integer> movCount = new LinkedHashMap<>();
+        for (DynamicEntity e : entities) {
+            for (ComponentInstance.PartInstance p : e.movables) movCount.merge(p.type, 1, Integer::sum);
+        }
+        for (Map.Entry<PartType, Integer> mc : movCount.entrySet()) {
+            entityMovableMeshes.put(mc.getKey(), PartMesh.of(mc.getKey().boxes(), List.of(), mc.getValue(), atlas, instanced));
         }
         for (Map.Entry<String, ComponentModel> g : ghostModels.entrySet()) {
             ghostMeshes.put(g.getKey(),
@@ -429,6 +456,18 @@ final class EngineRenderer implements Disposable {
         if (tinted) {
             sh.setUniformf("u_tint", 1f, 1f, 1f, 1f);           // leave u_tint white for later passes
         }
+        // Movable sub-parts (knobs/sliders/dials), one instanced draw per type at each knob's animated world matrix.
+        for (Map.Entry<PartType, PartMesh> mm : entityMovableMeshes.entrySet()) {
+            PartMesh mesh = mm.getValue();
+            mesh.begin();
+            for (DynamicEntity e : entities) {
+                e.updateMovables();
+                for (ComponentInstance.PartInstance p : e.movables) {
+                    if (p.type == mm.getKey()) mesh.add(p.world);
+                }
+            }
+            mesh.render(sh);
+        }
     }
 
     /** Gathers up to {@link InstancedShader#MAX_LIGHTS} point lights (emitting components + glowing entities) and
@@ -481,6 +520,10 @@ final class EngineRenderer implements Disposable {
             m.dispose();
         }
         entityMeshes.clear();
+        for (PartMesh m : entityMovableMeshes.values()) {
+            m.dispose();
+        }
+        entityMovableMeshes.clear();
         for (PartMesh m : ghostMeshes.values()) {
             m.dispose();
         }
