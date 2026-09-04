@@ -99,6 +99,11 @@ public final class SnapScreen extends ScreenAdapter {
     private com.badlogic.gdx.graphics.glutils.ShapeRenderer deckDim; // dim backdrop behind the open picker
     private boolean deckPicker;   // E-panel open: pick a component to add/replace; mouse-look off
     private int pickerIndex;      // which catalog entry is highlighted in the open picker
+    private final FanAnim deckAnim = new FanAnim();   // eased state for the hand fan (smooth ←/→)
+    private final FanAnim pickerAnim = new FanAnim(); // eased state for the E-panel fan
+    /** Eased fan state: the centre + lift angles GLIDE toward their targets each frame so selection and the raised
+     *  card animate smoothly instead of snapping. {@code init} snaps on the first frame (or when a panel reopens). */
+    private static final class FanAnim { float center, raise; boolean init; }
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -152,9 +157,12 @@ public final class SnapScreen extends ScreenAdapter {
             physWorld.setBaseBoard(board.width(), board.height(), 0f);
             physEditor = new com.minecart.display.snap.PhysicalEditor();
             if ("1".equals(System.getProperty("snap.deckdemo"))) { // DEV: pre-fill the hand so the fan is visible
-                for (String id : new String[]{"wire_2", "resistor", "switch", "led", "battery_cell",
-                        "varres_clock", "capacitor_big", "diode"}) physEditor.deckAddRight(id);
-                physEditor.deckSetSelected(4); // a visible middle card, so the fan is centered for the demo shot
+                // 6 cards spanning the width registry: widths 2,5,2,3,3,2 — wide cards (ic=5, battery/npn=3) take
+                // proportionally more arc, so the fan spacing scales with deckWidth.
+                for (String id : new String[]{"wire_2", "ic", "led", "battery_cell", "transistor_npn", "resistor"})
+                    physEditor.deckAddRight(id);
+                physEditor.deckSetSelected(0); physEditor.deckRemove(); // drop the leading Cursor → exactly 6
+                physEditor.deckSetSelected(2); // center on a middle card (led), so the fan is symmetric for the shot
             }
             int loaded = physWorld.load(physFile());
             if (loaded > 0 && serverWorld != null && integrated != null) {
@@ -594,7 +602,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (ready) {
             physWorld.render(camera);
             drawFocusOutline();
-            drawDeck(); // the 3D poker-hand inventory HUD (+ the E-panel catalog picker when open)
+            drawDeck(dt); // the 3D poker-hand inventory HUD (+ the E-panel catalog picker when open)
         }
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
@@ -653,7 +661,7 @@ public final class SnapScreen extends ScreenAdapter {
         return cat.get(Math.max(0, Math.min(pickerIndex, cat.size() - 1)));
     }
 
-    private void drawDeck() {
+    private void drawDeck(float dt) {
         if (physWorld == null || physEditor == null) {
             return;
         }
@@ -682,12 +690,12 @@ public final class SnapScreen extends ScreenAdapter {
         float deckTilt = Float.parseFloat(System.getProperty("snap.decktilt", "-15"));
         // Fan circle radius 65 (owner: 3-4× the original 18). Pivot -93 SUBMERGES 35-45% of each card below the
         // bottom screen edge (owner value); spacing 3°/width = arc step ≈ 6.8 — a tiny gap, never overlapping.
-        drawFan(deckCam, ids, sel, sel, -93f, 65f, 3f, 13f, deckTilt, 3f, 8f, 1.3f);
-        if (deckPicker) drawPicker(w, h);
+        drawFan(deckCam, ids, sel, sel, deckAnim, dt, -93f, 65f, 3f, 13f, deckTilt, 3f, 8f, 1.3f);
+        if (deckPicker) drawPicker(w, h, dt);
     }
 
     /** The E-panel: dim the world, then draw the full catalog as a big centered fan with {@link #pickerIndex} raised. */
-    private void drawPicker(int w, int h) {
+    private void drawPicker(int w, int h, float dt) {
         if (deckDim == null) deckDim = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glEnable(GL20.GL_BLEND);
@@ -703,40 +711,50 @@ public final class SnapScreen extends ScreenAdapter {
         deckCam.lookAt(0f, 6f, 0f);
         deckCam.update();
         // picker: the strip stays centered on the MIDDLE (symmetric); the highlighted card is raised where it sits.
-        drawFan(deckCam, pickerIds(), pickerIds().size() / 2, pickerIndex, -34f, 34f, 2.5f, 9f, 6f, 5f, 14f, 1.45f);
+        drawFan(deckCam, pickerIds(), pickerIds().size() / 2, pickerIndex, pickerAnim, dt, -34f, 34f, 2.5f, 9f, 6f, 5f, 14f, 1.45f);
     }
 
     /** Lays {@code ids} out as a poker fan (cumulative width → slot angle, so cards never overlap) and draws each
      *  as a 3D card via {@link com.minecart.display.render.engine.PhysicalBoardView#drawCard}. {@code sel} is
      *  centered + raised. Far cards draw first so the selected one lands on top. */
     private void drawFan(com.badlogic.gdx.graphics.Camera cam, java.util.List<String> ids, int centerIdx, int raiseIdx,
+                         FanAnim anim, float dt,
                          float pivotY, float armLen, float degPerWidth, float cardSize, float tiltDeg,
                          float selRaise, float selForward, float selScale) {
         int n = ids.size();
         if (n == 0) return;
         centerIdx = Math.max(0, Math.min(centerIdx, n - 1));
+        raiseIdx = Math.max(0, Math.min(raiseIdx, n - 1));
         float[] wdt = new float[n];
         for (int i = 0; i < n; i++) wdt[i] = com.minecart.display.snap.SnapModelBridge.deckWidth(ids.get(i));
-        float[] ang = new float[n]; // roll about the view axis, 0 at the centered card, cumulative-width spacing
-        ang[centerIdx] = 0f;
-        float acc = 0f;
-        for (int i = centerIdx + 1; i < n; i++) { acc += (wdt[i - 1] + wdt[i]) / 2f; ang[i] = acc * degPerWidth; }
-        acc = 0f;
-        for (int i = centerIdx - 1; i >= 0; i--) { acc += (wdt[i + 1] + wdt[i]) / 2f; ang[i] = -acc * degPerWidth; }
+        // ABSOLUTE cumulative roll of each card (independent of selection): index 0 at 0, spaced by mean width.
+        float[] abs = new float[n];
+        for (int i = 1; i < n; i++) abs[i] = abs[i - 1] + (wdt[i - 1] + wdt[i]) / 2f * degPerWidth;
+        // Glide the fan's CENTRE (which card sits at roll 0) and the LIFT position toward their targets — this is the
+        // whole animation: ←/→ retargets, the fan eases over. Frame-rate-independent exponential ease; snap on init.
+        float targetC = abs[centerIdx], targetR = abs[raiseIdx];
+        if (!anim.init) { anim.center = targetC; anim.raise = targetR; anim.init = true; }
+        else {
+            float k = 1f - (float) Math.exp(-dt * 14f);
+            anim.center += (targetC - anim.center) * k;
+            anim.raise += (targetR - anim.raise) * k;
+        }
+        float raiseSpan = degPerWidth * 2.5f; // angular reach of the lift bump — ~one card step, so it slides cleanly
+        final float[] roll = new float[n], lift = new float[n];
+        for (int i = 0; i < n; i++) {
+            roll[i] = abs[i] - anim.center;
+            float t = Math.max(0f, 1f - Math.abs(abs[i] - anim.raise) / raiseSpan);
+            lift[i] = t * t * (3f - 2f * t); // smoothstep 0..1: 1 at the lift centre, easing to 0 a step away
+        }
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
-        final float[] angF = ang;
-        final int raise = raiseIdx;
-        // draw far-from-center first, but the RAISED card always last so it sits on top
-        java.util.Arrays.sort(order, (a, b) -> {
-            if (a == raise) return 1;
-            if (b == raise) return -1;
-            return Float.compare(Math.abs(angF[b]), Math.abs(angF[a]));
-        });
+        // draw least-lifted (and farthest) first so the raised card lands on top
+        java.util.Arrays.sort(order, (a, b) -> lift[a] != lift[b]
+                ? Float.compare(lift[a], lift[b]) : Float.compare(Math.abs(roll[b]), Math.abs(roll[a])));
         for (int idx : order) {
             String id = ids.get(idx);
             if (id == null || id.isEmpty()) continue; // Cursor card: no model
-            physWorld.drawCard(cam, id, cardPose(id, ang[idx], idx == raise, pivotY, armLen,
+            physWorld.drawCard(cam, id, cardPose(id, roll[idx], lift[idx], pivotY, armLen,
                     cardSize, tiltDeg, selRaise, selForward, selScale));
         }
     }
@@ -745,17 +763,17 @@ public final class SnapScreen extends ScreenAdapter {
      *  screen, long axis vertical), and the "fan" is a small ROLL about the view axis around a shared pivot at the
      *  bottom, so the cards splay and overlap like a held hand of cards. Only a slight backward tilt for depth.
      *  Selected card sits upright at center (roll≈0), raised + floated toward the camera + a touch bigger. */
-    private com.badlogic.gdx.math.Matrix4 cardPose(String id, float rollDeg, boolean raised, float pivotY,
+    private com.badlogic.gdx.math.Matrix4 cardPose(String id, float rollDeg, float lift, float pivotY,
             float armLen, float cardSize, float tiltDeg, float selRaise, float selForward, float selScale) {
         float[] e = physWorld.modelExtent(id);
         float cx = (e[0] + e[3]) / 2f, cy = (e[1] + e[4]) / 2f, cz = (e[2] + e[5]) / 2f;
         float span = Math.max(Math.max(e[3] - e[0], e[4] - e[1]), e[5] - e[2]);
         float s = cardSize / Math.max(1f, span);
-        if (raised) s *= selScale;
+        s *= 1f + (selScale - 1f) * lift;                       // grow smoothly toward the selected size (lift 0..1)
         com.badlogic.gdx.math.Matrix4 m = new com.badlogic.gdx.math.Matrix4();
-        m.translate(0f, pivotY, raised ? selForward : 0f);      // shared fan pivot (bottom); selected floats forward
+        m.translate(0f, pivotY, selForward * lift);             // shared fan pivot (bottom); floats forward with lift
         m.rotate(0f, 0f, 1f, rollDeg);                          // the POKER SPREAD: roll about the view axis
-        m.translate(0f, armLen + (raised ? selRaise : 0f), 0f); // out from the pivot to this card's centre
+        m.translate(0f, armLen + selRaise * lift, 0f);          // out from the pivot to this card's centre
         m.rotate(1f, 0f, 0f, tiltDeg);                          // slight backward tilt for a held-card depth cue
         // Face the camera with the long axis VERTICAL: model long X → up(+Y), top +Y → camera(+Z), short Z → right.
         m.rotate(0f, 0f, 1f, 90f);
@@ -860,7 +878,7 @@ public final class SnapScreen extends ScreenAdapter {
                     if (keycode == Keys.E) { deckPicker = false; setCursorCaught(true); return true; }
                     return true; // swallow everything else while the panel is open
                 }
-                if (keycode == Keys.E) { deckPicker = true; pickerIndex = 0; setCursorCaught(false); return true; }
+                if (keycode == Keys.E) { deckPicker = true; pickerIndex = 0; pickerAnim.init = false; setCursorCaught(false); return true; }
                 if (keycode == Keys.R) { physEditor.rotate(90f); return true; } // quick 90° direction turn
                 // ←/→ SELECT the held card (the fan rotates it to center); [ ] pin which terminal follows the cursor.
                 if (keycode == Keys.LEFT)  { physEditor.deckSelect(-1); return true; }
