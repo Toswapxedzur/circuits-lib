@@ -687,10 +687,10 @@ public final class SnapScreen extends ScreenAdapter {
         // tilt ~60° to the FRONT (top edge toward the viewer — owner-set); -Dsnap.decktilt overrides for tuning shots
         // Owner measures tilt FROM THE TABLE: cards stand 75-80° from horizontal = -15 here (this param is degrees
         // leaned forward from upright; owner picked -15 from a labeled variant strip). -Dsnap.decktilt overrides.
-        float deckTilt = Float.parseFloat(System.getProperty("snap.decktilt", "-15"));
+        float deckTilt = Float.parseFloat(System.getProperty("snap.decktilt", "-45"));
         // Fan circle radius 65 (owner: 3-4× the original 18). Pivot -93 SUBMERGES 35-45% of each card below the
         // bottom screen edge (owner value); spacing 3°/width = arc step ≈ 6.8 — a tiny gap, never overlapping.
-        drawFan(deckCam, ids, sel, sel, deckAnim, dt, -93f, 65f, 3f, 13f, deckTilt, 3f, 8f, 1.3f);
+        drawFan(deckCam, ids, sel, sel, deckAnim, dt, -93f, 65f, 3f, 28.6f, deckTilt, 3f, 8f, 1.3f); // cardSize ×2.2
         if (deckPicker) drawPicker(w, h, dt);
     }
 
