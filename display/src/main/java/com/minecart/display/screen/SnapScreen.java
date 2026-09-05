@@ -103,7 +103,11 @@ public final class SnapScreen extends ScreenAdapter {
     private final FanAnim pickerAnim = new FanAnim(); // eased state for the E-panel fan
     /** Eased fan state: the centre + lift angles GLIDE toward their targets each frame so selection and the raised
      *  card animate smoothly instead of snapping. {@code init} snaps on the first frame (or when a panel reopens). */
-    private static final class FanAnim { float center, raise; boolean init; }
+    private static final class FanAnim { float center, raise, target; boolean init; }
+    // Scripted-input harness (-Pinputtest=<script>): synthetic events through the SAME handlers + state probes.
+    private EditInput editInput;
+    private com.minecart.display.snap.InputScript script;
+    private boolean scriptLmbHeld; // the harness's "LMB is held" (Gdx.input can't be faked)
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -163,6 +167,10 @@ public final class SnapScreen extends ScreenAdapter {
                     physEditor.deckAddRight(id);
                 physEditor.deckSetSelected(0); physEditor.deckRemove(); // drop the leading Cursor → exactly 6
                 physEditor.deckSetSelected(2); // center on a middle card (led), so the fan is symmetric for the shot
+            }
+            String scriptSrc = System.getProperty("snap.inputtest");
+            if (scriptSrc != null && !scriptSrc.isEmpty()) { // scripted-input harness: see InputScript
+                script = com.minecart.display.snap.InputScript.load(scriptSrc, new ScriptHost());
             }
             int loaded = physWorld.load(physFile());
             if (loaded > 0 && serverWorld != null && integrated != null) {
@@ -494,7 +502,7 @@ public final class SnapScreen extends ScreenAdapter {
     @Override public void show() {
         input = new InputMultiplexer();
         input.addProcessor(uiStage);
-        input.addProcessor(new EditInput());
+        input.addProcessor(editInput = new EditInput());
         Gdx.input.setInputProcessor(input);
         refreshHotbar();
         if (board != null) {
@@ -580,7 +588,9 @@ public final class SnapScreen extends ScreenAdapter {
         if (ready) {
             // While GRABBING a knob, the camera keeps turning FREELY and the knob FOLLOWS the crosshair (line of
             // sight) — it does NOT lock the view. LMB is released → grab ends in touchUp.
-            boolean grabbing = grabbed != null && Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT);
+            if (script != null) script.tick(dt); // scripted input runs BEFORE this frame's input is read
+            boolean grabbing = grabbed != null
+                    && (Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT) || scriptLmbHeld);
             if (!grabbing) grabbed = null;
             flyCam.setLookEnabled(cursorCaught && !fixedCam);
             flyCam.update(dt);
@@ -737,6 +747,7 @@ public final class SnapScreen extends ScreenAdapter {
         // Glide the fan's CENTRE (which card sits at roll 0) and the LIFT position toward their targets — this is the
         // whole animation: ←/→ retargets, the fan eases over. Frame-rate-independent exponential ease; snap on init.
         float targetC = abs[centerIdx], targetR = abs[raiseIdx];
+        anim.target = targetC;
         if (!anim.init) { anim.center = targetC; anim.raise = targetR; anim.init = true; }
         else {
             float k = 1f - (float) Math.exp(-dt * 14f);
@@ -794,6 +805,86 @@ public final class SnapScreen extends ScreenAdapter {
             camera.viewportWidth = width;
             camera.viewportHeight = height;
             camera.update();
+        }
+    }
+
+    /** The scripted-input harness's view of this screen: events go through {@link EditInput} / the fly-cam
+     *  exactly as real input would; probes expose the state the tests assert on. */
+    private final class ScriptHost implements com.minecart.display.snap.InputScript.Host {
+        private int cx() { return Gdx.graphics.getWidth() / 2; }
+        private int cy() { return Gdx.graphics.getHeight() / 2; }
+        @Override public void keyDown(int keycode) { editInput.keyDown(keycode); }
+        @Override public void keyUp(int keycode) { editInput.keyUp(keycode); }
+        @Override public void mouse(int button, boolean down) {
+            if (down) editInput.touchDown(cx(), cy(), 0, button); else editInput.touchUp(cx(), cy(), 0, button);
+            if (button == Buttons.LEFT) scriptLmbHeld = down;
+        }
+        @Override public void scroll(float amountY) { editInput.scrolled(0f, amountY); }
+        @Override public void look(float dYawDeg, float dPitchDeg) { flyCam.look(dYawDeg, dPitchDeg); }
+        @Override public void action(String verb, String[] a) {
+            switch (verb) {
+                case "cursor" -> setCursorCaught(a[0].equalsIgnoreCase("caught"));
+                case "clear" -> { physWorld.clearAll(); rebuildPhysCircuit(); }
+                case "deck" -> {
+                    if (a[0].equals("add")) physEditor.deckAddRight(a[1]);
+                    else if (a[0].equals("select")) physEditor.deckSetSelected(Integer.parseInt(a[1]));
+                }
+                case "aim" -> { // aim <placement> [sub]: point the crosshair at that hitbox's centre
+                    int pi = Integer.parseInt(a[0]), sub = a.length > 1 ? Integer.parseInt(a[1]) : -1;
+                    float[] b = physWorld.debugSubAabb(pi, sub);
+                    flyCam.lookAt(new Vector3((b[0] + b[3]) / 2f, (b[1] + b[4]) / 2f, (b[2] + b[5]) / 2f));
+                }
+                case "place" -> { // place <modelId> cross | <x> <z>
+                    Vector3 at = new Vector3();
+                    if (a[1].equalsIgnoreCase("cross")) {
+                        com.badlogic.gdx.math.Intersector.intersectRayPlane(camera.getPickRay(cx(), cy()),
+                                new com.badlogic.gdx.math.Plane(new Vector3(0, 1, 0), 0), at);
+                    } else at.set(Float.parseFloat(a[1]), 0f, Float.parseFloat(a[2]));
+                    com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0],
+                            new com.badlogic.gdx.math.Matrix4().setToTranslation(at.x, 0f, at.z));
+                    if (physWorld.canPlace(a[0], m)) { physWorld.place(a[0], m); rebuildPhysCircuit(); }
+                    else System.out.println("INPUTTEST place " + a[0] + " BLOCKED at " + at);
+                }
+                default -> System.out.println("INPUTTEST unknown action " + verb);
+            }
+        }
+        @Override public Object probe(String n) {
+            if (n.startsWith("sub.channel.")) return physWorld.debugChannel(Integer.parseInt(n.substring(12)));
+            if (n.startsWith("sub.closed."))  return physWorld.debugSwitchClosed(Integer.parseInt(n.substring(11)));
+            return switch (n) {
+                case "ghost.yaw" -> physEditor.yawDeg();
+                case "ghost.anchor" -> physEditor.anchor();
+                case "ghost.present" -> physEditor.present();
+                case "ghost.valid" -> physEditor.valid();
+                case "ghost.model" -> physEditor.modelId();
+                case "scroll.accum" -> physEditor.debugScrollAccum();
+                case "deck.selected" -> physEditor.deckSelected();
+                case "deck.size" -> physEditor.deckSize();
+                case "deck.held" -> physEditor.modelId();
+                case "placed" -> physWorld.placements().size();
+                case "focus.placement" -> physFocus == null ? -1 : physFocus.placementIndex();
+                case "focus.sub" -> physFocus == null ? -1 : physFocus.subPart();
+                case "grabbed" -> grabbed != null;
+                case "cursor.caught" -> cursorCaught;
+                case "cam.yaw" -> flyCam.yawDeg();
+                case "cam.pitch" -> flyCam.pitchDeg();
+                case "fan.center" -> deckAnim.center;
+                case "fan.target" -> deckAnim.target;
+                case "fan.raise" -> deckAnim.raise;
+                case "picker.open" -> deckPicker;
+                case "picker.index" -> pickerIndex;
+                default -> null;
+            };
+        }
+        @Override public String[] probeNames() {
+            return new String[]{"ghost.yaw", "ghost.anchor", "ghost.present", "ghost.valid", "ghost.model",
+                    "scroll.accum", "deck.selected", "deck.size", "deck.held", "placed", "focus.placement",
+                    "focus.sub", "grabbed", "cursor.caught", "cam.yaw", "cam.pitch", "fan.center", "fan.target",
+                    "fan.raise", "picker.open", "picker.index"};
+        }
+        @Override public void finish(int passed, int failed) {
+            // Hard exit: skips dispose() on purpose so the test's placements are NEVER saved into the world file.
+            System.exit(failed == 0 ? 0 : 1);
         }
     }
 

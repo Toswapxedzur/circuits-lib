@@ -1,0 +1,18 @@
+# Drag-handle: grab a switch knob under the crosshair, turn the view, the knob follows and closes the switch.
+do cursor caught
+do clear
+do place switch cross
+expect placed == 1
+do aim 0 0                  # put the crosshair on the switch's knob (movable 0 of placement 0)
+wait 50
+expect focus.sub >= 0       # the crosshair is on the knob (a sub-part), not the base
+expect sub.closed.0 == false
+lmb down
+look 8 0 over 300           # free look while holding: the knob rides the crosshair along its slide axis
+wait 100
+expect grabbed == true
+expect sub.closed.0 == true
+lmb up
+wait 50
+expect grabbed == false
+end

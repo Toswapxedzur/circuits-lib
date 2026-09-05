@@ -1,0 +1,24 @@
+# Deck: ←/→ selection glides (eased centre), the E-panel opens/closes, held card tracks selection.
+do cursor caught
+do deck add wire_2
+do deck add led
+do deck add resistor
+do deck select 2           # deck = [Cursor, wire_2, led, resistor] → led held
+wait 100
+expect deck.held == led
+expect fan.center ~= @fan.target 0.01
+key RIGHT                  # → resistor; the fan must EASE, not snap
+wait 30
+expect deck.held == resistor
+expect fan.center < @fan.target
+wait 700
+expect fan.center ~= @fan.target 0.05
+key E
+wait 30
+expect picker.open == true
+expect cursor.caught == false
+key ESCAPE
+wait 30
+expect picker.open == false
+expect cursor.caught == true
+end
