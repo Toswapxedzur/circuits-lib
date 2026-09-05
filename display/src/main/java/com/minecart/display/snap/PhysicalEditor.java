@@ -29,7 +29,13 @@ public final class PhysicalEditor {
     private float yawDeg;      // extension DIRECTION (scroll / R / arrows do 90° turns)
     private int anchor;        // WHICH terminal pins to the cursor (←/→ cycle it)
     private float scrollAccum; // slows the scroll wheel: this much accumulated scroll = one 90° turn
-    private static final float SCROLL_PER_TURN = 3f;
+    // Owner-tuned wheel feel (2026-09-05): "massively" slower scroll→turn ratio, a hard SPEED LIMIT of about
+    // 1 s per 360° (one 90° step per 250 ms), and NO INERTIA — a pause forgets partial scroll and a burst
+    // (trackpad momentum) can never bank more than a single turn.
+    private static final float SCROLL_PER_TURN = 15f;      // was 3
+    private static final long MIN_TURN_INTERVAL_MS = 250;  // 4 quarter-turns/s max = ~1 s per full revolution
+    private static final long SCROLL_IDLE_RESET_MS = 150;  // idle longer than this → banked scroll is dropped
+    private long lastScrollMs, lastTurnMs;
     private boolean valid;
     private boolean present;
 
@@ -63,9 +69,17 @@ public final class PhysicalEditor {
     /** Mouse wheel: turn the extension direction in 90° steps, but SLOWLY — accumulate scroll and only turn once
      *  {@link #SCROLL_PER_TURN} has built up, so a single flick doesn't spin the part. */
     public void scrollRotate(float amountY) {
+        long now = System.currentTimeMillis();
+        if (now - lastScrollMs > SCROLL_IDLE_RESET_MS) scrollAccum = 0f; // no inertia: a pause forgets progress
+        lastScrollMs = now;
         scrollAccum += amountY;
-        while (scrollAccum >= SCROLL_PER_TURN) { rotate(90f); scrollAccum -= SCROLL_PER_TURN; }
-        while (scrollAccum <= -SCROLL_PER_TURN) { rotate(-90f); scrollAccum += SCROLL_PER_TURN; }
+        // Clamp to ONE turn's worth so a burst can never queue several turns that keep firing after you stop.
+        scrollAccum = Math.max(-SCROLL_PER_TURN, Math.min(SCROLL_PER_TURN, scrollAccum));
+        if (Math.abs(scrollAccum) < SCROLL_PER_TURN) return;
+        if (now - lastTurnMs < MIN_TURN_INTERVAL_MS) return;   // speed limit: hold at the threshold until allowed
+        rotate(scrollAccum > 0 ? 90f : -90f);
+        scrollAccum = 0f;
+        lastTurnMs = now;
     }
 
     public boolean present() { return present; }
