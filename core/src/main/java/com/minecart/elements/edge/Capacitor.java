@@ -57,11 +57,28 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
         equations.endRelation();
     }
 
+    /** Set when an external solver (ngspice) already integrated this tick; consumed by {@link #tick()}. */
+    private boolean chargeSolvedExternally;
+
+    /**
+     * Records the charge an external, error-controlled solver found at the end of the tick, so
+     * {@link #tick()} does not add its own explicit-Euler increment on top.
+     */
+    public void setSolvedCharge(double charge) {
+        if (get() == null) return;
+        get().setCharge(charge);
+        chargeSolvedExternally = true;
+    }
+
     @Override
     public void tick() {
         super.tick();
 
         if (!isConnected() || get() == null) return;
+        if (chargeSolvedExternally) {
+            chargeSolvedExternally = false;
+            return;
+        }
 
         double tickRate = getWorld().getTickRate();
         double deltaCharge = getCurrent().getValue() * tickRate;

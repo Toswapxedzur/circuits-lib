@@ -1,5 +1,7 @@
 package com.minecart.logic;
 
+import com.minecart.spice.NgSpice;
+import com.minecart.spice.SpiceSolver;
 import com.minecart.misc.CoreStrings;
 import com.minecart.event.events.Event;
 import com.minecart.event.events.ServerTickEvent;
@@ -114,6 +116,18 @@ public class ServerCircuit extends Circuit {
         dirty = false;
     }
 
+    /**
+     * Electrical backend: ngspice (adaptive, error-controlled transient per tick) unless
+     * {@code -Dcircuitslib.solver=ejml} asks for the built-in linear solver, or libngspice is missing.
+     */
+    public static final boolean SPICE_BACKEND =
+            !"ejml".equalsIgnoreCase(System.getProperty("circuitslib.solver", "ngspice")) && NgSpice.available();
+
+    private double tickRateOrDefault() {
+        ServerWorld w = getWorld();
+        return w != null ? w.getTickRate() : 0.05;
+    }
+
     public void tick() {
         post(preTick);
         overpoweredThisTick.clear();
@@ -123,8 +137,17 @@ public class ServerCircuit extends Circuit {
         }
 
         Map<CircuitEdge, Double> previousCurrents = snapshotCurrents();
-        system.stampRelation(this::collectRelation);
-        boolean solved = system.solve();
+        boolean solved = false;
+        boolean useBuiltin = true;
+        if (SPICE_BACKEND) {
+            SpiceSolver.Result r = SpiceSolver.solve(nodes, edges, components, tickRateOrDefault());
+            if (r == SpiceSolver.Result.OK) { solved = true; useBuiltin = false; }
+            else if (r == SpiceSolver.Result.FAILED) { useBuiltin = false; } // a failed ngspice solve is a real failure: zero, don't mask it
+        }
+        if (useBuiltin) {
+            system.stampRelation(this::collectRelation);
+            solved = system.solve();
+        }
         if (!solved) {
             log.warn("electrical solve failed for circuit {}; resetting {} nodes and {} edges to zero",
                     getId(), nodes.size(), edges.size());
