@@ -131,6 +131,15 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
         return center;
     }
 
+    /** Base edge (center → base); its current is the controlling I_B. Null until {@link #generate()}. */
+    public Wire getEdgeBase() { return edgeBase; }
+
+    /** Collector edge (center → collector); carries I_C = beta · I_B. Null until {@link #generate()}. */
+    public CircuitEdge getEdgeCollector() { return edgeCollector; }
+
+    /** Emitter edge (center → emitter). Null until {@link #generate()}. */
+    public Resistor getEdgeEmitter() { return edgeEmitter; }
+
     @Override
     public void save(CompoundTag tag) {
         super.save(tag);
