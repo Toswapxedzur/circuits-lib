@@ -1,0 +1,20 @@
+# Wheel → ghost rotation feel (owner values 2026-09-05): 15 units per 90° turn, ≥250 ms between turns, no inertia.
+do cursor caught
+do clear
+expect ghost.yaw == 0
+scroll 15                  # one big event = exactly one turn
+wait 50
+expect ghost.yaw == 90
+scroll 15                  # 50 ms later: inside the 250 ms floor → must NOT turn
+wait 50
+expect ghost.yaw == 90
+wait 300                   # idle > 150 ms → the banked scroll is forgotten (no inertia)
+expect scroll.accum == 0
+expect ghost.yaw == 90
+scroll 1 x40 every 5       # momentum-like burst, 40 units in ~200 ms → clamp: at most ONE turn, none after it ends
+wait 400
+expect ghost.yaw == 180
+scroll 3                   # a fresh trickle starts from zero, not from leftover
+wait 50
+expect ghost.yaw == 180
+end

@@ -40,6 +40,14 @@ public final class PhysicalEditor {
     private boolean present;
 
     public void rotate(float deltaDeg) { yawDeg = (yawDeg + deltaDeg) % 360f; }
+    /** TEST probes (scripted-input harness). */
+    public float yawDeg() { return (yawDeg % 360f + 360f) % 360f; }
+    public int anchor() { return anchor; }
+    /** The EFFECTIVE banked scroll: 0 once the idle window has elapsed (the reset itself is applied lazily on the
+     *  next wheel event, but behaviourally nothing is banked any more). */
+    public float debugScrollAccum() {
+        return System.currentTimeMillis() - lastScrollMs > SCROLL_IDLE_RESET_MS ? 0f : scrollAccum;
+    }
 
     // ── Deck access + editing ─────────────────────────────────────────────────────────────────────────────────
     public int deckSize() { return deck.size(); }

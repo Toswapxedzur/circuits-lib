@@ -600,6 +600,26 @@ public final class PhysicalBoardView implements Disposable {
                 + " inter=" + (it == null ? "none" : it.type());
     }
 
+    /** TEST: the world AABB {minx,miny,minz,maxx,maxy,maxz} of movable {@code sub} of placement {@code i} (at its
+     *  current animated position), or the part's collision box when {@code sub} < 0. */
+    public float[] debugSubAabb(int i, int sub) {
+        Placed p = placed.get(i);
+        ComponentModel m = loader.model(p.modelId());
+        if (sub < 0 || sub >= m.movableParts.size()) return worldAabb(m.collision, p.transform());
+        return movableWorldAabb(m.movableParts.get(sub), p.transform(), i < ents.size() ? ents.get(i) : null);
+    }
+
+    /** TEST: the interactive channel value of placement {@code i} (its first movable's rest {@code min} if it was
+     *  never touched); NaN if it has no interactive movable. */
+    public float debugChannel(int i) {
+        ComponentModel m = loader.model(placed.get(i).modelId());
+        for (ComponentModel.MovablePart mv : m.movableParts) {
+            ComponentModel.Interaction it = mv.interaction();
+            if (it != null) return subState.getOrDefault(i, it.min());
+        }
+        return Float.NaN;
+    }
+
     /** TEST: is the switch at placement {@code i} currently closed (conducting)? */
     public boolean debugSwitchClosed(int i) { return switchClosed(i, loader.model(placed.get(i).modelId())); }
 

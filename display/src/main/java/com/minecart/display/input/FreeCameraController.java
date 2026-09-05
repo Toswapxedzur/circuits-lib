@@ -83,6 +83,22 @@ public final class FreeCameraController {
         camera.update();
     }
 
+    /** Scripted/test input: turn the view by a delta (degrees) regardless of mouse-look state. */
+    public void look(float dYawDeg, float dPitchDeg) {
+        yawDeg += dYawDeg;
+        pitchDeg = MathUtils.clamp(pitchDeg + dPitchDeg, -89f, 89f);
+        applyOrientation();
+    }
+    /** Scripted/test input: aim the view straight at a world point (yaw + pitch from the current position). */
+    public void lookAt(Vector3 target) {
+        Vector3 dir = new Vector3(target).sub(camera.position).nor();
+        pitchDeg = (float) Math.toDegrees(Math.asin(MathUtils.clamp(dir.y, -1f, 1f)));
+        yawDeg = (float) Math.toDegrees(Math.atan2(dir.z, dir.x));
+        applyOrientation();
+    }
+    public float yawDeg() { return yawDeg; }
+    public float pitchDeg() { return pitchDeg; }
+
     private void applyOrientation() {
         float yaw = yawDeg * MathUtils.degreesToRadians;
         float pitch = pitchDeg * MathUtils.degreesToRadians;
