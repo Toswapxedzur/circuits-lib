@@ -693,7 +693,7 @@ public final class SnapScreen extends ScreenAdapter {
         // Owner: "curve less, size -30%". Radius 130 (2×) with the angular step halved keeps the linear spacing but
         // FLATTENS the arc; cardSize 20 (= 28.6 × 0.7). Pivot -149 keeps the card centres at the same height so
         // ~90% of the centre card clears the bottom edge. -Dsnap.deckpivot overrides for tuning.
-        float deckPivot = Float.parseFloat(System.getProperty("snap.deckpivot", "-149"));
+        float deckPivot = Float.parseFloat(System.getProperty("snap.deckpivot", "-155"));
         drawFan(deckCam, ids, sel, sel, deckAnim, dt, deckPivot, 130f, 3f, 20f, deckTilt, 6f, 8f, 1.3f);
         if (deckPicker) drawPicker(w, h, dt);
     }
