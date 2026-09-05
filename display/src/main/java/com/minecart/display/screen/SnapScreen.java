@@ -690,10 +690,11 @@ public final class SnapScreen extends ScreenAdapter {
         float deckTilt = Float.parseFloat(System.getProperty("snap.decktilt", "-45"));
         // Fan circle radius 65 (owner: 3-4× the original 18). Pivot -93 SUBMERGES 35-45% of each card below the
         // bottom screen edge (owner value); spacing 3°/width = arc step ≈ 6.8 — a tiny gap, never overlapping.
-        // cardSize ×2.2; spacing 8°/width so the bigger cards don't touch; pivot -84 raises the hand so ~90% of the
-        // centre card clears the bottom edge (side cards sit lower on the arc); modest selRaise for the centre pop.
-        float deckPivot = Float.parseFloat(System.getProperty("snap.deckpivot", "-84"));
-        drawFan(deckCam, ids, sel, sel, deckAnim, dt, deckPivot, 65f, 8f, 28.6f, deckTilt, 6f, 8f, 1.3f);
+        // Owner: "curve less, size -30%". Radius 130 (2×) with the angular step halved keeps the linear spacing but
+        // FLATTENS the arc; cardSize 20 (= 28.6 × 0.7). Pivot -149 keeps the card centres at the same height so
+        // ~90% of the centre card clears the bottom edge. -Dsnap.deckpivot overrides for tuning.
+        float deckPivot = Float.parseFloat(System.getProperty("snap.deckpivot", "-149"));
+        drawFan(deckCam, ids, sel, sel, deckAnim, dt, deckPivot, 130f, 3f, 20f, deckTilt, 6f, 8f, 1.3f);
         if (deckPicker) drawPicker(w, h, dt);
     }
 
