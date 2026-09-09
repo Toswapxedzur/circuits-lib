@@ -600,6 +600,31 @@ public final class PhysicalBoardView implements Disposable {
                 + " inter=" + (it == null ? "none" : it.type());
     }
 
+    /** TEST: WHY would {@link #canPlace} reject (or accept) this transform — every terminal's socket + support
+     *  verdict, and the first placed part whose 3D box overlaps. Turns a bare BLOCKED into a diagnosis. */
+    public String explainPlace(String modelId, Matrix4 transform) {
+        ComponentModel m = loader.model(modelId);
+        StringBuilder sb = new StringBuilder(modelId).append(" at ").append(transform.getTranslation(new Vector3())).append(": ");
+        int k = 0;
+        for (ComponentModel.Connector c : m.connectors) {
+            Vector3 w = new Vector3(c.local()).mul(transform);
+            sb.append("t").append(k++).append('=').append(w).append(onSocket(w) ? " socket✓" : " OFF-SOCKET✗")
+              .append(studSupported(w, -1) ? " supported✓" : " UNSUPPORTED✗").append("; ");
+        }
+        if (m.collision != null) {
+            float[] a = worldAabb(m.collision, transform);
+            sb.append("box y").append(a[1]).append("..").append(a[4]).append("; ");
+            for (int i = 0; i < placed.size(); i++) {
+                ComponentModel pm = loader.model(placed.get(i).modelId());
+                if (pm.collision == null) continue;
+                float[] b = worldAabb(pm.collision, placed.get(i).transform());
+                if (overlap(a, b)) sb.append("OVERLAPS placement ").append(i).append(" (").append(placed.get(i).modelId())
+                        .append(" box y").append(b[1]).append("..").append(b[4]).append("); ");
+            }
+        }
+        return sb.append(canPlace(modelId, transform) ? "=> VALID" : "=> BLOCKED").toString();
+    }
+
     /** TEST: the world AABB {minx,miny,minz,maxx,maxy,maxz} of movable {@code sub} of placement {@code i} (at its
      *  current animated position), or the part's collision box when {@code sub} < 0. */
     public float[] debugSubAabb(int i, int sub) {

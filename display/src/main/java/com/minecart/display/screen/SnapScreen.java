@@ -858,6 +858,19 @@ public final class SnapScreen extends ScreenAdapter {
                     flyCam.lookAt(c);
                     return "aimed at " + c;
                 }
+                case "force" -> { // force <modelId> <x> <z> [yaw] [y]: place WITHOUT canPlace (test setups only)
+                    float yaw = a.length > 3 ? Float.parseFloat(a[3]) : 0f, y = a.length > 4 ? Float.parseFloat(a[4]) : 0f;
+                    com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0], new com.badlogic.gdx.math.Matrix4()
+                            .setToTranslation(Float.parseFloat(a[1]), y, Float.parseFloat(a[2])).rotate(0f, 1f, 0f, yaw));
+                    physWorld.place(a[0], m); rebuildPhysCircuit();
+                    return "FORCED " + a[0] + " at " + m.getTranslation(new Vector3());
+                }
+                case "why" -> { // why <modelId> <x> <z> [yaw] [y]: explain the placement verdict at that snapped pose
+                    float yaw = a.length > 3 ? Float.parseFloat(a[3]) : 0f, y = a.length > 4 ? Float.parseFloat(a[4]) : 0f;
+                    com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0], new com.badlogic.gdx.math.Matrix4()
+                            .setToTranslation(Float.parseFloat(a[1]), y, Float.parseFloat(a[2])).rotate(0f, 1f, 0f, yaw));
+                    return physWorld.explainPlace(a[0], m);
+                }
                 case "place" -> { // place <modelId> cross | <x> <z> [yaw] [y]  (snap grids the yaw + lands terminals)
                     Vector3 at = new Vector3();
                     float yaw = 0f;
