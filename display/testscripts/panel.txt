@@ -1,0 +1,22 @@
+# Opening the E-panel mid-drag must END the grab: the knob must not keep following the view while the panel is open.
+do cursor caught
+do clear
+do cam -90 -36.5
+do place switch cross
+do aim 0 0
+wait 50
+lmb down
+wait 30
+expect grabbed == true
+key E
+wait 30
+expect picker.open == true
+expect grabbed == false
+look 8 0 over 150
+wait 30
+expect sub.closed.0 == false
+lmb up
+key ESCAPE
+wait 30
+expect picker.open == false
+end
