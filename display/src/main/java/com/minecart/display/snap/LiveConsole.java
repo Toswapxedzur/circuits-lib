@@ -145,9 +145,9 @@ public final class LiveConsole implements AutoCloseable {
                     + "scroll/look/do/expect/dump/wait>"); return true; }
             case "roots" -> { for (Map.Entry<String, Object> e : roots.entrySet()) p.out.add(e.getKey() + " : " + cls(e.getValue())); return true; }
             case "ls" -> { ls(p, rest); return true; }
-            case "get" -> { p.out.add(render(resolve(rest), 2)); return true; }
+            case "get" -> { p.out.add(render(resolve(rest), 3)); return true; }
             case "set" -> { String[] a = rest.split("\\s+", 2); set(a[0], a[1]); p.out.add(a[0] + " = " + render(resolve(a[0]), 1)); return true; }
-            case "call" -> { p.out.add(render(call(rest), 2)); return true; }
+            case "call" -> { p.out.add(render(call(rest), 3)); return true; }
             case "probe" -> { p.out.add(rest + " = " + render(host.probe(rest), 1)); return true; }
             case "probes" -> { for (String n : host.probeNames()) p.out.add(n + " = " + render(host.probe(n), 1)); return true; }
             case "watch" -> {
@@ -318,8 +318,13 @@ public final class LiveConsole implements AutoCloseable {
     private static String cls(Object o) { return o == null ? "null" : o.getClass().getSimpleName(); }
 
     private static boolean scalar(Object o) {
-        return o == null || o instanceof Number || o instanceof Boolean || o instanceof Character || o instanceof CharSequence
-                || o instanceof Enum<?> || o.getClass().getName().startsWith("com.badlogic.gdx.math.");
+        if (o == null || o instanceof Number || o instanceof Boolean || o instanceof Character || o instanceof CharSequence
+                || o instanceof Enum<?>) return true;
+        String n = o.getClass().getName();
+        // gdx math types print well; JDK internals (UUID, Thread, …) are module-sealed — never reflect into them
+        return n.startsWith("com.badlogic.gdx.math.")
+                || ((n.startsWith("java.") || n.startsWith("jdk.") || n.startsWith("sun."))
+                    && !(o instanceof Collection<?>) && !(o instanceof Map<?, ?>) && !o.getClass().isArray());
     }
 
     /** A compact value summary; {@code depth} = how many object levels to expand. */
@@ -354,12 +359,13 @@ public final class LiveConsole implements AutoCloseable {
                 for (Field f : fields(o.getClass())) {
                     if (Modifier.isStatic(f.getModifiers())) continue;
                     if (i >= MAX_ELEMS) { sb.append(", …"); break; }
-                    f.setAccessible(true);
-                    Object v = f.get(o);
+                    Object v;
+                    try { f.setAccessible(true); v = f.get(o); }
+                    catch (RuntimeException | ReflectiveOperationException e) { sb.append(i++ == 0 ? "" : ", ").append(f.getName()).append("=?"); continue; }
                     sb.append(i++ == 0 ? "" : ", ").append(f.getName()).append('=').append(scalar(v) ? render(v, 0) : render(v, depth - 1));
                 }
             }
-        } catch (ReflectiveOperationException e) { sb.append("?").append(e.getClass().getSimpleName()); }
+        } catch (ReflectiveOperationException | RuntimeException e) { sb.append("?").append(e.getClass().getSimpleName()); }
         return sb.append('}').toString();
     }
 
