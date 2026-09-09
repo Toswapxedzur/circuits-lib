@@ -84,7 +84,7 @@ public final class SnapScreen extends ScreenAdapter {
     private TextButton[] hotbarButtons;
     private int lastRevision = Integer.MIN_VALUE;
     private boolean cursorCaught;
-    private final boolean fixedCam = "1".equals(System.getProperty("snap.fixedcam")); // dev: freeze camera for shots
+    private boolean fixedCam = "1".equals(System.getProperty("snap.fixedcam")); // dev: freeze camera (shots, live tests)
     // Physical free-placement mode is now the DEFAULT 3D snap experience (continuous placement + magnetic snap +
     // typed mating + live circuit + persistence). The legacy discrete grid mode is retained as an opt-out:
     // -Dsnap.physical=off (or -Pphysical=off via runsnap).
@@ -837,31 +837,44 @@ public final class SnapScreen extends ScreenAdapter {
         }
         @Override public void scroll(float amountY) { editInput.scrolled(0f, amountY); }
         @Override public void look(float dYawDeg, float dPitchDeg) { flyCam.look(dYawDeg, dPitchDeg); }
-        @Override public void action(String verb, String[] a) {
+        @Override public String action(String verb, String[] a) {
             switch (verb) {
-                case "cursor" -> setCursorCaught(a[0].equalsIgnoreCase("caught"));
-                case "clear" -> { physWorld.clearAll(); rebuildPhysCircuit(); }
+                case "cursor" -> { setCursorCaught(a[0].equalsIgnoreCase("caught")); return null; }
+                case "clear" -> { physWorld.clearAll(); rebuildPhysCircuit(); return null; }
                 case "deck" -> {
                     if (a[0].equals("add")) physEditor.deckAddRight(a[1]);
                     else if (a[0].equals("select")) physEditor.deckSetSelected(Integer.parseInt(a[1]));
+                    return null;
+                }
+                case "fixedcam" -> { fixedCam = a[0].equalsIgnoreCase("on"); return "fixedcam " + fixedCam; }
+                case "cam" -> { // cam <yaw> <pitch>: set the view angles directly (position unchanged)
+                    flyCam.look(Float.parseFloat(a[0]) - flyCam.yawDeg(), Float.parseFloat(a[1]) - flyCam.pitchDeg());
+                    return "cam yaw=" + flyCam.yawDeg() + " pitch=" + flyCam.pitchDeg();
                 }
                 case "aim" -> { // aim <placement> [sub]: point the crosshair at that hitbox's centre
                     int pi = Integer.parseInt(a[0]), sub = a.length > 1 ? Integer.parseInt(a[1]) : -1;
                     float[] b = physWorld.debugSubAabb(pi, sub);
-                    flyCam.lookAt(new Vector3((b[0] + b[3]) / 2f, (b[1] + b[4]) / 2f, (b[2] + b[5]) / 2f));
+                    Vector3 c = new Vector3((b[0] + b[3]) / 2f, (b[1] + b[4]) / 2f, (b[2] + b[5]) / 2f);
+                    flyCam.lookAt(c);
+                    return "aimed at " + c;
                 }
-                case "place" -> { // place <modelId> cross | <x> <z>
+                case "place" -> { // place <modelId> cross | <x> <z> [yaw] [y]  (snap grids the yaw + lands terminals)
                     Vector3 at = new Vector3();
+                    float yaw = 0f;
                     if (a[1].equalsIgnoreCase("cross")) {
                         com.badlogic.gdx.math.Intersector.intersectRayPlane(camera.getPickRay(cx(), cy()),
                                 new com.badlogic.gdx.math.Plane(new Vector3(0, 1, 0), 0), at);
-                    } else at.set(Float.parseFloat(a[1]), 0f, Float.parseFloat(a[2]));
+                    } else {
+                        at.set(Float.parseFloat(a[1]), a.length > 4 ? Float.parseFloat(a[4]) : 0f, Float.parseFloat(a[2]));
+                        if (a.length > 3) yaw = Float.parseFloat(a[3]);
+                    }
                     com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0],
-                            new com.badlogic.gdx.math.Matrix4().setToTranslation(at.x, 0f, at.z));
-                    if (physWorld.canPlace(a[0], m)) { physWorld.place(a[0], m); rebuildPhysCircuit(); }
-                    else System.out.println("INPUTTEST place " + a[0] + " BLOCKED at " + at);
+                            new com.badlogic.gdx.math.Matrix4().setToTranslation(at.x, at.y, at.z).rotate(0f, 1f, 0f, yaw));
+                    Vector3 got = m.getTranslation(new Vector3());
+                    if (physWorld.canPlace(a[0], m)) { physWorld.place(a[0], m); rebuildPhysCircuit(); return "placed " + a[0] + " at " + got; }
+                    return "ERROR place " + a[0] + " BLOCKED at " + got;
                 }
-                default -> System.out.println("INPUTTEST unknown action " + verb);
+                default -> { return "ERROR unknown action " + verb; }
             }
         }
         @Override public Object probe(String n) {
@@ -989,7 +1002,10 @@ public final class SnapScreen extends ScreenAdapter {
                     if (keycode == Keys.E) { deckPicker = false; setCursorCaught(true); return true; }
                     return true; // swallow everything else while the panel is open
                 }
-                if (keycode == Keys.E) { deckPicker = true; pickerIndex = 0; pickerAnim.init = false; setCursorCaught(false); return true; }
+                if (keycode == Keys.E) { // open the panel — this also ENDS any knob drag (the cursor is being released)
+                    grabbed = null; scriptLmbHeld = false;
+                    deckPicker = true; pickerIndex = 0; pickerAnim.init = false; setCursorCaught(false); return true;
+                }
                 if (keycode == Keys.R) { physEditor.rotate(90f); return true; } // quick 90° direction turn
                 // ←/→ SELECT the held card (the fan rotates it to center); [ ] pin which terminal follows the cursor.
                 if (keycode == Keys.LEFT)  { physEditor.deckSelect(-1); return true; }

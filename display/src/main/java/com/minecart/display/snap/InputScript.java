@@ -22,8 +22,9 @@ import java.util.Locale;
  * scroll &lt;amount&gt; [x&lt;n&gt; every &lt;ms&gt;] one wheel event, or a burst of n events spaced ms apart
  * look &lt;dYawDeg&gt; &lt;dPitchDeg&gt; over &lt;ms&gt;   turn the camera by a delta, spread evenly over ms
  * do &lt;verb&gt; [args...]               a host action (setup): cursor caught|free, clear, deck add &lt;id&gt;,
- *                                   deck select &lt;i&gt;, place &lt;modelId&gt; cross | &lt;x&gt; &lt;z&gt;,
- *                                   aim &lt;placement&gt; [sub]  (point the crosshair at a hitbox centre)
+ *                                   deck select &lt;i&gt;, place &lt;modelId&gt; cross | &lt;x&gt; &lt;z&gt; [yaw] [y],
+ *                                   aim &lt;placement&gt; [sub] (crosshair onto a hitbox centre), cam &lt;yaw&gt; &lt;pitch&gt;,
+ *                                   fixedcam on|off (freeze mouse-look so a human mouse can't disturb a live test)
  * expect &lt;probe&gt; &lt;op&gt; &lt;value|@probe&gt; [tol]   op: == != &lt; &lt;= &gt; &gt;= ~= (~= uses tol, default 1e-3)
  * dump [probe ...]                  log probe values (all known if none given)
  * end                               print the verdict and exit (implicit at end of script)
@@ -38,7 +39,8 @@ public final class InputScript {
         void mouse(int button, boolean down);
         void scroll(float amountY);
         void look(float dYawDeg, float dPitchDeg);
-        void action(String verb, String[] args);
+        /** A setup/utility action; returns a status line for the output (or {@code null} for silence). */
+        String action(String verb, String[] args);
         /** A named piece of state: Number / Boolean / String, or {@code null} if the probe is unknown. */
         Object probe(String name);
         /** All probe names, for {@code dump}. */
@@ -143,7 +145,8 @@ public final class InputScript {
                 }
                 case "do" -> {
                     String[] args = java.util.Arrays.copyOfRange(c.t(), 2, c.t().length);
-                    host.action(c.t()[1].toLowerCase(Locale.ROOT), args);
+                    String r = host.action(c.t()[1].toLowerCase(Locale.ROOT), args);
+                    if (r != null) out.accept(r);
                     advance();
                 }
                 case "expect" -> { expect(c); advance(); }
