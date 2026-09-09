@@ -865,6 +865,14 @@ public final class SnapScreen extends ScreenAdapter {
                     physWorld.place(a[0], m); rebuildPhysCircuit();
                     return "FORCED " + a[0] + " at " + m.getTranslation(new Vector3());
                 }
+                case "shot" -> { // shot [path]: dump the last rendered frame to a PNG (default: build/snap_shot.png)
+                    String path = a.length > 0 ? a[0] : "/Users/fengyue.john.zhu/Desktop/programme/java/CircuitsLib/build/snap_shot.png";
+                    com.badlogic.gdx.graphics.Pixmap p = com.badlogic.gdx.utils.ScreenUtils.getFrameBufferPixmap(
+                            0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+                    com.badlogic.gdx.graphics.PixmapIO.writePNG(Gdx.files.absolute(path), p, -1, true);
+                    p.dispose();
+                    return "shot " + path;
+                }
                 case "why" -> { // why <modelId> <x> <z> [yaw] [y]: explain the placement verdict at that snapped pose
                     float yaw = a.length > 3 ? Float.parseFloat(a[3]) : 0f, y = a.length > 4 ? Float.parseFloat(a[4]) : 0f;
                     com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0], new com.badlogic.gdx.math.Matrix4()
