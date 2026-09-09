@@ -895,6 +895,9 @@ public final class SnapScreen extends ScreenAdapter {
             if (n.startsWith("sub.closed."))  return physWorld.debugSwitchClosed(Integer.parseInt(n.substring(11)));
             return switch (n) {
                 case "ghost.yaw" -> physEditor.yawDeg();
+                case "ghost.x" -> physEditor.ghostTransform().getTranslation(new Vector3()).x;
+                case "ghost.y" -> physEditor.ghostTransform().getTranslation(new Vector3()).y;
+                case "ghost.z" -> physEditor.ghostTransform().getTranslation(new Vector3()).z;
                 case "ghost.anchor" -> physEditor.anchor();
                 case "ghost.present" -> physEditor.present();
                 case "ghost.valid" -> physEditor.valid();
@@ -919,7 +922,7 @@ public final class SnapScreen extends ScreenAdapter {
             };
         }
         @Override public String[] probeNames() {
-            return new String[]{"ghost.yaw", "ghost.anchor", "ghost.present", "ghost.valid", "ghost.model",
+            return new String[]{"ghost.yaw", "ghost.x", "ghost.y", "ghost.z", "ghost.anchor", "ghost.present", "ghost.valid", "ghost.model",
                     "scroll.accum", "deck.selected", "deck.size", "deck.held", "placed", "focus.placement",
                     "focus.sub", "grabbed", "cursor.caught", "cam.yaw", "cam.pitch", "fan.center", "fan.target",
                     "fan.raise", "picker.open", "picker.index"};

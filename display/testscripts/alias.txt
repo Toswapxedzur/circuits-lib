@@ -1,0 +1,23 @@
+# Port Alias from ANY face: aiming at a placed part's SIDE (low angle) must still stack the ghost on top of it,
+# not drop a blocked ghost inside it (the "it's red" bug, 2026-09-09).
+do cursor caught
+do clear
+do cam -90 -36.5
+do place led 60 72 0
+expect placed == 1
+do deck select 2            # hold the LED (demo deck: wire, ic, led, ...)
+do aim 0                    # box centre → enters through the top face
+wait 40
+expect ghost.y == 5
+expect ghost.valid == true
+look 0 -0.8 over 30         # dip the crosshair onto the FRONT face (the box is ~2° tall from the start view)
+wait 40
+expect focus.placement == 0
+expect ghost.y == 5         # still aliased onto the part, not inside it
+expect ghost.valid == true
+do cam -90 -36.5
+do aim 0
+look 0 8 over 30            # far above the part: ray misses the box → board fallback, flat
+wait 40
+expect ghost.y == 0
+end

@@ -428,7 +428,7 @@ public final class PhysicalBoardView implements Disposable {
      * "portion of a face = alias of a port"). Only a hit on the part's TOP face counts (so aiming PAST a part at the
      * ground behind it doesn't grab it — that stays a flat board placement). Returns the target stud's world position
      * (x, that part's TOP y, z) so {@link #snapToPort} stacks the new part on top. {@code null} → the ray hit no
-     * part's top, so the caller falls back to the board plane. This is what lets you deliberately build UPWARD.
+     * part at all, so the caller falls back to the board plane. This is what lets you deliberately build UPWARD.
      */
     public Vector3 pickTarget(com.badlogic.gdx.math.collision.Ray ray) {
         Placed best = null;
@@ -442,8 +442,12 @@ public final class PhysicalBoardView implements Disposable {
             float[] ab = worldAabb(pm.collision, p.transform());
             com.badlogic.gdx.math.collision.BoundingBox bb = new com.badlogic.gdx.math.collision.BoundingBox(
                     new Vector3(ab[0], ab[1], ab[2]), new Vector3(ab[3], ab[4], ab[5]));
-            if (com.badlogic.gdx.math.Intersector.intersectRayBounds(ray, bb, hit) && hit.y >= ab[4] - 1.5f) {
-                float d = ray.origin.dst2(hit); // TOP-face hit only (entry y at the box top)
+            // ANY face of the part's box aliases a stud (owner: "a portion of a face is an alias of a port"). The old
+            // top-face-only rule made a low-angle aim at a part's side fall back to the board point INSIDE the part →
+            // a BLOCKED ghost drawn coincident with it (the "it's red" bug, 2026-09-09). A ray that misses the box
+            // entirely still falls back to the board, so aiming past a part at the ground behind it is unchanged.
+            if (com.badlogic.gdx.math.Intersector.intersectRayBounds(ray, bb, hit)) {
+                float d = ray.origin.dst2(hit);
                 if (d < bestDist) {
                     bestDist = d;
                     best = p;
