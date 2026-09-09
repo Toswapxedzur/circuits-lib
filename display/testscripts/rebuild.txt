@@ -1,0 +1,15 @@
+# Two circuit rebuilds in ONE server tick (a circuit born and torn down before the sync) must not kill the
+# client<->server connection. Found 2026-09-09: an element INSERT keyed to the dead circuit reached the client
+# ("No circuit for id ...") and the dispatcher closed the channel. Console/harness commands run back-to-back
+# within a frame, which is exactly what exposes same-tick races.
+do cursor caught
+do clear
+do place led 60 72 0
+do clear
+do place led 60 72 0
+do clear
+do place led 60 72 0
+wait 900
+expect placed == 1
+expect net.connected == true
+end

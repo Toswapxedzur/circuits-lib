@@ -15,6 +15,7 @@ Grammar + probes: see the `InputScript` javadoc. The general method is recorded 
 | `deck.txt`  | ←/→ deck selection glides (eased fan), E-panel open/close, held card tracks selection |
 | `drag.txt`  | drag-handle: grab the switch knob, free-look, knob follows the crosshair and closes the switch |
 | `alias.txt` | Port Alias from ANY face: aiming at a part's side still stacks the ghost on top (regression for the 'it's red' bug, 2026-09-09) |
+| `rebuild.txt` | two whole-board circuit rebuilds in ONE server tick must not kill the client↔server link (regression for the dead-circuit element delta, 2026-09-09) |
 | `panel.txt` | opening the E-panel mid-drag ENDS the grab (regression for a bug found by the live console, 2026-09-09) |
 
 Tests never save into the world file (`finish` hard-exits before dispose).
