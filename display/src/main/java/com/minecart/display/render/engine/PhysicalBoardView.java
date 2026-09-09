@@ -194,9 +194,9 @@ public final class PhysicalBoardView implements Disposable {
         for (Placed p : placed) {
             EngineRenderer.DynamicEntity e = new EngineRenderer.DynamicEntity(loader.model(p.modelId()));
             e.pose(p.transform());
-            if (kind(p.modelId()) == 'l') {
-                e.bodyTint = LED_BODY; // a red LED body (the bulb reads red even before it's lit)
-            }
+            // No whole-body tint: it painted the LED's BASE red too, so a placed LED looked nothing like its card /
+            // ghost (owner: "it's red", 2026-09-10). An LED's colour belongs in its model art (datagen, dome only);
+            // when current flows it EMITS its colour via updateElectricalGlow.
             engine.addEntity(e);
             ents.add(e);
         }
@@ -204,7 +204,6 @@ public final class PhysicalBoardView implements Disposable {
         built = hasBase || !placed.isEmpty();
     }
 
-    private static final com.badlogic.gdx.graphics.Color LED_BODY = new com.badlogic.gdx.graphics.Color(1f, 0.35f, 0.32f, 1f);
     // Glow colours: a resistor "heats up" warm-orange; an LED lights red; a lamp glows bright warm-white.
     private static final com.badlogic.gdx.graphics.Color GLOW_HEAT = new com.badlogic.gdx.graphics.Color(1f, 0.55f, 0.2f, 1f);
     private static final com.badlogic.gdx.graphics.Color GLOW_LED = new com.badlogic.gdx.graphics.Color(1f, 0.15f, 0.1f, 1f);
