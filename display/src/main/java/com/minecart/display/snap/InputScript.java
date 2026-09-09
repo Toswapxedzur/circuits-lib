@@ -24,7 +24,8 @@ import java.util.Locale;
  * do &lt;verb&gt; [args...]               a host action (setup): cursor caught|free, clear, deck add &lt;id&gt;,
  *                                   deck select &lt;i&gt;, place &lt;modelId&gt; cross | &lt;x&gt; &lt;z&gt; [yaw] [y],
  *                                   aim &lt;placement&gt; [sub] (crosshair onto a hitbox centre), cam &lt;yaw&gt; &lt;pitch&gt;,
- *                                   fixedcam on|off (freeze mouse-look so a human mouse can't disturb a live test)
+ *                                   fixedcam on|off (freeze mouse-look so a human mouse can't disturb a live test),
+ *                                   why &lt;id&gt; x z [yaw] [y] (explain the placement verdict), force … (place without checks)
  * expect &lt;probe&gt; &lt;op&gt; &lt;value|@probe&gt; [tol]   op: == != &lt; &lt;= &gt; &gt;= ~= (~= uses tol, default 1e-3)
  * dump [probe ...]                  log probe values (all known if none given)
  * end                               print the verdict and exit (implicit at end of script)
