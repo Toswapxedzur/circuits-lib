@@ -58,13 +58,24 @@ public final class InputScript {
     private float lookedYaw, lookedPitch; // how much of a `look` has been applied so far
     private int passed, failed;
     private boolean done;
+    private final boolean exitOnEnd;                      // -Pinputtest: exit the JVM with the verdict
+    private java.util.function.Consumer<String> out = System.out::println; // where PASS/FAIL/dump lines go
 
-    private InputScript(Host host) { this.host = host; }
+    private InputScript(Host host, boolean exitOnEnd) { this.host = host; this.exitOnEnd = exitOnEnd; }
+
+    /** Redirects the script's output lines (the live console collects them into its reply). */
+    public InputScript output(java.util.function.Consumer<String> sink) { this.out = sink; return this; }
+    public boolean isDone() { return done; }
+    public int passed() { return passed; }
+    public int failed() { return failed; }
 
     /** Loads a script from a file path (absolute, or relative to the working dir) or, if no such file, treats
      *  {@code src} as inline text with {@code ;}-separated commands. */
-    public static InputScript load(String src, Host host) {
-        InputScript s = new InputScript(host);
+    public static InputScript load(String src, Host host) { return load(src, host, true); }
+
+    /** {@code exitOnEnd=false}: run to completion but never exit the JVM (the live console's mode). */
+    public static InputScript load(String src, Host host, boolean exitOnEnd) {
+        InputScript s = new InputScript(host, exitOnEnd);
         String text;
         java.io.File f = new java.io.File(src);
         try {
@@ -79,7 +90,7 @@ public final class InputScript {
             if (line.isEmpty()) continue;
             s.cmds.add(new Cmd(line, line.split("\\s+")));
         }
-        System.out.println("INPUTTEST loaded " + s.cmds.size() + " commands from " + (f.isFile() ? f.getPath() : "inline"));
+        if (exitOnEnd) System.out.println("INPUTTEST loaded " + s.cmds.size() + " commands from " + (f.isFile() ? f.getPath() : "inline"));
         return s;
     }
 
@@ -140,7 +151,7 @@ public final class InputScript {
                     String[] names = c.t().length > 1 ? java.util.Arrays.copyOfRange(c.t(), 1, c.t().length) : host.probeNames();
                     StringBuilder sb = new StringBuilder("INPUTTEST dump");
                     for (String n : names) sb.append(' ').append(n).append('=').append(host.probe(n));
-                    System.out.println(sb);
+                    out.accept(sb.toString());
                     advance();
                 }
                 case "end" -> { end(); return; }
@@ -172,18 +183,20 @@ public final class InputScript {
             boolean eq = String.valueOf(actual).equalsIgnoreCase(String.valueOf(want));
             ok = op.equals("==") || op.equals("~=") ? eq : op.equals("!=") && !eq;
         }
-        if (ok) { passed++; System.out.println("INPUTTEST PASS  " + c.line() + "   (actual=" + actual + ")"); }
+        if (ok) { passed++; out.accept("INPUTTEST PASS  " + c.line() + "   (actual=" + actual + ")"); }
         else fail(c, "actual=" + actual + " want " + op + " " + want);
     }
 
-    private void fail(Cmd c, String why) { failed++; System.out.println("INPUTTEST FAIL  " + c.line() + "   " + why); }
+    private void fail(Cmd c, String why) { failed++; out.accept("INPUTTEST FAIL  " + c.line() + "   " + why); }
 
     private void end() {
         if (done) return;
         done = true;
-        System.out.println("INPUTTEST RESULT passed=" + passed + " failed=" + failed + (failed == 0 ? "  ✅" : "  ❌"));
+        if (passed + failed > 0 || exitOnEnd) {
+            out.accept("INPUTTEST RESULT passed=" + passed + " failed=" + failed + (failed == 0 ? "  ✅" : "  ❌"));
+        }
         System.out.flush();
-        host.finish(passed, failed);
+        if (exitOnEnd) host.finish(passed, failed);
     }
 
     private static float num(String s) { return Float.parseFloat(s); }

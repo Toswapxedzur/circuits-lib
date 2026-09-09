@@ -158,6 +158,7 @@ tasks.register<JavaExec>("runsnap") {
     (project.findProperty("phystest") as String?)?.let { systemProperty("snap.phystest", it) }
     (project.findProperty("deckdemo") as String?)?.let { systemProperty("snap.deckdemo", it) }
     (project.findProperty("inputtest") as String?)?.let { systemProperty("snap.inputtest", it) } // scripted-input harness
+    (project.findProperty("console") as String?)?.let { systemProperty("snap.console", it) }     // live console (1 = port 4711)
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread", "-Djava.net.preferIPv4Stack=true")
     }
