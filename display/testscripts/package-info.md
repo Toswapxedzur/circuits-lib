@@ -16,3 +16,5 @@ Grammar + probes: see the `InputScript` javadoc. The general method is recorded 
 | `drag.txt`  | drag-handle: grab the switch knob, free-look, knob follows the crosshair and closes the switch |
 
 Tests never save into the world file (`finish` hard-exits before dispose).
+
+Interactive form: launch with `-Pconsole=1` and drive the same grammar live via `../scripts/live_console.py` (plus `ls/get/set/call/watch` on any object).
