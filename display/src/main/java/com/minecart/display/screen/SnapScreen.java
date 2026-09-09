@@ -108,6 +108,8 @@ public final class SnapScreen extends ScreenAdapter {
     private EditInput editInput;
     private com.minecart.display.snap.InputScript script;
     private boolean scriptLmbHeld; // the harness's "LMB is held" (Gdx.input can't be faked)
+    private ScriptHost scriptHost;                              // shared by the harness and the live console
+    private com.minecart.display.snap.LiveConsole console;      // -Pconsole=1: live inspect/drive over localhost
 
     private boolean shuttingDown;
     private boolean disposed;
@@ -168,9 +170,22 @@ public final class SnapScreen extends ScreenAdapter {
                 physEditor.deckSetSelected(0); physEditor.deckRemove(); // drop the leading Cursor → exactly 6
                 physEditor.deckSetSelected(2); // center on a middle card (led), so the fan is symmetric for the shot
             }
+            scriptHost = new ScriptHost();
             String scriptSrc = System.getProperty("snap.inputtest");
             if (scriptSrc != null && !scriptSrc.isEmpty()) { // scripted-input harness: see InputScript
-                script = com.minecart.display.snap.InputScript.load(scriptSrc, new ScriptHost());
+                script = com.minecart.display.snap.InputScript.load(scriptSrc, scriptHost);
+            }
+            String consoleProp = System.getProperty("snap.console");
+            if (consoleProp != null && !consoleProp.isEmpty()) { // live console: see LiveConsole
+                int port = consoleProp.equals("1") ? com.minecart.display.snap.LiveConsole.DEFAULT_PORT : Integer.parseInt(consoleProp);
+                try {
+                    console = new com.minecart.display.snap.LiveConsole(port, scriptHost)
+                            .root("screen", this).root("physWorld", physWorld).root("physEditor", physEditor)
+                            .root("flyCam", flyCam).root("camera", camera).root("deckAnim", deckAnim)
+                            .root("pickerAnim", pickerAnim).root("board", board);
+                } catch (java.io.IOException e) {
+                    log.warn("live console: cannot listen on {}: {}", port, e.toString());
+                }
             }
             int loaded = physWorld.load(physFile());
             if (loaded > 0 && serverWorld != null && integrated != null) {
@@ -588,6 +603,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (ready) {
             // While GRABBING a knob, the camera keeps turning FREELY and the knob FOLLOWS the crosshair (line of
             // sight) — it does NOT lock the view. LMB is released → grab ends in touchUp.
+            if (console != null) console.drain(dt); // live console commands run here, between frames
             if (script != null) script.tick(dt); // scripted input runs BEFORE this frame's input is read
             boolean grabbing = grabbed != null
                     && (Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT) || scriptLmbHeld);
@@ -1081,6 +1097,7 @@ public final class SnapScreen extends ScreenAdapter {
     }
 
     @Override public void dispose() {
+        if (console != null) { console.close(); console = null; }
         if (disposed) {
             return;
         }
