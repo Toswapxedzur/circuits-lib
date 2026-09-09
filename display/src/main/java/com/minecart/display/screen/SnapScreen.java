@@ -916,6 +916,7 @@ public final class SnapScreen extends ScreenAdapter {
                 case "fan.center" -> deckAnim.center;
                 case "fan.target" -> deckAnim.target;
                 case "fan.raise" -> deckAnim.raise;
+                case "net.connected" -> connection != null && connection.isConnected(); // client↔server link alive?
                 case "picker.open" -> deckPicker;
                 case "picker.index" -> pickerIndex;
                 default -> null;
@@ -925,7 +926,7 @@ public final class SnapScreen extends ScreenAdapter {
             return new String[]{"ghost.yaw", "ghost.x", "ghost.y", "ghost.z", "ghost.anchor", "ghost.present", "ghost.valid", "ghost.model",
                     "scroll.accum", "deck.selected", "deck.size", "deck.held", "placed", "focus.placement",
                     "focus.sub", "grabbed", "cursor.caught", "cam.yaw", "cam.pitch", "fan.center", "fan.target",
-                    "fan.raise", "picker.open", "picker.index"};
+                    "fan.raise", "picker.open", "picker.index", "net.connected"};
         }
         @Override public void finish(int passed, int failed) {
             // Hard exit: skips dispose() on purpose so the test's placements are NEVER saved into the world file.

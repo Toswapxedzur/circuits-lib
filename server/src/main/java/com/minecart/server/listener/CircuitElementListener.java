@@ -233,6 +233,14 @@ public class CircuitElementListener implements IncrementPayloadListener<CircuitE
         } else {
             Circuit c = currentCircuit(s.element);
             circuitId = c != null ? c.getId() : null;
+            // A live element whose circuit has ALREADY been removed from its world this tick — e.g. a whole-board
+            // rebuild that tears down and recreates every circuit, run twice in one tick. That circuit's lifecycle
+            // INSERT/REMOVE pair coalesces to nothing, so the client never learns it exists; an op keyed to it would
+            // be fatal there ("No circuit for id …" → the dispatcher closes the connection). The element dies with
+            // its circuit: there is nothing to tell the client. (Found by the live console, 2026-09-09.)
+            if (circuitId != null && s.element.getWorld() != null && s.element.getWorld().findCircuit(circuitId) == null) {
+                return null;
+            }
         }
         if (circuitId == null) {
             return null;
