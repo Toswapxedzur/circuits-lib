@@ -569,12 +569,15 @@ public final class PhysicalBoardView implements Disposable {
                     if (d < bestDist) { bestDist = d; best = new Focus(i, s, ab); }
                 }
             }
-            ComponentModel.Collision look = m.visual != null ? m.visual : m.collision; // what you SEE is what you focus
-            if (look != null) {
-                float[] ab = worldAabb(look, tf);
-                if (rayHitsAabb(ray, ab, hit)) {
+            // The base is picked by the MODEL'S OWN BOXES (its real shape, like Minecraft's voxel shape), so aiming at
+            // empty air beside a dome doesn't focus the part. Focus.aabb stays the whole part's box (aim/debug).
+            for (PartMesh.Box b : m.staticBoxes) {
+                if (rayHitsAabb(ray, boxWorldAabb(b, tf), hit)) {
                     float d = ray.origin.dst2(hit);
-                    if (d < bestDist) { bestDist = d; best = new Focus(i, -1, ab); }
+                    if (d < bestDist) {
+                        bestDist = d;
+                        best = new Focus(i, -1, worldAabb(m.visual != null ? m.visual : m.collision, tf));
+                    }
                 }
             }
         }
@@ -589,23 +592,114 @@ public final class PhysicalBoardView implements Disposable {
 
     /** World AABB of a movable sub-part (its boxes, at component transform · local · current channel motion), so
      *  the pick hitbox FOLLOWS the moved knob (matches what's rendered). */
-    private float[] movableWorldAabb(ComponentModel.MovablePart mv, Matrix4 placement, EngineRenderer.DynamicEntity ent) {
+    /** World matrix of a movable sub-part: placement · local · its current channel motion (what the renderer uses). */
+    private Matrix4 movableWorldMatrix(ComponentModel.MovablePart mv, Matrix4 placement, EngineRenderer.DynamicEntity ent) {
         Matrix4 w = new Matrix4(placement).mul(mv.local());
         if (ent != null) {
             w.mul(mv.binding().toBinding().motion(ent.anim, new Matrix4())); // same motion the renderer applies
         }
+        return w;
+    }
+
+    private float[] movableWorldAabb(ComponentModel.MovablePart mv, Matrix4 placement, EngineRenderer.DynamicEntity ent) {
+        Matrix4 w = movableWorldMatrix(mv, placement, ent);
         float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
         for (PartMesh.Box b : mv.type().boxes()) {
-            for (int c = 0; c < 8; c++) {
-                tmp2.set(b.cx() + ((c & 1) == 0 ? -b.sx() : b.sx()) / 2f,
-                        b.cy() + ((c & 2) == 0 ? -b.sy() : b.sy()) / 2f,
-                        b.cz() + ((c & 4) == 0 ? -b.sz() : b.sz()) / 2f).mul(w);
-                minx = Math.min(minx, tmp2.x); maxx = Math.max(maxx, tmp2.x);
-                miny = Math.min(miny, tmp2.y); maxy = Math.max(maxy, tmp2.y);
-                minz = Math.min(minz, tmp2.z); maxz = Math.max(maxz, tmp2.z);
-            }
+            float[] a = boxWorldAabb(b, w);
+            minx = Math.min(minx, a[0]); miny = Math.min(miny, a[1]); minz = Math.min(minz, a[2]);
+            maxx = Math.max(maxx, a[3]); maxy = Math.max(maxy, a[4]); maxz = Math.max(maxz, a[5]);
         }
         return new float[]{minx, miny, minz, maxx, maxy, maxz};
+    }
+
+    /** World AABB of one model box under {@code world} (boxes stay axis-aligned under the 90° yaws parts use). */
+    private float[] boxWorldAabb(PartMesh.Box b, Matrix4 world) {
+        float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
+        for (int c = 0; c < 8; c++) {
+            tmp2.set(b.cx() + ((c & 1) == 0 ? -b.sx() : b.sx()) / 2f,
+                    b.cy() + ((c & 2) == 0 ? -b.sy() : b.sy()) / 2f,
+                    b.cz() + ((c & 4) == 0 ? -b.sz() : b.sz()) / 2f).mul(world);
+            minx = Math.min(minx, tmp2.x); maxx = Math.max(maxx, tmp2.x);
+            miny = Math.min(miny, tmp2.y); maxy = Math.max(maxy, tmp2.y);
+            minz = Math.min(minz, tmp2.z); maxz = Math.max(maxz, tmp2.z);
+        }
+        return new float[]{minx, miny, minz, maxx, maxy, maxz};
+    }
+
+    // ── Focus OUTLINE = the model's own shape (owner 2026-09-10: "the bounding box is derived from the component model
+    // itself, not any bounding box") — like Minecraft outlining a block's voxel shape. We draw only the CREASE edges
+    // of the union of the model's boxes: an edge is kept iff both faces meeting at it are exposed there (a sample
+    // point just outside each face lies in no box). Flush seams between stacked/adjacent boxes vanish; plate, stud,
+    // dome and knob silhouettes remain. Computed once per model / part-type in object space, transformed per draw.
+    private final java.util.Map<Object, float[]> edgeCache = new java.util.HashMap<>();
+    private static final float EDGE_EPS = 0.05f;   // probe distance for the "face exposed here?" test
+    private static final float EDGE_LIFT = Float.parseFloat(System.getProperty("snap.edgelift", "0.25"));  // the drawn edge sits this far outside BOTH its faces (Minecraft
+                                                   // expands its outline shape too) so it passes the depth test
+
+    private static boolean insideAny(List<PartMesh.Box> boxes, float x, float y, float z) {
+        for (PartMesh.Box b : boxes) {
+            if (Math.abs(x - b.cx()) <= b.sx() / 2f && Math.abs(y - b.cy()) <= b.sy() / 2f && Math.abs(z - b.cz()) <= b.sz() / 2f) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Object-space crease edges of the union of {@code boxes}: flat array of segments (x0,y0,z0,x1,y1,z1)*N. */
+    private static float[] shapeEdges(List<PartMesh.Box> boxes) {
+        java.util.List<Float> out = new java.util.ArrayList<>();
+        for (PartMesh.Box b : boxes) {
+            float hx = b.sx() / 2f, hy = b.sy() / 2f, hz = b.sz() / 2f;
+            // 12 edges: along X at (±y,±z), along Y at (±x,±z), along Z at (±x,±y); the two adjacent face normals
+            // are the signs of the two fixed coordinates.
+            for (int axis = 0; axis < 3; axis++) {
+                for (int s1 = -1; s1 <= 1; s1 += 2) {
+                    for (int s2 = -1; s2 <= 1; s2 += 2) {
+                        float[] p0 = new float[3], p1 = new float[3], mid = new float[3], n1 = new float[3], n2 = new float[3];
+                        int a1 = (axis + 1) % 3, a2 = (axis + 2) % 3;
+                        float[] c = {b.cx(), b.cy(), b.cz()}, h = {hx, hy, hz};
+                        p0[axis] = c[axis] - h[axis]; p1[axis] = c[axis] + h[axis];
+                        p0[a1] = p1[a1] = c[a1] + s1 * h[a1];
+                        p0[a2] = p1[a2] = c[a2] + s2 * h[a2];
+                        for (int k = 0; k < 3; k++) mid[k] = (p0[k] + p1[k]) / 2f;
+                        n1[a1] = s1; n2[a2] = s2;
+                        boolean f1 = !insideAny(boxes, mid[0] + n1[0] * EDGE_EPS, mid[1] + n1[1] * EDGE_EPS, mid[2] + n1[2] * EDGE_EPS);
+                        boolean f2 = !insideAny(boxes, mid[0] + n2[0] * EDGE_EPS, mid[1] + n2[1] * EDGE_EPS, mid[2] + n2[2] * EDGE_EPS);
+                        if (f1 && f2) {
+                            for (int k = 0; k < 3; k++) { p0[k] += (n1[k] + n2[k]) * EDGE_LIFT; p1[k] += (n1[k] + n2[k]) * EDGE_LIFT; }
+                            for (float v : p0) out.add(v);
+                            for (float v : p1) out.add(v);
+                        }
+                    }
+                }
+            }
+        }
+        float[] r = new float[out.size()];
+        for (int i = 0; i < r.length; i++) r[i] = out.get(i);
+        return r;
+    }
+
+    /** World-space outline segments of what {@code f} focuses — the part's own shape, or its movable sub-part's. */
+    public float[] focusEdges(Focus f) {
+        if (f == null) return new float[0];
+        Placed p = placed.get(f.placementIndex());
+        ComponentModel m = loader.model(p.modelId());
+        float[] local;
+        Matrix4 w;
+        if (f.subPart() >= 0 && f.subPart() < m.movableParts.size()) {
+            ComponentModel.MovablePart mv = m.movableParts.get(f.subPart());
+            local = edgeCache.computeIfAbsent(mv.type(), k -> shapeEdges(mv.type().boxes()));
+            w = movableWorldMatrix(mv, p.transform(), f.placementIndex() < ents.size() ? ents.get(f.placementIndex()) : null);
+        } else {
+            local = edgeCache.computeIfAbsent(p.modelId(), k -> shapeEdges(m.staticBoxes));
+            w = p.transform();
+        }
+        float[] out = new float[local.length];
+        for (int i = 0; i < local.length; i += 3) {
+            tmp2.set(local[i], local[i + 1], local[i + 2]).mul(w);
+            out[i] = tmp2.x; out[i + 1] = tmp2.y; out[i + 2] = tmp2.z;
+        }
+        return out;
     }
 
     /** True if the focused sub-part is interactive (has any behaviour). */
