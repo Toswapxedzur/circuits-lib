@@ -1,0 +1,18 @@
+# GRID ALIGNMENT: a part's snap terminals must be its REAL studs, so every stud lands on a board socket (pitch 12).
+# Regression for "they are not grid aligned" (2026-09-10): T-parts and the 2-row IC were half a pitch off because
+# their terminals were derived from the collision-box centre row instead of declared at the studs.
+do cursor caught
+do clear
+do place transistor_npn 36 78 0     # asked half a pitch off in z: snap must move it onto the grid
+expect placed == 1
+expect part.x.0 == 36
+expect part.z.0 == 84               # bar studs (24,84)(48,84) + stem stud (36,72): all sockets
+do place ic 48 48 0                 # 2-row IC: its studs are at z = ±6, so the CENTRE sits at a half pitch
+expect placed == 2
+expect part.x.1 == 48
+expect part.z.1 == 54               # studs at z 48 and 60: sockets
+do place wire_2 54 24 0             # unchanged standard part: studs ±6 (clear of the IC's footprint)
+expect placed == 3
+expect part.x.2 == 54
+expect part.z.2 == 24
+end

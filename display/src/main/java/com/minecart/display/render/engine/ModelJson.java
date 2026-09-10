@@ -25,6 +25,10 @@ final class ModelJson {
     List<Quad> quads = new ArrayList<>();   // oriented (tilted) flat plates — non-axis-aligned
     List<Movable> movables = new ArrayList<>();
     Collision collision;                    // a single axis-aligned collision box (physics); generated separately
+    List<Conn> connectors = new ArrayList<>(); // the part's PORTS (studs/sockets) — declared by datagen at the real studs
+
+    /** One connector: object-space position, outward mating axis, terminal index, male (stud) or female (socket). */
+    static final class Conn { float[] at; float[] axis; int terminal; boolean male; }
 
     /**
      * The part's <b>collision</b> shape: a single <b>axis-aligned</b> box over the model's visible extent — the
@@ -87,9 +91,18 @@ final class ModelJson {
 
     /** Serialises a component model (or part-type, movables empty) to its JSON form. */
     static ModelJson of(String id, List<PartMesh.Box> boxes, List<PartMesh.Quad> quads,
-                        List<ComponentModel.MovablePart> movs, Map<PartType, String> typeIds) {
+                        List<ComponentModel.MovablePart> movs, List<ComponentModel.Connector> conns,
+                        Map<PartType, String> typeIds) {
         ModelJson j = new ModelJson();
         j.id = id;
+        for (ComponentModel.Connector c : conns) {
+            Conn jc = new Conn();
+            jc.at = new float[]{c.local().x, c.local().y, c.local().z};
+            jc.axis = new float[]{c.axis().x, c.axis().y, c.axis().z};
+            jc.terminal = c.terminal();
+            jc.male = c.male();
+            j.connectors.add(jc);
+        }
         for (PartMesh.Quad q : quads) {
             Quad jq = new Quad();
             jq.corners = new float[][]{
