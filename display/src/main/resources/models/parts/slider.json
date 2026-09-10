@@ -40,5 +40,19 @@
     "friction": 0.9,
     "restitution": 0.0
   },
+  "visual": {
+    "from": [
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    "to": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  },
   "connectors": []
 }

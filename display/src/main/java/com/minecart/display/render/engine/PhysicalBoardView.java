@@ -569,8 +569,9 @@ public final class PhysicalBoardView implements Disposable {
                     if (d < bestDist) { bestDist = d; best = new Focus(i, s, ab); }
                 }
             }
-            if (m.collision != null) {
-                float[] ab = worldAabb(m.collision, tf);
+            ComponentModel.Collision look = m.visual != null ? m.visual : m.collision; // what you SEE is what you focus
+            if (look != null) {
+                float[] ab = worldAabb(look, tf);
                 if (rayHitsAabb(ray, ab, hit)) {
                     float d = ray.origin.dst2(hit);
                     if (d < bestDist) { bestDist = d; best = new Focus(i, -1, ab); }
@@ -649,7 +650,7 @@ public final class PhysicalBoardView implements Disposable {
     public float[] debugSubAabb(int i, int sub) {
         Placed p = placed.get(i);
         ComponentModel m = loader.model(p.modelId());
-        if (sub < 0 || sub >= m.movableParts.size()) return worldAabb(m.collision, p.transform());
+        if (sub < 0 || sub >= m.movableParts.size()) return worldAabb(m.visual != null ? m.visual : m.collision, p.transform());
         return movableWorldAabb(m.movableParts.get(sub), p.transform(), i < ents.size() ? ents.get(i) : null);
     }
 
@@ -880,16 +881,9 @@ public final class PhysicalBoardView implements Disposable {
         float[] r = {-1f, 0f, -1f, 1f, 1f, 1f};
         if (modelId == null || modelId.isEmpty()) return r;
         ComponentModel m = loader.model(modelId);
-        boolean any = false;
-        float minx = Float.MAX_VALUE, miny = Float.MAX_VALUE, minz = Float.MAX_VALUE;
-        float maxx = -Float.MAX_VALUE, maxy = -Float.MAX_VALUE, maxz = -Float.MAX_VALUE;
-        for (PartMesh.Box b : m.staticBoxes) {
-            any = true;
-            minx = Math.min(minx, b.cx() - b.sx() / 2f); maxx = Math.max(maxx, b.cx() + b.sx() / 2f);
-            miny = Math.min(miny, b.cy() - b.sy() / 2f); maxy = Math.max(maxy, b.cy() + b.sy() / 2f);
-            minz = Math.min(minz, b.cz() - b.sz() / 2f); maxz = Math.max(maxz, b.cz() + b.sz() / 2f);
-        }
-        return any ? new float[]{minx, miny, minz, maxx, maxy, maxz} : r;
+        ComponentModel.Collision v = m.visual; // REGISTERED by datagen (never derived here)
+        if (v == null) return r;
+        return new float[]{v.cx() - v.hx(), v.cy() - v.hy(), v.cz() - v.hz(), v.cx() + v.hx(), v.cy() + v.hy(), v.cz() + v.hz()};
     }
 
     public List<Placed> placements() {

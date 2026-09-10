@@ -874,6 +874,20 @@
     "friction": 0.9,
     "restitution": 0.0
   },
+  "visual": {
+    "from": [
+      -16.5,
+      -1.0,
+      -10.5
+    ],
+    "to": [
+      16.5,
+      13.0,
+      10.5
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  },
   "connectors": [
     {
       "at": [

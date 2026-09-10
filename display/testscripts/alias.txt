@@ -6,7 +6,8 @@ do cam -90 -36.5
 do place led 60 72 0
 expect placed == 1
 do deck select 2            # hold the LED (demo deck: wire, ic, led, ...)
-do aim 0                    # box centre → enters through the top face
+do aim 0                    # visual-box centre → enters through the top face …
+look -1.2 0 over 30         # … nudged toward the near stud (dead-centre is a tie between the two studs)
 wait 40
 expect ghost.y == 5
 expect ghost.valid == true
