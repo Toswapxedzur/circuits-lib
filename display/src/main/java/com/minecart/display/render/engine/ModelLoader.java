@@ -52,6 +52,9 @@ final class ModelLoader {
         if (j.collision != null) {
             b.collision(toCollision(j.collision));
         }
+        if (j.visual != null) {
+            b.visual(toCollision(j.visual)); // registered tight visual box (outline / focus pick / deck cards)
+        }
         // Ports are DATA: registered by datagen at the real studs (owner rule 2026-09-10: "the socket and stud
         // should be registered, not derived on runtime"). A model that registers none has none.
         return b.build();

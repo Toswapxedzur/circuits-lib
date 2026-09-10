@@ -446,7 +446,7 @@ public final class SnapScreen extends ScreenAdapter {
                 hud = "INVENTORY  |  Pick: " + pick
                         + "   |   ←/→ browse   Enter replace held   [ add-left   ] add-right   Del remove held   E/Esc close";
             } else {
-                String focusName = physFocus == null ? "" : "   |   ▸ " + physWorld.placements().get(physFocus.placementIndex()).modelId()
+                String focusName = physFocus == null ? "" : "   |   looking at: " + physWorld.placements().get(physFocus.placementIndex()).modelId()
                         + (physFocus.subPart() >= 0 ? " / sub " + physFocus.subPart() : "");
                 hud = (designWorld ? "DESIGN WORLD" : "PHYSICAL") + "  |  Held: " + held + focusName
                         + "   |   ←/→ select   [ ] pin-terminal   scroll/R rotate   E inventory   LMB place   RMB remove   Esc cursor"
@@ -664,11 +664,13 @@ public final class SnapScreen extends ScreenAdapter {
         }
         boolean sub = physFocus.subPart() >= 0;
         float[] a = physFocus.aabb();
-        float e = sub ? 0.2f : 0.4f; // expand a touch so the outline sits just outside the surface
+        float e = 0.08f; // hug the VISUAL box (owner: tight, like Minecraft's block outline)
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST); // draw the highlight ON TOP (not occluded by the placement ghost)
         outline.setProjectionMatrix(camera.combined);
         outline.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
-        if (sub) outline.setColor(0.2f, 0.9f, 1f, 1f); else outline.setColor(1f, 0.92f, 0.2f, 1f); // sub=cyan, base=yellow
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        outline.setColor(0f, 0f, 0f, 0.4f); // Minecraft's block outline: thin black at 40% (same for part or knob)
         aabbEdges(outline, a[0] - e, a[1] - e, a[2] - e, a[3] + e, a[4] + e, a[5] + e);
         outline.end();
     }

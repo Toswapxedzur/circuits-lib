@@ -25,6 +25,7 @@ final class ModelJson {
     List<Quad> quads = new ArrayList<>();   // oriented (tilted) flat plates — non-axis-aligned
     List<Movable> movables = new ArrayList<>();
     Collision collision;                    // a single axis-aligned collision box (physics); generated separately
+    Collision visual;                       // the TIGHT axis-aligned box over everything drawn (outline/pick/cards) — registered, not derived
     List<Conn> connectors = new ArrayList<>(); // the part's PORTS (studs/sockets) — declared by datagen at the real studs
 
     /** One connector: object-space position, outward mating axis, terminal index, male (stud) or female (socket). */
@@ -144,12 +145,13 @@ final class ModelJson {
             }
             j.movables.add(mv);
         }
-        j.collision = aabb(boxes, quads); // the single axis-aligned collision box over the visible extent
+        j.collision = aabb(boxes, quads, true);  // the collision box: the BASE PLATE (top clamped to BASE_TOP)
+        j.visual = aabb(boxes, quads, false);    // the visual box: everything drawn (LED dome, coil, can, …)
         return j;
     }
 
     /** The tight axis-aligned box over every box + quad corner (object space), or null if the model is empty. */
-    private static Collision aabb(List<PartMesh.Box> boxes, List<PartMesh.Quad> quads) {
+    private static Collision aabb(List<PartMesh.Box> boxes, List<PartMesh.Quad> quads, boolean clampToBase) {
         float[] min = {Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE};
         float[] max = {-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
         boolean any = false;
@@ -172,7 +174,7 @@ final class ModelJson {
         // top at y=BASE_TOP); the raised component body (resistor coil, LED/lamp bulb, capacitor can) above it is
         // VISUAL only and must NOT collide or affect stacking — real Snap Circuits parts collide as their small
         // base. So clamp the box top to the base height (the footprint X/Z already comes from the wide base plate).
-        max[1] = Math.min(max[1], BASE_TOP);
+        if (clampToBase) max[1] = Math.min(max[1], BASE_TOP);
         Collision col = new Collision();
         col.from = min;
         col.to = max;
