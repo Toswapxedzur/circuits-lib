@@ -662,17 +662,23 @@ public final class SnapScreen extends ScreenAdapter {
         if (outline == null) {
             outline = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
         }
-        boolean sub = physFocus.subPart() >= 0;
-        float[] a = physFocus.aabb();
-        float e = 0.08f; // hug the VISUAL box (owner: tight, like Minecraft's block outline)
-        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST); // draw the highlight ON TOP (not occluded by the placement ghost)
+        float[] seg = physWorld.focusEdges(physFocus); // the model's OWN shape (crease edges), like Minecraft
+        // DEPTH-TESTED like Minecraft's block outline: edges behind the part (underside socket fences, far dome
+        // edges) are hidden. The edges are pre-lifted a hair outside their faces (see shapeEdges) so visible ones
+        // pass the test without a depth bias.
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
         outline.setProjectionMatrix(camera.combined);
         outline.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         outline.setColor(0f, 0f, 0f, 0.4f); // Minecraft's block outline: thin black at 40% (same for part or knob)
-        aabbEdges(outline, a[0] - e, a[1] - e, a[2] - e, a[3] + e, a[4] + e, a[5] + e);
+        for (int i = 0; i + 5 < seg.length; i += 6) {
+            outline.line(seg[i], seg[i + 1], seg[i + 2], seg[i + 3], seg[i + 4], seg[i + 5]);
+        }
         outline.end();
+        Gdx.gl.glDepthFunc(GL20.GL_LESS); // restore the engine's default (a leaked func re-renders the world wrong)
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
     }
 
     private static void aabbEdges(com.badlogic.gdx.graphics.glutils.ShapeRenderer sr,
