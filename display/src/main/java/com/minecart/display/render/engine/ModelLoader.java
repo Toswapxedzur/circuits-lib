@@ -50,30 +50,10 @@ final class ModelLoader {
             }
         }
         if (j.collision != null) {
-            ComponentModel.Collision col = toCollision(j.collision);
-            b.collision(col);
-            if (j.connectors != null && !j.connectors.isEmpty()) {
-                return b.build(); // ports came from datagen — no derived fallback
-            }
-            // Default connectors (until datagen emits real ones): two terminals on the STANDARD grid span — the
-            // parts are modelled with studs at ±half-pitch (±12), so terminals there let different-length parts
-            // interconnect (share a node when coincident), matching the grid they were designed for. The mating
-            // AXIS is the terminal's OUTWARD horizontal direction (−X / +X), so parts snap + rotation-align.
-            // TYPED: terminal 0 (−X end) = SOCKET (female), terminal 1 (+X end) = STUD (male). Snapping mates
-            // stud↔socket only (two studs / two + ends can't clip together — the keying). Electrical connectivity
-            // stays coincidence-based (ConnectorField), independent of this typing.
-            // Terminals sit on the part's REAL studs (owner 2026-09-02): the modelled snap studs are at ±(hx−4.5)
-            // — wire_2 ±6, resistor/led/… ±12, wire_7 ±36. Rounding that to a multiple of 6 keeps the stud SPACING
-            // (2·ex) a multiple of the board pitch (12) so every part aligns to the grid, and repairs odd models
-            // (battery_cell hx=9.5 → ex 6). The board studs are 12 apart, so wire_2 spans exactly one cell.
-            float ex = Math.round((col.hx() - 4.5f) / 6f) * 6f;
-            b.connector(new ComponentModel.Connector(
-                    new com.badlogic.gdx.math.Vector3(col.cx() - ex, 0f, col.cz()),
-                    new com.badlogic.gdx.math.Vector3(-1f, 0f, 0f), 0, false)); // socket
-            b.connector(new ComponentModel.Connector(
-                    new com.badlogic.gdx.math.Vector3(col.cx() + ex, 0f, col.cz()),
-                    new com.badlogic.gdx.math.Vector3(1f, 0f, 0f), 1, true));   // stud
+            b.collision(toCollision(j.collision));
         }
+        // Ports are DATA: registered by datagen at the real studs (owner rule 2026-09-10: "the socket and stud
+        // should be registered, not derived on runtime"). A model that registers none has none.
         return b.build();
     }
 

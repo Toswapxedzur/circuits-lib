@@ -433,6 +433,13 @@ final class Parts {
                 .box(-3f, 0f, 0f, 12f, 6f, 6f, wrap)                // orange wrap  x -9..3
                 .box(6f, 0f, 0f, 6f, 6f, 6f, capEnd)                // black + end  x 3..9
                 .box(9.5f, 0f, 0f, 1f, 2f, 2f, nub)                 // + terminal   x 9..10
+                // REGISTERED terminals (never derived): one board pitch apart so the cell can sit on two sockets.
+                // Provisional until the battery HOLDER part exists (owner's entity/holder fork) — that part will
+                // carry the real studs/sockets; the loose cell itself has none.
+                .connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(-6f, 0f, 0f),
+                        new com.badlogic.gdx.math.Vector3(-1f, 0f, 0f), 0, false))
+                .connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(6f, 0f, 0f),
+                        new com.badlogic.gdx.math.Vector3(1f, 0f, 0f), 1, true))
                 .build();
     }
 
