@@ -50,15 +50,17 @@ final class ComponentModel {
     final List<PartMesh.Quad> staticQuads;
     final List<MovablePart> movableParts;
     final Collision collision;                  // the axis-aligned collision box (may be null)
+    final Collision visual;                     // the tight box over everything drawn (registered by datagen; may be null)
     final List<Connector> connectors;           // physical mating points (may be empty)
 
     private ComponentModel(String id, List<PartMesh.Box> staticBoxes, List<PartMesh.Quad> staticQuads,
-                           List<MovablePart> movableParts, Collision collision, List<Connector> connectors) {
+                           List<MovablePart> movableParts, Collision collision, Collision visual, List<Connector> connectors) {
         this.id = id;
         this.staticBoxes = staticBoxes;
         this.staticQuads = staticQuads;
         this.movableParts = movableParts;
         this.collision = collision;
+        this.visual = visual;
         this.connectors = connectors;
     }
 
@@ -73,9 +75,16 @@ final class ComponentModel {
         private final List<MovablePart> movables = new ArrayList<>();
         private final List<Connector> connectors = new ArrayList<>();
         private Collision collision;
+        private Collision visual;
 
         private Builder(String id) {
             this.id = id;
+        }
+
+        /** Sets the tight visual box (ModelLoader passes the datagen'd one). */
+        Builder visual(Collision c) {
+            this.visual = c;
+            return this;
         }
 
         /** Sets the loaded axis-aligned collision box (ModelLoader passes the datagen'd one). */
@@ -154,7 +163,7 @@ final class ComponentModel {
 
         ComponentModel build() {
             return new ComponentModel(id, List.copyOf(statics), List.copyOf(quads), List.copyOf(movables),
-                    collision, List.copyOf(connectors));
+                    collision, visual, List.copyOf(connectors));
         }
     }
 }
