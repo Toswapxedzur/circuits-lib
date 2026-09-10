@@ -15,4 +15,8 @@ do place wire_2 54 24 0             # unchanged standard part: studs ±6 (clear 
 expect placed == 3
 expect part.x.2 == 54
 expect part.z.2 == 24
+do place battery_cell 48 36 0       # registered (not derived) terminals ±6: t0 at 42 → socket 48 → centre 54
+expect placed == 4
+expect part.x.3 == 54
+expect part.z.3 == 36
 end
