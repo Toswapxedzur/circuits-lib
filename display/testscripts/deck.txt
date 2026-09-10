@@ -1,5 +1,6 @@
 # Deck: ←/→ selection glides (eased centre), the E-panel opens/closes, held card tracks selection.
 do cursor caught
+do deck clear              # launch-independent: start from the pristine hand (Cursor only)
 do deck add wire_2
 do deck add led
 do deck add resistor

@@ -844,7 +844,12 @@ public final class SnapScreen extends ScreenAdapter {
                 case "deck" -> {
                     if (a[0].equals("add")) physEditor.deckAddRight(a[1]);
                     else if (a[0].equals("select")) physEditor.deckSetSelected(Integer.parseInt(a[1]));
-                    return null;
+                    else if (a[0].equals("clear")) { // back to the pristine hand: just the Cursor
+                        while (physEditor.deckSize() > 1) physEditor.deckRemove();
+                        physEditor.deckReplace("");
+                        physEditor.deckSetSelected(0);
+                    }
+                    return "deck " + physEditor.deckSize() + " held=" + physEditor.modelId();
                 }
                 case "fixedcam" -> { fixedCam = a[0].equalsIgnoreCase("on"); return "fixedcam " + fixedCam; }
                 case "cam" -> { // cam <yaw> <pitch>: set the view angles directly (position unchanged)
@@ -899,6 +904,11 @@ public final class SnapScreen extends ScreenAdapter {
             }
         }
         @Override public Object probe(String n) {
+            if (n.startsWith("part.")) { // part.x|y|z.<i>: a placement's world translation component
+                String[] q = n.split("\\.");
+                Vector3 t = physWorld.placements().get(Integer.parseInt(q[2])).transform().getTranslation(new Vector3());
+                return q[1].equals("x") ? t.x : q[1].equals("y") ? t.y : t.z;
+            }
             if (n.startsWith("sub.channel.")) return physWorld.debugChannel(Integer.parseInt(n.substring(12)));
             if (n.startsWith("sub.closed."))  return physWorld.debugSwitchClosed(Integer.parseInt(n.substring(11)));
             return switch (n) {
