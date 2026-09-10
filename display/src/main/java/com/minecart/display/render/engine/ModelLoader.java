@@ -42,9 +42,19 @@ final class ModelLoader {
                         new BindingSpec(mv.bindingType, mv.channel, mv.axis, mv.pivot, mv.degPerUnit), inter);
             }
         }
+        if (j.connectors != null && !j.connectors.isEmpty()) { // datagen-declared ports, at the REAL studs
+            for (ModelJson.Conn c : j.connectors) {
+                b.connector(new ComponentModel.Connector(
+                        new com.badlogic.gdx.math.Vector3(c.at[0], c.at[1], c.at[2]),
+                        new com.badlogic.gdx.math.Vector3(c.axis[0], c.axis[1], c.axis[2]), c.terminal, c.male));
+            }
+        }
         if (j.collision != null) {
             ComponentModel.Collision col = toCollision(j.collision);
             b.collision(col);
+            if (j.connectors != null && !j.connectors.isEmpty()) {
+                return b.build(); // ports came from datagen — no derived fallback
+            }
             // Default connectors (until datagen emits real ones): two terminals on the STANDARD grid span — the
             // parts are modelled with studs at ±half-pitch (±12), so terminals there let different-length parts
             // interconnect (share a node when coincident), matching the grid they were designed for. The mating

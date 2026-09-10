@@ -21,7 +21,7 @@ import java.util.Locale;
  * lmb down|up|click   rmb down|up|click   mouse at the screen centre (the crosshair)
  * scroll &lt;amount&gt; [x&lt;n&gt; every &lt;ms&gt;] one wheel event, or a burst of n events spaced ms apart
  * look &lt;dYawDeg&gt; &lt;dPitchDeg&gt; over &lt;ms&gt;   turn the camera by a delta, spread evenly over ms
- * do &lt;verb&gt; [args...]               a host action (setup): cursor caught|free, clear, deck add &lt;id&gt;,
+ * do &lt;verb&gt; [args...]               a host action (setup): cursor caught|free, clear, deck add &lt;id&gt;, deck clear,
  *                                   deck select &lt;i&gt;, place &lt;modelId&gt; cross | &lt;x&gt; &lt;z&gt; [yaw] [y],
  *                                   aim &lt;placement&gt; [sub] (crosshair onto a hitbox centre), cam &lt;yaw&gt; &lt;pitch&gt;,
  *                                   fixedcam on|off (freeze mouse-look so a human mouse can't disturb a live test),
@@ -154,7 +154,11 @@ public final class InputScript {
                 case "dump" -> {
                     String[] names = c.t().length > 1 ? java.util.Arrays.copyOfRange(c.t(), 1, c.t().length) : host.probeNames();
                     StringBuilder sb = new StringBuilder("INPUTTEST dump");
-                    for (String n : names) sb.append(' ').append(n).append('=').append(host.probe(n));
+                    for (String n : names) {
+                        Object v;
+                        try { v = host.probe(n); } catch (RuntimeException e) { v = "ERR:" + e.getClass().getSimpleName(); }
+                        sb.append(' ').append(n).append('=').append(v);
+                    }
                     out.accept(sb.toString());
                     advance();
                 }
@@ -169,8 +173,14 @@ public final class InputScript {
     private void expect(Cmd c) {
         String probe = c.t()[1], op = c.t()[2], rhs = c.t()[3];
         float tol = c.t().length > 4 ? num(c.t()[4]) : 1e-3f;
-        Object actual = host.probe(probe);
-        Object want = rhs.startsWith("@") ? host.probe(rhs.substring(1)) : parse(rhs);
+        Object actual, want;
+        try { // a probe that throws (e.g. an index past the placements) is a FAILED expectation, not a crash
+            actual = host.probe(probe);
+            want = rhs.startsWith("@") ? host.probe(rhs.substring(1)) : parse(rhs);
+        } catch (RuntimeException e) {
+            fail(c, "probe threw " + e);
+            return;
+        }
         boolean ok;
         if (actual == null) ok = false;
         else if (actual instanceof Number a && want instanceof Number w) {

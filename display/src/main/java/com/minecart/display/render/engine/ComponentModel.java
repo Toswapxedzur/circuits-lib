@@ -84,6 +84,9 @@ final class ComponentModel {
             return this;
         }
 
+        /** How many connectors have been declared so far (the next one's terminal index). */
+        int connectorCount() { return connectors.size(); }
+
         /** Adds a physical connector (object space). */
         Builder connector(Connector c) {
             connectors.add(c);

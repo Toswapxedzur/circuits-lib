@@ -312,6 +312,16 @@ final class Parts {
     /** The underside socket at an arbitrary grid point (x,z) — used by the T-base's stem-tip port, which sits
      *  off the z=0 line. Same 5×5 fence → inner 3×3 hollow → recessed metal floor as {@link #socket(ComponentModel.Builder, float)}. */
     private ComponentModel.Builder socket(ComponentModel.Builder b, float x, float z) {
+        // Every underside socket IS a port: declare the CONNECTOR right here, at the real stud position, so the
+        // terminals the board snaps to are exactly where the studs are drawn. (The runtime used to DERIVE two
+        // terminals from the collision box — its centre row — which put T-parts and the 2-row IC half a pitch
+        // off the grid: owner "they are not grid aligned", 2026-09-10.) Axis = outward horizontal direction;
+        // terminal 0 (−X end) female / terminal 1 (+X end) male keeps the standard two-port keying.
+        int t = b.connectorCount();
+        com.badlogic.gdx.math.Vector3 axis = x != 0f ? new com.badlogic.gdx.math.Vector3(Math.signum(x), 0f, 0f)
+                : new com.badlogic.gdx.math.Vector3(0f, 0f, z != 0f ? Math.signum(z) : 1f);
+        boolean male = x > 0f || (x == 0f && z > 0f);
+        b = b.connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(x, 0f, z), axis, t, male));
         return b.box(x - 2f, -0.5f, z, 1f, 1f, 5f, fence(501L)) // fence: left wall  (full depth)
                 .box(x + 2f, -0.5f, z, 1f, 1f, 5f, fence(501L)) // fence: right wall
                 .box(x, -0.5f, z - 2f, 3f, 1f, 1f, fence(502L)) // fence: front wall (fills the gap)
