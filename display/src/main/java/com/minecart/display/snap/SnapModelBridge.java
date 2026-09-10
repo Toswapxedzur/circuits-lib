@@ -116,6 +116,13 @@ public final class SnapModelBridge {
         };
     }
 
+    /** The catalog's placeable model ids (every registered component except the empty Cursor tool), in hotbar order. */
+    public static List<String> placeableIds() {
+        List<String> out = new ArrayList<>();
+        for (Comp c : CATALOG) if (!c.modelId().isEmpty()) out.add(c.modelId());
+        return out;
+    }
+
     /** Every model id {@link #modelId} can emit — so the renderer can pre-load them all (e.g. for the placement
      *  ghost, whose sprites must be in the atlas before any part of that type is placed). */
     public static List<String> allModelIds() {
