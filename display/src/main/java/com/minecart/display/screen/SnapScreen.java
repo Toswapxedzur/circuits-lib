@@ -89,6 +89,11 @@ public final class SnapScreen extends ScreenAdapter {
     // typed mating + live circuit + persistence). The legacy discrete grid mode is retained as an opt-out:
     // -Dsnap.physical=off (or -Pphysical=off via runsnap).
     private final boolean physical = !"off".equals(System.getProperty("snap.physical"));
+    // DESIGN WORLD (-Pdesign=1): every registered component laid out on a big board, each placed through the normal
+    // snap/canPlace path so it is grid-aligned by construction — Minecraft's debug world for parts. Never loads or
+    // saves a world file; the HUD names the part under the crosshair.
+    private final boolean designWorld = "1".equals(System.getProperty("snap.design"));
+    private static final int DESIGN_PER_ROW = 5;
     private com.minecart.display.render.engine.PhysicalBoardView physWorld;
     private com.minecart.display.snap.PhysicalEditor physEditor;
     private com.badlogic.gdx.graphics.glutils.ShapeRenderer outline; // Minecraft-style focus highlight
@@ -147,9 +152,15 @@ public final class SnapScreen extends ScreenAdapter {
         // Physical mode uses its own denser stud pitch (12); legacy grid mode uses BUMP_SPACING (24).
         float cell = physical ? com.minecart.display.render.engine.PhysicalBoardView.PITCH
                               : SnapSceneGeometry.BUMP_SPACING;
-        float centerX = board.width() * cell / 2f;
-        float centerZ = board.height() * cell / 2f;
-        float span = Math.max(board.width(), board.height()) * cell + cell;
+        int cols = board.width(), rows = board.height();
+        if (physical && designWorld) { // a board big enough for every catalog part in a DESIGN_PER_ROW grid
+            int n = com.minecart.display.snap.SnapModelBridge.placeableIds().size();
+            cols = DESIGN_PER_ROW * 4 + 1;                       // 48 units (4 pitches) per part column
+            rows = ((n + DESIGN_PER_ROW - 1) / DESIGN_PER_ROW) * 3 + 1; // 36 units (3 pitches) per part row
+        }
+        float centerX = cols * cell / 2f;
+        float centerZ = rows * cell / 2f;
+        float span = Math.max(cols, rows) * cell + cell;
 
         camera = new PerspectiveCamera(60f, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         camera.near = 1f;
@@ -160,8 +171,12 @@ public final class SnapScreen extends ScreenAdapter {
         if (physical) {
             // Physical free-placement mode: continuous transforms + magnetic snap, no grid board/editor.
             physWorld = new com.minecart.display.render.engine.PhysicalBoardView();
-            physWorld.setBaseBoard(board.width(), board.height(), 0f);
+            physWorld.setBaseBoard(cols, rows, 0f);
             physEditor = new com.minecart.display.snap.PhysicalEditor();
+            if (designWorld) {
+                log.info("design world: {}", physWorld.designLayout(
+                        com.minecart.display.snap.SnapModelBridge.placeableIds(), DESIGN_PER_ROW));
+            }
             if ("1".equals(System.getProperty("snap.deckdemo"))) { // DEV: pre-fill the hand so the fan is visible
                 // 6 cards spanning the width registry: widths 2,5,2,3,3,2 — wide cards (ic=5, battery/npn=3) take
                 // proportionally more arc, so the fan spacing scales with deckWidth.
@@ -187,7 +202,7 @@ public final class SnapScreen extends ScreenAdapter {
                     log.warn("live console: cannot listen on {}: {}", port, e.toString());
                 }
             }
-            int loaded = physWorld.load(physFile());
+            int loaded = designWorld ? 0 : physWorld.load(physFile()); // the design world is never persisted
             if (loaded > 0 && serverWorld != null && integrated != null) {
                 integrated.level().submit(() -> physWorld.buildCircuit(serverWorld)); // restore the live circuit
                 log.info("physical: loaded {} placements from {}", loaded, physFile().path());
@@ -292,7 +307,7 @@ public final class SnapScreen extends ScreenAdapter {
                 if (serverWorld != null && integrated != null) {
                     integrated.level().submit(() -> physWorld.buildCircuit(serverWorld));
                 }
-                physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
+                if (!designWorld) physWorld.save(physFile()); // persist so a subsequent (non-phystest) run loads them
                 log.info("phystest: {} parts; grid-snapped-flat={} joint-blocked={} separate-flat-ok={} cantilever-blocked={} direct-stack-ok={} off-board-blocked={}; saved {}",
                         physWorld.placements().size(), gridSnapped, jointBlocked, separateFlatOk, cantileverBlocked, directStackOk, offBoardBlocked, physFile().path());
             }
@@ -431,7 +446,9 @@ public final class SnapScreen extends ScreenAdapter {
                 hud = "INVENTORY  |  Pick: " + pick
                         + "   |   ←/→ browse   Enter replace held   [ add-left   ] add-right   Del remove held   E/Esc close";
             } else {
-                hud = "PHYSICAL  |  Held: " + held
+                String focusName = physFocus == null ? "" : "   |   ▸ " + physWorld.placements().get(physFocus.placementIndex()).modelId()
+                        + (physFocus.subPart() >= 0 ? " / sub " + physFocus.subPart() : "");
+                hud = (designWorld ? "DESIGN WORLD" : "PHYSICAL") + "  |  Held: " + held + focusName
                         + "   |   ←/→ select   [ ] pin-terminal   scroll/R rotate   E inventory   LMB place   RMB remove   Esc cursor"
                         + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
                         + (i > 1e-4 ? String.format("    |    circuit LIVE: I = %.3f A", i) : "");
@@ -1095,7 +1112,7 @@ public final class SnapScreen extends ScreenAdapter {
         shuttingDown = true;
         if (physical && physWorld != null) {
             try {
-                physWorld.save(physFile());
+                if (!designWorld) physWorld.save(physFile());
                 log.info("physical: saved {} placements to {}", physWorld.placements().size(), physFile().path());
             } catch (Throwable t) {
                 log.warn("physical save failed", t);

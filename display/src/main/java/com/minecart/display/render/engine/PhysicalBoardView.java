@@ -125,6 +125,22 @@ public final class PhysicalBoardView implements Disposable {
         rebuild();
     }
 
+    /** DESIGN WORLD: lays {@code ids} out in a grid — {@code perRow} parts per row, 48×36 units per cell — placing
+     *  each through the normal {@link #snap}/{@link #canPlace} path, so every part is grid-aligned by construction
+     *  and a model whose registered ports don't fit the grid shows up as BLOCKED. Returns a one-line report. */
+    public String designLayout(List<String> ids, int perRow) {
+        StringBuilder blocked = new StringBuilder();
+        int n = 0;
+        for (int k = 0; k < ids.size(); k++) {
+            String id = ids.get(k);
+            float x = 24f + (k % perRow) * 48f, z = 24f + (k / perRow) * 36f;
+            Matrix4 m = snap(id, new Matrix4().setToTranslation(x, 0f, z));
+            if (canPlace(id, m)) { place(id, m); n++; }
+            else blocked.append(id).append(' ');
+        }
+        return "placed " + n + "/" + ids.size() + (blocked.length() == 0 ? "" : "  BLOCKED: " + blocked);
+    }
+
     /** Removes every placement (test/reset helper). */
     public void clearAll() {
         placed.clear();
