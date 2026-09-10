@@ -84,5 +84,34 @@
     "friction": 0.9,
     "restitution": 0.0
   },
-  "connectors": []
+  "connectors": [
+    {
+      "at": [
+        -6.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "terminal": 0,
+      "male": false
+    },
+    {
+      "at": [
+        6.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "terminal": 1,
+      "male": true
+    }
+  ]
 }
