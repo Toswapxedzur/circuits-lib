@@ -92,6 +92,7 @@ final class Parts {
     final PartType slider;                              // slide switch's mover (colour-independent)
     final PartType button;                              // press switch's plunger (colour-independent)
     final PartType pointer;                             // clock/roulette spinning red pointer (rotates about Y)
+    final PartType fan;                                 // motor's spinning propeller blade (rotates about Y, driven by current)
     // ⛔ BLANK BOARDS come in ALL colours (the palette showcase / recolourable substrate) — the only per-colour
     // arrays left; every FUNCTIONAL component is a single canonical colour. See [[snap-part-art-style]].
     final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];          // blank rectangular board, every colour
@@ -106,6 +107,7 @@ final class Parts {
     final ComponentModel varresTee;                                                // T-shaped variable resistor (tee + wide switch)
     final ComponentModel varresBar;                                                // resistor-style variable resistor (red base + switch)
     final ComponentModel varresClock;                                              // clock/roulette variable resistor (spinning pointer)
+    final ComponentModel motor;                                                    // DC motor: base + hub + current-driven fan
     // ⛔ NO COLOUR VARIANTS — each of these is built ONCE in its canonical colour, not per PLASTIC_HSV hue.
     final ComponentModel slideSwitch;   // green
     final ComponentModel pressSwitch;    // green
@@ -195,6 +197,11 @@ final class Parts {
         // The "spin" channel rotates it about the origin's Y axis (the clock centre) — a sweeping hand.
         pointer = new PartType("pointer", List.of(
                 new PartMesh.Box(0f, 0.5f, 1.5f, 1f, 1f, 3f, pointerPaint(270L), 0f, 6f, 1.5f, null, false, false, PartMesh.WHITE_BITS, null)));
+        // Motor FAN: a 2-blade black propeller (a + of two bars) centred on the origin so it spins about Y. The
+        // "spin" channel is advanced by the solved current each frame (updateMotors), not dragged.
+        fan = new PartType("fan", List.of(
+                new PartMesh.Box(0f, 0.5f, 0f, 15f, 1f, 3f, knob(970L), 0f, 0.5f, 0f, null, false, false, PartMesh.WHITE_BITS, null),
+                new PartMesh.Box(0f, 0.5f, 0f, 3f, 1f, 15f, knob(971L), 0f, 0.5f, 0f, null, false, false, PartMesh.WHITE_BITS, null)));
         Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
@@ -230,6 +237,7 @@ final class Parts {
         varresTee = buildVarresTee(vgreen);
         varresBar = buildVarresBar(vred);
         varresClock = buildVarresClock(WHITE_PLASTIC);
+        motor = buildMotor(PaletteDither.rampHsv(210f, 0.55f, 0.72f)); // blue-grey motor housing
         for (int n = WIRE_MIN; n <= WIRE_MAX; n++) {
             wires[n - WIRE_MIN] = buildWire(n, azure);
         }
@@ -557,6 +565,20 @@ final class Parts {
      * The pointer (a 1×1×3 bar) sits on the clock (y6..7) and rotates about the clock centre's Y axis via the
      * new serialisable "rotate" binding on the "spin" channel (±90° per unit).
      */
+    /**
+     * DC MOTOR: the standard recolourable base (studs at ±12) carrying a raised cylindrical HUB, with a black
+     * two-blade FAN on top that spins about the hub's Y axis. Electrically kind {@code 'm'} — a ~100Ω coil load;
+     * its {@code "spin"} channel is advanced by the solved current each frame ({@code updateMotors}), so the blade
+     * turns faster the more current flows and stops when the circuit opens. NOT draggable (no interaction).
+     */
+    private ComponentModel buildMotor(Color[] pal) {
+        return base("motor", pal)
+                .box(0f, 6f, 0f, 7f, 4f, 7f, plastic(960L, pal))  // motor hub y4..8
+                .box(0f, 8.5f, 0f, 3f, 1f, 3f, knob(962L))        // hub cap / axle collar y8..9
+                .movable(fan, 0f, 9f, 0f, BindingSpec.rotate("spin", 0f, 0f, 0f, 0f, 1f, 0f, 360f))
+                .build();
+    }
+
     private ComponentModel buildVarresClock(Color[] pal) {
         return base("varres_clock", pal, redTrace())
                 .box(0f, 5f, 0f, 7f, 2f, 7f, plastic(620L, WHITE_PLASTIC))                        // white clock platform y4..6
@@ -649,6 +671,7 @@ final class Parts {
         m.put("varres_tee", varresTee);     // Type 1 variable resistor — T-shaped + wide switch
         m.put("varres_bar", varresBar);     // Type 2 variable resistor — resistor-style + switch
         m.put("varres_clock", varresClock); // Type 3 variable resistor — clock + spinning pointer
+        m.put("motor", motor);              // DC motor — current-driven fan
         m.put("switch", slideSwitch); // ⛔ one canonical colour each — no per-hue variants
         m.put("press", pressSwitch);
         m.put("resistor", resistor);
@@ -666,6 +689,7 @@ final class Parts {
         m.put(slider.id(), slider);   // "slider"
         m.put(button.id(), button);   // "button"
         m.put(pointer.id(), pointer); // "pointer" — clock's spinning red hand
+        m.put(fan.id(), fan);         // "fan" — motor's current-driven propeller
         return m;
     }
 }

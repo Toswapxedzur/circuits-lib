@@ -1,0 +1,80 @@
+{
+  "id": "fan",
+  "elements": [
+    {
+      "from": [
+        -7.5,
+        0.0,
+        -1.5
+      ],
+      "to": [
+        7.5,
+        1.0,
+        1.5
+      ],
+      "faces": {
+        "east": "sp4101f2abccf4c73_1x3",
+        "west": "sp32bdb754be12b2f4_1x3",
+        "up": "sp6c04d2e6ff42ca75_15x3",
+        "down": "sp253fa11392afd8f6_15x3",
+        "south": "sp5e8162c40e1a5f77_15x1",
+        "north": "sp2255feddeec554f8_15x1"
+      },
+      "tint": false,
+      "translucent": false
+    },
+    {
+      "from": [
+        -1.5,
+        0.0,
+        -7.5
+      ],
+      "to": [
+        1.5,
+        1.0,
+        7.5
+      ],
+      "faces": {
+        "east": "sp6eb8b6526c6eb692_1x15",
+        "west": "sp25df173f1225ef13_1x15",
+        "up": "sp5f26203343f74f94_3x15",
+        "down": "sp185ead3bfaf71e15_3x15",
+        "south": "sp51a2b01052d9cd96_3x1",
+        "north": "spcfea8a3adb88d17_3x1"
+      },
+      "tint": false,
+      "translucent": false
+    }
+  ],
+  "quads": [],
+  "movables": [],
+  "collision": {
+    "from": [
+      -7.5,
+      0.0,
+      -7.5
+    ],
+    "to": [
+      7.5,
+      1.0,
+      7.5
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  },
+  "visual": {
+    "from": [
+      -7.5,
+      0.0,
+      -7.5
+    ],
+    "to": [
+      7.5,
+      1.0,
+      7.5
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  },
+  "connectors": []
+}

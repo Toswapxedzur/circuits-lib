@@ -58,6 +58,7 @@ public final class SnapModelBridge {
             new Comp("switch", "Switch", 's'),
             new Comp("press", "Button", 's'),
             new Comp("battery_cell", "Battery", 'b'),
+            new Comp("motor", "Motor", 'm'),
             new Comp("transistor_npn", "NPN", '.'),
             new Comp("transistor_pnp", "PNP", '.'),
             new Comp("ic", "IC", '.'));
