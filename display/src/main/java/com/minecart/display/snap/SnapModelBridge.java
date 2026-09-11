@@ -57,7 +57,8 @@ public final class SnapModelBridge {
             new Comp("lamp", "Lamp", 'p'),
             new Comp("switch", "Switch", 's'),
             new Comp("press", "Button", 's'),
-            new Comp("battery_cell", "Battery", 'b'),
+            new Comp("battery", "Battery", 'b'),
+            new Comp("battery_cell", "Cell", 'b'),
             new Comp("motor", "Motor", 'm'),
             new Comp("transistor_npn", "NPN", '.'),
             new Comp("transistor_pnp", "PNP", '.'),
@@ -82,7 +83,8 @@ public final class SnapModelBridge {
             "ic", 5f,
             "transistor_npn", 3f,
             "transistor_pnp", 3f,
-            "battery_cell", 3f);
+            "battery_cell", 3f,
+            "battery", 3f);
     /** Hold-angle overrides (degrees). Most cards share {@link #DEFAULT_HOLD_DEG}; override only where art needs it. */
     private static final java.util.Map<String, Float> HOLD_DEG = java.util.Map.of();
 
