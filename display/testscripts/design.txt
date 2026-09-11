@@ -1,5 +1,5 @@
 # DESIGN WORLD (-Pdesign=1): every catalog part must place through the normal snap/canPlace path — a registered
 # port set that does not fit the grid shows up here as a missing placement.
 wait 100
-expect placed == 17
+expect placed == 18
 end
