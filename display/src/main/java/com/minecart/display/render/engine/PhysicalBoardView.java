@@ -146,6 +146,7 @@ public final class PhysicalBoardView implements Disposable {
         placed.clear();
         deviceEdge.clear();
         subState.clear();
+        motorSpin.clear();
         rebuild();
     }
 
@@ -228,6 +229,27 @@ public final class PhysicalBoardView implements Disposable {
 
     /** Reads each device's solved current and makes the part EMIT light proportional to it — so a live circuit
      *  glows in-world (a resistor "heats up", an LED lights its colour), not just in the HUD. Called per frame. */
+    private long lastFrameNanos;
+    private final java.util.Map<Integer, Float> motorSpin = new java.util.HashMap<>();
+    private static final float MOTOR_SPIN_GAIN = 90f; // fan turns/second per amp of coil current
+
+    /** Advances each motor's {@code "spin"} channel by its solved current × {@code dt} — the blade turns faster the
+     *  more current flows, and freezes when the loop opens. Wraps in [0,1) (one channel unit = a full 360° turn). */
+    private void updateMotors(float dt) {
+        for (int i = 0; i < ents.size(); i++) {
+            if (kind(placed.get(i).modelId()) != 'm') continue;
+            com.minecart.logic.CircuitEdge edge = deviceEdge.get(i);
+            double cur = edge == null ? 0.0 : Math.abs(edge.getCurrent().getValue());
+            float v = motorSpin.getOrDefault(i, 0f) + (float) (cur * MOTOR_SPIN_GAIN) * dt;
+            v -= (float) Math.floor(v);
+            motorSpin.put(i, v);
+            ents.get(i).anim.set("spin", v);
+        }
+    }
+
+    /** TEST: motor {@code i}'s current spin channel (0..1 = one turn), or NaN if it's not a motor. */
+    public float debugSpin(int i) { return kind(placed.get(i).modelId()) == 'm' ? motorSpin.getOrDefault(i, 0f) : Float.NaN; }
+
     private void updateElectricalGlow() {
         for (int i = 0; i < ents.size(); i++) {
             EngineRenderer.DynamicEntity e = ents.get(i);
@@ -276,7 +298,7 @@ public final class PhysicalBoardView implements Disposable {
         for (int i = 0; i < placed.size(); i++) {
             Placed p = placed.get(i);
             char k = kind(p.modelId());
-            if (k == 'r' || k == 'b' || k == 'l' || k == 'p' || k == 'c' || k == 'd') {
+            if (k == 'r' || k == 'b' || k == 'l' || k == 'p' || k == 'c' || k == 'd' || k == 'm') {
                 Vector3[] t = terminals(p);
                 if (t == null) continue;
                 com.minecart.logic.CircuitNode a = field.at(t[0]), bb = field.at(t[1]);
@@ -284,6 +306,8 @@ public final class PhysicalBoardView implements Disposable {
                 switch (k) {
                     case 'r' -> deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
                             new com.minecart.variant.Informations.ResistorInfo(resistanceOhms(i, loader.model(p.modelId())))));
+                    case 'm' -> deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
+                            new com.minecart.variant.Informations.ResistorInfo(100.0))); // motor coil ~100Ω
                     case 'l' -> // LED: a true DIODE — forward ~220Ω limits current + lights; reverse ~1MΩ blocks
                             deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.DIODE, a, bb,
                                     new com.minecart.variant.Informations.DiodeInfo(220.0, 1.0e6)));
@@ -1043,6 +1067,10 @@ public final class PhysicalBoardView implements Disposable {
             return;
         }
         updateElectricalGlow(); // live current → per-part emission (glow) before the lighting pass
+        long now = System.nanoTime(); // dt for the current-driven motor spin
+        float dt = lastFrameNanos == 0L ? 0f : Math.min(0.1f, (now - lastFrameNanos) / 1e9f);
+        lastFrameNanos = now;
+        updateMotors(dt);
         engine.render(cam);
         if (gPresent) {
             if (gValid) {
