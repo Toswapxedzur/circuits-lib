@@ -29,6 +29,11 @@ final class Parts {
         return Math.abs(0.5f / L) * halfX + Math.abs(0.7f / L) * 3f + Math.abs(0.4f / L) * 4.5f;
     }
 
+    /** As {@link #shadeR(float)} but with an explicit Z half-extent — the battery holder's body is 21 deep. */
+    private static float shadeR(float halfX, float halfZ) {
+        return Math.abs(0.5f / L) * halfX + Math.abs(0.7f / L) * 3f + Math.abs(0.4f / L) * halfZ;
+    }
+
     /** The plastic body colour set (PlasticColors.SET), as HSV — one capacitor + switch is built per row. */
     static final float[][] PLASTIC_HSV = {
             {0f, 0.92f, 0.80f},   // red
@@ -61,6 +66,7 @@ final class Parts {
     // palette noise must read. Every black plastic surface (capacitor body, knobs/buttons, well floors, diode
     // blob) uses THIS ramp; never a darker "void" one.
     private static final Color[] SERIES_BLACK = PaletteDither.ramp(new Color(0.19f, 0.19f, 0.22f, 1f));
+    private static final Color[] BATT_ORANGE = PaletteDither.ramp(new Color(0.95f, 0.45f, 0.08f, 1f)); // battery wrap
     private static final Color[] CAP_BASE = PaletteDither.rampHsv(160f, 0.92f, 0.80f); // teal snap base plastic
     private static final Color[] RES_BODY = PaletteDither.ramp(new Color(0.82f, 0.68f, 0.45f, 1f)); // tan resistor body
     private static final Color[] RES_B1 = PaletteDither.ramp(new Color(0.35f, 0.20f, 0.10f, 1f));   // band: brown
@@ -103,6 +109,7 @@ final class Parts {
     final ComponentModel transistorNpn;                                            // red base, cube top-black/bottom-white
     final ComponentModel transistorPnp;                                            // dark-green base, cube top-white/bottom-black
     final ComponentModel batteryCell;                                              // loose battery entity (orange+black cell)
+    final ComponentModel battery;                                                  // red 3×2 AA HOLDER (holds 2 cells) — its own part
     final ComponentModel slab;                                                     // neutral grey unit slab (scenery, scaled via pose)
     final ComponentModel varresTee;                                                // T-shaped variable resistor (tee + wide switch)
     final ComponentModel varresBar;                                                // resistor-style variable resistor (red base + switch)
@@ -230,6 +237,7 @@ final class Parts {
                 PaletteDither.rampHsv(PLASTIC_HSV[11][0], PLASTIC_HSV[11][1], PLASTIC_HSV[11][2]), false); // deep green
         ic = buildIc(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red
         batteryCell = buildBatteryCell();
+        battery = buildBattery(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red holder
         slab = ComponentModel.of("slab").box(0f, 0f, 0f, 1f, 1f, 1f,
                 new PaletteDither.Paint(PaletteDither.grays(4, 0.32f, 0.48f), Color.WHITE, 1, 0.3f, false, 701L, 0f, 0f, 0f, 1f, 1f)).build();
         Color[] vgreen = PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2]);   // lime/green
@@ -422,6 +430,71 @@ final class Parts {
         }
         return b.box(0f, 8.5f, 0f, 21f, 9f, 9f, plastic(155L, pal))    // the big blob, y4..13, between the stud rows
                 .build();
+    }
+
+    /**
+     * Battery HOLDER — the placeable circuit source (the loose {@link #buildBatteryCell cell} is a separate part).
+     * First <b>multi-width</b> part: a 3-slot × 2-slot red base (33×21) carrying a two-cell AA holder. Two top studs
+     * at the +X end (12, ±6) are the electrical terminals (REGISTERED as connectors, per the datagen ports rule);
+     * four underside corner sockets (±12, ±6) mount it. Red plastic tray (walls y4..7) split into two cells by a
+     * pair of 0-thickness middle plates 1px apart; each seated AA (6×6 slice, 18 long + a 1px terminal nub) is
+     * wrapped black+orange and laid ANTIPARALLEL. The tray floor covers each cell's inner lower face so occlusion
+     * drops it (no z-fight). Its own part; the cell can pop out of it (entity fork) later.
+     */
+    private ComponentModel buildBattery(Color[] pal) {
+        float br = shadeR(16.5f, 10.5f);                 // wider gradient for the 21-deep base
+        ComponentModel.Builder b = ComponentModel.of("battery")
+                .box(0f, 0.5f, 0f, 33f, 1f, 21f, plastic(101L, pal, br))  // red rim y0..1
+                .box(0f, 2f, 0f, 33f, 2f, 21f, band(303L, br))            // white band y1..3
+                .box(0f, 3.5f, 0f, 33f, 1f, 21f, plastic(202L, pal, br)); // red top rim y3..4 (tray floor)
+        // 2 top studs at the +X end = the two REGISTERED terminals; 4 underside corner sockets mount it.
+        b = b.box(12f, 4.5f, 6f, 3f, 1f, 3f, stud(404L, 12f, 4.5f, 6f))
+                .box(12f, 4.5f, -6f, 3f, 1f, 3f, stud(404L, 12f, 4.5f, -6f));
+        b = b.connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(12f, 0f, -6f),
+                        new com.badlogic.gdx.math.Vector3(1f, 0f, 0f), 0, true))
+                .connector(new ComponentModel.Connector(new com.badlogic.gdx.math.Vector3(12f, 0f, 6f),
+                        new com.badlogic.gdx.math.Vector3(1f, 0f, 0f), 1, true));
+        b = batterySocket(batterySocket(batterySocket(batterySocket(b, -12f, -6f), -12f, 6f), 12f, -6f), 12f, 6f);
+        // red holder walls (y4..7): −X/+X full depth (15), −Z/+Z between them (19). Interior x[−12.5,6.5]×z[−6.5,6.5].
+        b = b.box(-13f, 5.5f, 0f, 1f, 3f, 15f, plastic(111L, pal))
+                .box(7f, 5.5f, 0f, 1f, 3f, 15f, plastic(111L, pal))
+                .box(-3f, 5.5f, -7f, 19f, 3f, 1f, plastic(112L, pal))
+                .box(-3f, 5.5f, 7f, 19f, 3f, 1f, plastic(112L, pal));
+        // two 0-thick middle plates (the cell divider), 1px apart, shorter than the walls (y4..6)
+        b = b.box(-3f, 5f, 0.5f, 19f, 2f, 0f, plastic(113L, pal))
+                .box(-3f, 5f, -0.5f, 19f, 2f, 0f, plastic(113L, pal));
+        b = oneBattery(b, 3.5f, true);   // cell A: nub at +X
+        b = oneBattery(b, -3.5f, false); // cell B: nub at −X (antiparallel)
+        return b.build();
+    }
+
+    /** One seated AA cell centred at z {@code zc}. Square 6×6 slice, 18 long body + a 1px steel terminal nub at
+     *  one end ({@code nubPlus} = the +X end, else −X). Wrapped orange (12) + black (6, at the nub end). Each
+     *  wrap box is split lower (y4..6, hidden behind the middle plate by occlusion) / upper (y6..10, visible). */
+    private ComponentModel.Builder oneBattery(ComponentModel.Builder b, float zc, boolean nubPlus) {
+        long s = nubPlus ? 1200L : 1300L;
+        if (nubPlus) {
+            return b.box(6f, 7f, zc, 1f, 3f, 3f, fence(s))                          // metal nub  x[5.5,6.5]
+                    .box(2.5f, 5f, zc, 6f, 2f, 6f, plastic(s + 1, SERIES_BLACK))    // black lower x[−0.5,5.5] y4..6
+                    .box(2.5f, 8f, zc, 6f, 4f, 6f, plastic(s + 1, SERIES_BLACK))    // black upper           y6..10
+                    .box(-6.5f, 5f, zc, 12f, 2f, 6f, plastic(s + 2, BATT_ORANGE))   // orange lower x[−12.5,−0.5]
+                    .box(-6.5f, 8f, zc, 12f, 4f, 6f, plastic(s + 2, BATT_ORANGE));  // orange upper
+        }
+        return b.box(-12f, 7f, zc, 1f, 3f, 3f, fence(s))                           // metal nub  x[−12.5,−11.5]
+                .box(-8.5f, 5f, zc, 6f, 2f, 6f, plastic(s + 1, SERIES_BLACK))       // black lower x[−11.5,−5.5]
+                .box(-8.5f, 8f, zc, 6f, 4f, 6f, plastic(s + 1, SERIES_BLACK))       // black upper
+                .box(0.5f, 5f, zc, 12f, 2f, 6f, plastic(s + 2, BATT_ORANGE))        // orange lower x[−5.5,6.5]
+                .box(0.5f, 8f, zc, 12f, 4f, 6f, plastic(s + 2, BATT_ORANGE));       // orange upper
+    }
+
+    /** An underside female snap socket at grid point (x, z) — as {@link #socket} but positionable in Z (the
+     *  holder has four, at its corners). Shared seeds → dedupes with every part's sockets. */
+    private ComponentModel.Builder batterySocket(ComponentModel.Builder b, float x, float z) {
+        return b.box(x - 2f, -0.5f, z, 1f, 1f, 5f, fence(501L))
+                .box(x + 2f, -0.5f, z, 1f, 1f, 5f, fence(501L))
+                .box(x, -0.5f, z - 2f, 3f, 1f, 1f, fence(502L))
+                .box(x, -0.5f, z + 2f, 3f, 1f, 1f, fence(502L))
+                .box(x, 0f, z, 3f, 0f, 3f, fence(503L));
     }
 
     /**
@@ -667,6 +740,7 @@ final class Parts {
         m.put("transistor_npn", transistorNpn); // red, cube top-black/bottom-white
         m.put("transistor_pnp", transistorPnp); // dark-green, cube top-white/bottom-black
         m.put("battery_cell", batteryCell); // loose battery entity (orange+black cell)
+        m.put("battery", battery);          // red 2-cell AA HOLDER (the placeable circuit source)
         m.put("slab", slab); // neutral grey scenery slab (unit box, scaled via pose)
         m.put("varres_tee", varresTee);     // Type 1 variable resistor — T-shaped + wide switch
         m.put("varres_bar", varresBar);     // Type 2 variable resistor — resistor-style + switch
