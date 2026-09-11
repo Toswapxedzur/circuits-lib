@@ -633,8 +633,6 @@ public final class PhysicalBoardView implements Disposable {
     // dome and knob silhouettes remain. Computed once per model / part-type in object space, transformed per draw.
     private final java.util.Map<Object, float[]> edgeCache = new java.util.HashMap<>();
     private static final float EDGE_EPS = 0.05f;   // probe distance for the "face exposed here?" test
-    private static final float EDGE_LIFT = Float.parseFloat(System.getProperty("snap.edgelift", "0.25"));  // the drawn edge sits this far outside BOTH its faces (Minecraft
-                                                   // expands its outline shape too) so it passes the depth test
 
     private static boolean insideAny(List<PartMesh.Box> boxes, float x, float y, float z) {
         for (PartMesh.Box b : boxes) {
@@ -665,11 +663,7 @@ public final class PhysicalBoardView implements Disposable {
                         n1[a1] = s1; n2[a2] = s2;
                         boolean f1 = !insideAny(boxes, mid[0] + n1[0] * EDGE_EPS, mid[1] + n1[1] * EDGE_EPS, mid[2] + n1[2] * EDGE_EPS);
                         boolean f2 = !insideAny(boxes, mid[0] + n2[0] * EDGE_EPS, mid[1] + n2[1] * EDGE_EPS, mid[2] + n2[2] * EDGE_EPS);
-                        if (f1 && f2) {
-                            for (int k = 0; k < 3; k++) { p0[k] += (n1[k] + n2[k]) * EDGE_LIFT; p1[k] += (n1[k] + n2[k]) * EDGE_LIFT; }
-                            for (float v : p0) out.add(v);
-                            for (float v : p1) out.add(v);
-                        }
+                        if (f1 && f2) { for (float v : p0) out.add(v); for (float v : p1) out.add(v); }
                     }
                 }
             }
@@ -679,27 +673,125 @@ public final class PhysicalBoardView implements Disposable {
         return r;
     }
 
-    /** World-space outline segments of what {@code f} focuses — the part's own shape, or its movable sub-part's. */
-    public float[] focusEdges(Focus f) {
+    /** World-space outline segments of what {@code f} focuses — the part's own shape, or its movable sub-part's —
+     *  with HIDDEN LINES REMOVED in software: every edge is sampled and each sample is ray-cast from {@code eye}
+     *  against the part's own boxes (and any other placed part in the way); only the visible runs are returned.
+     *  The lines lie EXACTLY on the model's edges (owner: no bloated outline) — no depth bias, no expansion. */
+    public float[] focusEdges(Focus f, Vector3 eye) {
         if (f == null) return new float[0];
         Placed p = placed.get(f.placementIndex());
         ComponentModel m = loader.model(p.modelId());
         float[] local;
         Matrix4 w;
+        List<float[]> occ = new ArrayList<>(); // world AABBs that can hide this outline
+        EngineRenderer.DynamicEntity ent = f.placementIndex() < ents.size() ? ents.get(f.placementIndex()) : null;
         if (f.subPart() >= 0 && f.subPart() < m.movableParts.size()) {
             ComponentModel.MovablePart mv = m.movableParts.get(f.subPart());
             local = edgeCache.computeIfAbsent(mv.type(), k -> shapeEdges(mv.type().boxes()));
-            w = movableWorldMatrix(mv, p.transform(), f.placementIndex() < ents.size() ? ents.get(f.placementIndex()) : null);
+            w = movableWorldMatrix(mv, p.transform(), ent);
+            for (PartMesh.Box b : mv.type().boxes()) occ.add(boxWorldAabb(b, w));
         } else {
             local = edgeCache.computeIfAbsent(p.modelId(), k -> shapeEdges(m.staticBoxes));
             w = p.transform();
         }
-        float[] out = new float[local.length];
-        for (int i = 0; i < local.length; i += 3) {
-            tmp2.set(local[i], local[i + 1], local[i + 2]).mul(w);
-            out[i] = tmp2.x; out[i + 1] = tmp2.y; out[i + 2] = tmp2.z;
+        for (PartMesh.Box b : m.staticBoxes) occ.add(boxWorldAabb(b, p.transform()));
+        for (int s = 0; s < m.movableParts.size(); s++) { // the part's own knobs can hide its base edges too
+            ComponentModel.MovablePart mv = m.movableParts.get(s);
+            Matrix4 mw = movableWorldMatrix(mv, p.transform(), ent);
+            for (PartMesh.Box b : mv.type().boxes()) occ.add(boxWorldAabb(b, mw));
         }
-        return out;
+        for (int i = 0; i < placed.size(); i++) { // other parts: only those whose whole box the eye→part ray can cross
+            if (i == f.placementIndex()) continue;
+            ComponentModel om = loader.model(placed.get(i).modelId());
+            ComponentModel.Collision ob = om.visual != null ? om.visual : om.collision;
+            if (ob == null) continue;
+            float[] whole = worldAabb(ob, placed.get(i).transform());
+            Vector3 c = new Vector3((f.aabb()[0] + f.aabb()[3]) / 2f, (f.aabb()[1] + f.aabb()[4]) / 2f, (f.aabb()[2] + f.aabb()[5]) / 2f);
+            if (rayBoxEntry(eye, c.sub(eye), whole) < 1.2f) { // near the line of sight → its boxes are occluders
+                for (PartMesh.Box b : om.staticBoxes) occ.add(boxWorldAabb(b, placed.get(i).transform()));
+            }
+        }
+        java.util.List<Float> out = new java.util.ArrayList<>();
+        Vector3 a = new Vector3(), b = new Vector3(), d = new Vector3(), pt = new Vector3(), dir = new Vector3();
+        for (int i = 0; i + 5 < local.length; i += 6) {
+            a.set(local[i], local[i + 1], local[i + 2]).mul(w);
+            b.set(local[i + 3], local[i + 4], local[i + 5]).mul(w);
+            d.set(b).sub(a);
+            int n = Math.max(4, Math.min(32, Math.round(d.len() / 1.5f)));
+            int runStart = -1;
+            for (int k = 0; k <= n; k++) {
+                boolean vis = false;
+                if (k < n) {
+                    pt.set(a).mulAdd(d, (k + 0.5f) / n);
+                    dir.set(pt).sub(eye);
+                    vis = true;
+                    for (float[] box : occ) {
+                        float t = rayBoxEntry(eye, dir, box);
+                        if (t > 1e-4f && t < 1f - 1e-3f) { vis = false; break; } // something strictly in front
+                    }
+                }
+                if (vis && runStart < 0) runStart = k;
+                if (!vis && runStart >= 0) { // emit the visible run [runStart, k)
+                    out.add(a.x + d.x * runStart / n); out.add(a.y + d.y * runStart / n); out.add(a.z + d.z * runStart / n);
+                    out.add(a.x + d.x * k / n);        out.add(a.y + d.y * k / n);        out.add(a.z + d.z * k / n);
+                    runStart = -1;
+                }
+            }
+        }
+        float[] r = new float[out.size()];
+        for (int i = 0; i < r.length; i++) r[i] = out.get(i);
+        return r;
+    }
+
+    /** TEST: outline statistics for placement {@code i} seen from {@code (ex,ey,ez)} — crease edges, visible segments,
+     *  and for the first few samples of the first edge every box that claims to occlude them (t in (0,1)). */
+    public String debugOutline(int i, float ex, float ey, float ez) {
+        Placed p = placed.get(i);
+        ComponentModel m = loader.model(p.modelId());
+        float[] local = edgeCache.computeIfAbsent(p.modelId(), k -> shapeEdges(m.staticBoxes));
+        Vector3 eye = new Vector3(ex, ey, ez);
+        Focus f = new Focus(i, -1, worldAabb(m.visual != null ? m.visual : m.collision, p.transform()));
+        float[] segs = focusEdges(f, eye);
+        StringBuilder sb = new StringBuilder("edges=" + local.length / 6 + " visibleSegs=" + segs.length / 6 + " boxes=" + m.staticBoxes.size());
+        for (int k = 0; k < Math.min(segs.length, 18); k += 6) {
+            sb.append(" seg").append(k / 6).append("=(").append(segs[k]).append(',').append(segs[k + 1]).append(',').append(segs[k + 2])
+              .append(")->(").append(segs[k + 3]).append(',').append(segs[k + 4]).append(',').append(segs[k + 5]).append(')');
+        }
+        if (local.length >= 6) {
+            Vector3 a = new Vector3(local[0], local[1], local[2]).mul(p.transform());
+            Vector3 b = new Vector3(local[3], local[4], local[5]).mul(p.transform());
+            Vector3 pt = new Vector3(a).lerp(b, 0.5f), dir = new Vector3(pt).sub(eye);
+            sb.append(" edge0=").append(a).append("→").append(b).append(" mid=").append(pt);
+            int bi = 0;
+            for (PartMesh.Box bx : m.staticBoxes) {
+                float[] wb = boxWorldAabb(bx, p.transform());
+                float t = rayBoxEntry(eye, dir, wb);
+                if (t > 1e-4f && t < 1f - 1e-3f) sb.append(" HIT box").append(bi).append(" t=").append(t)
+                        .append(" [").append(wb[0]).append(',').append(wb[1]).append(',').append(wb[2]).append("..")
+                        .append(wb[3]).append(',').append(wb[4]).append(',').append(wb[5]).append(']');
+                bi++;
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Ray/AABB slab test: the ray parameter where {@code eye + t·dir} ENTERS {@code box}, or +∞ if it misses. */
+    private static float rayBoxEntry(Vector3 eye, Vector3 dir, float[] box) {
+        float tmin = -Float.MAX_VALUE, tmax = Float.MAX_VALUE;
+        for (int ax = 0; ax < 3; ax++) {
+            float o = ax == 0 ? eye.x : ax == 1 ? eye.y : eye.z;
+            float dd = ax == 0 ? dir.x : ax == 1 ? dir.y : dir.z;
+            float lo = box[ax], hi = box[ax + 3];
+            if (Math.abs(dd) < 1e-9f) {
+                if (o < lo || o > hi) return Float.MAX_VALUE;
+            } else {
+                float t1 = (lo - o) / dd, t2 = (hi - o) / dd;
+                if (t1 > t2) { float t = t1; t1 = t2; t2 = t; }
+                tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+                if (tmin > tmax) return Float.MAX_VALUE;
+            }
+        }
+        return tmax < 0 ? Float.MAX_VALUE : tmin;
     }
 
     /** True if the focused sub-part is interactive (has any behaviour). */

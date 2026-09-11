@@ -114,6 +114,7 @@ public final class SnapScreen extends ScreenAdapter {
     private com.minecart.display.snap.InputScript script;
     private boolean scriptLmbHeld; // the harness's "LMB is held" (Gdx.input can't be faked)
     private ScriptHost scriptHost;                              // shared by the harness and the live console
+    private int outlineSegs;                                    // probe: segments drawn by the last focus outline
     private com.minecart.display.snap.LiveConsole console;      // -Pconsole=1: live inspect/drive over localhost
 
     private boolean shuttingDown;
@@ -662,23 +663,20 @@ public final class SnapScreen extends ScreenAdapter {
         if (outline == null) {
             outline = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
         }
-        float[] seg = physWorld.focusEdges(physFocus); // the model's OWN shape (crease edges), like Minecraft
-        // DEPTH-TESTED like Minecraft's block outline: edges behind the part (underside socket fences, far dome
-        // edges) are hidden. The edges are pre-lifted a hair outside their faces (see shapeEdges) so visible ones
-        // pass the test without a depth bias.
-        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
-        Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
+        // The model's OWN shape (crease edges) with hidden lines removed in software (ray-cast per sample), so
+        // the lines sit EXACTLY on the edges — no depth test, no bias, no expansion (owner: not bloated).
+        float[] seg = physWorld.focusEdges(physFocus, camera.position);
+        outlineSegs = seg.length / 6; // probe: outline.segs
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST); // draw on top: visibility was already decided per sample
         outline.setProjectionMatrix(camera.combined);
         outline.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        outline.setColor(0f, 0f, 0f, 0.4f); // Minecraft's block outline: thin black at 40% (same for part or knob)
+        outline.setColor(0f, 0f, 0f, 0.55f); // Minecraft's block outline: thin black line (a touch denser than MC's 40% — 1px on a Retina frame)
         for (int i = 0; i + 5 < seg.length; i += 6) {
             outline.line(seg[i], seg[i + 1], seg[i + 2], seg[i + 3], seg[i + 4], seg[i + 5]);
         }
         outline.end();
-        Gdx.gl.glDepthFunc(GL20.GL_LESS); // restore the engine's default (a leaked func re-renders the world wrong)
-        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
     }
 
     private static void aabbEdges(com.badlogic.gdx.graphics.glutils.ShapeRenderer sr,
@@ -960,6 +958,7 @@ public final class SnapScreen extends ScreenAdapter {
                 case "fan.target" -> deckAnim.target;
                 case "fan.raise" -> deckAnim.raise;
                 case "net.connected" -> connection != null && connection.isConnected(); // client↔server link alive?
+                case "outline.segs" -> outlineSegs;
                 case "picker.open" -> deckPicker;
                 case "picker.index" -> pickerIndex;
                 default -> null;
