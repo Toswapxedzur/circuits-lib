@@ -1,8 +1,20 @@
 # Snap-part art style & the model preview
 
-This is the art direction for the 3D snap-circuit mode's parts, the reasoning behind it, and the tooling
-(`com.minecart.display.preview`) used to iterate on it. It is the reference for building every future part so
-they read as one set. Written after building the first part — the **capacitor** — from scratch.
+This is the art direction for the 3D snap-circuit mode's parts and the reasoning behind it. It is the
+reference for building every future part so they read as one set. Written after building the first part —
+the **capacitor** — from scratch.
+
+> **⚠️ Tooling status (updated 2026-09-15).** The standalone `com.minecart.display.preview` package and its
+> `./gradlew :display:preview` viewer described below are **RETIRED** — that whole package no longer exists.
+> The live pipeline is the engine's **offline datagen**: parts are defined as pure data in
+> `render/engine/Parts.java`, then `./gradlew :display:seedtextures` bakes the per-face sprite PNGs (via
+> `SeedPartTextures` + `PaletteDither` — the pixel-exact successor of the old `PreviewTextures.litFace`) and
+> `./gradlew :display:genmodels` writes the model JSON; both outputs are committed under
+> `display/src/main/resources/{textures,models}/parts/`. Browse the results with `./gradlew :display:modelworld`,
+> `:display:modelgallery`, or `:display:enginedemo`. **The art *rules* below (palette, dither, plastic look,
+> pixel-perfection, z-fighting, plate/quad rules) are all still current** — only the preview-app tooling and
+> a couple of exact dimensions are historical; treat `Parts.java` + the committed models as the source of truth
+> for geometry, and see the project memory `snap-part-art-style` for the up-to-date grid spec (studs at ±12).
 
 ## The journey (how we got here)
 
@@ -16,30 +28,40 @@ they read as one set. Written after building the first part — the **capacitor*
 3. **The capacitor** was the first part. It went through many small iterations on colour, band shape, noise,
    and shading — the distilled result is the "Art preferences" section below.
 
-## The model preview app
+## The model viewers (current tooling)
 
-`./gradlew :display:preview` launches `ModelPreviewApp` (libGDX, LWJGL3). Bright, even **studio lighting**
-(this is a viewer, not the game scene, so the no-sun rule does not apply here); drag to orbit, scroll to zoom.
+The retired `:display:preview` app has been replaced by engine-backed viewers that render the **committed
+models straight from the atlas** — what you see is exactly what ships:
+- `./gradlew :display:enginedemo` — every part laid out in one row (the whole series at a glance).
+- `./gradlew :display:modelworld` / `:display:modelgallery` — every committed model in a footprint-packed grid;
+  press **R** in-window to re-scan after regenerating.
 
-**Workflow rule — show variants, not one result.** When iterating on a look, the app renders **several
-parameter variants side by side**, each labelled with its params, so a good candidate is picked at a glance
-instead of one slow round-trip at a time. Set the `VARIANTS` array; the row auto-frames. (Once a look is
-chosen, collapse `VARIANTS` to the single winner.)
+**Workflow rule — show variants, not one result.** When iterating on a look, render **several parameter
+variants side by side**, each labelled with its params, so a good candidate is picked at a glance instead of
+one slow round-trip at a time. (See the project memory `show-param-variants`.)
 
-Files (all in `display/src/main/java/com/minecart/display/preview/`):
-- `ModelPreviewApp` — the viewer, camera, studio lights, the variant row + labels.
-- `PreviewPart` — builds the capacitor model (geometry + per-face lit textures). Uses the exact unit system
-  of `com.minecart.snap.SnapSceneGeometry` (1 texel = 1 world unit) so models drop straight into the renderer.
-- `PreviewTextures` — the palette + procedural texture generation (below).
+Where the code lives now (all under `display/src/main/java/com/minecart/display/render/engine/`):
+- `Parts.java` — **the part library, pure data** (geometry + per-box `PaletteDither.Paint` texture recipe).
+  This is where a new part is authored. Uses the unit system of `com.minecart.snap.SnapSceneGeometry`
+  (1 texel = 1 world unit) so models drop straight into the renderer.
+- `SeedPartTextures` + `PaletteDither` — bake the per-face lit sprite PNGs (the palette + procedural texture
+  generation described below; `PaletteDither.litFace` is the pixel-exact port of the old `PreviewTextures.litFace`).
+- `GenModels` + `ModelJson` — serialise the models to the committed JSON the runtime loads.
 
-## The capacitor model
+## The capacitor model (and the standard base)
 
-A **1×2** part (spans two snap posts). Dimensions from `SnapSceneGeometry`:
-- **Body**: a `25 × 4 × 9` bar (length × height × footprint). Sliced in height so a **white label band wraps
-  all four sides from y=1 to y=3**: green rim `[0,1]` · white band `[1,3]` · green rim `[3,4]`. Top and bottom
-  stay green.
-- **Snap studs**: a metallic `3 × 1 × 3` stud on top of each terminal post (x = ±8). These are the LEGO-style
-  press-studs — the "snap like lego" connectors.
+The capacitor is the archetype for the whole series; its base is the shared **standard body** every part
+reuses (`Parts.base(...)`). Current dimensions (source of truth: `Parts.java`; the first capacitor was
+originally a smaller `25×4×9` / studs-±8 bar, since standardised):
+- **Body**: a `33 × 4 × 9` bar (length × height × footprint) that **spans 3 snap posts** (grid points
+  −12/0/+12). Sliced in height so a **white label band wraps all four sides from y=1 to y=3**: coloured rim
+  `[0,1]` · white band `[1,3]` · coloured rim `[3,4]`. Top and bottom stay the body colour.
+- **Snap studs**: a metallic `3 × 1 × 3` stud on top of the **two end posts (x = ±12)** — the middle post is
+  covered but unstudded, exactly like a multi-cell Snap-Circuits part. These are the LEGO-style press-studs.
+  Each stud has a matching underside **female socket** (`Parts.socket`), and **every socket is a declared
+  connector** at the real stud position (ports are data, never derived at runtime — owner rule 2026-09-10).
+- The capacitor ships in **three sizes** (`capacitor_small/medium/big`, teal) distinguished by the printed
+  two-plate trace on the top face.
 
 ## Texture & shading system
 
@@ -88,26 +110,27 @@ Follow these for every part:
 - **Metal = steel-blue** (light-blue highlight → grey steel), clearly lit, ordered-dithered.
 - **Duplicated parts look identical** to each other.
 
-## Chosen capacitor parameters (as committed)
+## Chosen capacitor parameters (original lime tuning — historical)
 
+These were the first capacitor's values (it was lime then; the shipped capacitor is now teal). The technique
+still stands; the live paints live per-box in `Parts.java` and the palette helpers are now on `PaletteDither`:
 - Light: top-lit `(0.5, 0.7, 0.4)`, `shift` 3.5.
-- Body: `PreviewTextures.limeWool()` (7 shades), white diffuse, random grain `grainMax` 2 / `zeroWeight` 0.3.
-- Band: `grays(6, 0.85, 1.0)` × diffuse `(0.97, 0.97, 0.96)`, random grain `grainMax` 1.
-- Studs: `steelBlue()` (5 shades), white diffuse + metallic specular, **ordered** dither, local-frame shading,
+- Body: a 7-shade lime ramp (now `PaletteDither.rampHsv(85, .92, .80)`), white diffuse, random grain `grainMax` 2 / `zeroWeight` 0.3.
+- Band: `PaletteDither.grays(6, 0.85, 1.0)` × diffuse `(0.97, 0.97, 0.96)`, random grain `grainMax` 1.
+- Studs: `PaletteDither.steelBlue()` (5 shades), white diffuse + metallic specular, **ordered** dither, local-frame shading,
   shared seed → identical studs.
 
 ## Plastic colour set
 
 The capacitor is the **archetype for the whole plastic series** — other parts reuse its body/band/stud
 material and are just recoloured. Any base colour becomes a 7-shade body ramp via
-`PreviewTextures.ramp(base)` (HSV: darker+richer lows → base at index 3 → brighter pastel highlight, hue
-preserved). Colours were picked from an HSV matrix (hue sweep × a pale→vivid→dark saturation/value set) in the
-preview app. Note: brightness variants of a hue should also move **saturation and hue**, not brightness alone
-(`PreviewTextures.variant()` — deeper = richer + cooler, brighter = paler + warmer), so a family scatters
-across the colour map instead of stacking as one hue.
+`PaletteDither.rampHsv(h, s, v)` (HSV: darker+richer lows → base at index 3 → brighter pastel highlight, hue
+preserved). Colours were picked from an HSV matrix (hue sweep × a pale→vivid→dark saturation/value set). Note:
+brightness variants of a hue should also move **saturation and hue**, not brightness alone (deeper = richer +
+cooler, brighter = paler + warmer), so a family scatters across the colour map instead of stacking as one hue.
 
-The chosen set lives in `PlasticColors.SET` (source of truth), one colour per hue — mostly "standard"
-(S 0.92, V 0.80), with yellow/blue/violet at "vivid":
+The chosen set lives in `Parts.PLASTIC_HSV` / `Parts.PLASTIC_NAME` (source of truth), one colour per hue —
+mostly "standard" (S 0.92, V 0.80), with yellow/blue/violet at "vivid":
 
 | name | H | S | V | | name | H | S | V |
 |---|---|---|---|---|---|---|---|---|
@@ -122,12 +145,12 @@ Yellow was pulled warmer (toward red) and saturation-boosted so it reads golden,
 
 ## Building parts — modeling style
 
-Parts are `PreviewPart` instances distinguished by a `PartType` (the capacitor is the archetype; the switch
-is the second). Every part:
+Parts are `ComponentModel`s authored in `Parts.java` (the capacitor is the archetype; the switch was the
+second); a movable sub-part kind is a `PartType`. Every part:
 - is assembled from `box(...)` calls — axis-aligned boxes with per-face 1:1 lit-palette textures (the shading
   system above), so a new part is just a arrangement of boxes plus which palette each uses;
 - **shares the series DNA**: the recolourable plastic body, the white band, and the metallic snap studs (via
-  `addStuds`, always identical to each other). Reuse these; don't reinvent the material per part;
+  `Parts.base`/`studs`, always identical to each other). Reuse these; don't reinvent the material per part;
 - gives each part a distinct silhouette. The capacitor's identity is its wrapping white band; the switch adds
   a raised, metal-framed mechanism. Keep parts distinguishable at a glance.
 
