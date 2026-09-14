@@ -7,6 +7,6 @@
    — the project memory index, then the linked memory files relevant to the task.
 
 The memory holds the owner's stated values, prior corrections, exact part specs (Snap-Circuits form:
-plastic base + white band + snaps at ±8; capacitor/switch/press-switch geometry; pixel-align parity),
+plastic base + white band + snap studs at ±12 (33-wide body over 3 posts); capacitor/switch/press-switch geometry; pixel-align parity),
 and the **screenshot-verify** method (never ship a look blind). Skipping any of this repeats mistakes
 already paid for, wastes the owner's tokens and time, and is a serious failure. **Not optional — every task.**
