@@ -165,9 +165,21 @@ final class PartMesh implements Disposable {
         this.instanceData = new float[maxInstances * FLOATS_PER_INSTANCE];
     }
 
+    /** Spatial-hash cell size for occlusion culling. Must be ≥ the largest normal part's extent so a face and
+     *  the (same-part) box that could cover it fall within one cell of each other — see {@link #covered}. */
+    private static final float CULL_CELL = 48f;
+
     static PartMesh of(List<Box> boxes, List<Quad> quads, int maxInstances, PartAtlas atlas, boolean instanced) {
         FloatArray v = new FloatArray();
         ShortArray idx = new ShortArray();
+        // Spatial hash of box centres, so occlusion culling scans only nearby boxes (the same part), not ALL of
+        // them. This turns the merge from O(N²) — every face tested against every box in the whole scene — into
+        // O(N). Culling is intra-part by design; a missed cross-part cover only leaves a hidden face behind real
+        // geometry (never a hole), so scoping it this way is exact for parts and visually safe everywhere.
+        java.util.HashMap<Long, java.util.ArrayList<Box>> grid = new java.util.HashMap<>();
+        for (Box b : boxes) {
+            grid.computeIfAbsent(cellKey(b.cx(), b.cy(), b.cz()), k -> new java.util.ArrayList<>()).add(b);
+        }
         for (Box b : boxes) {
             float x0 = b.min(0), x1 = b.max(0), y0 = b.min(1), y1 = b.max(1), z0 = b.min(2), z1 = b.max(2);
             // Emit a face only if it is NOT fully covered by an adjacent box (occlusion). Corners are ordered
@@ -177,22 +189,22 @@ final class PartMesh implements Disposable {
             // coincident large faces — opposite winding = a double-sided flat quad under GL_BACK.
             float sx = b.sx(), sy = b.sy(), sz = b.sz();
             boolean fx = sy > EPS && sz > EPS, fy = sx > EPS && sz > EPS, fz = sx > EPS && sy > EPS;
-            if (fx && !covered(boxes, b, 0, x1, true, y0, y1, z0, z1))
+            if (fx && !covered(grid, b, 0, x1, true, y0, y1, z0, z1))
                 face(v, idx, 0, atlas.region(b.faceSprite(0)), b.tintBits(),
                         x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);   // +X
-            if (fx && !covered(boxes, b, 0, x0, false, y0, y1, z0, z1))
+            if (fx && !covered(grid, b, 0, x0, false, y0, y1, z0, z1))
                 face(v, idx, 1, atlas.region(b.faceSprite(1)), b.tintBits(),
                         x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0);   // -X
-            if (fy && !covered(boxes, b, 1, y1, true, x0, x1, z0, z1))
+            if (fy && !covered(grid, b, 1, y1, true, x0, x1, z0, z1))
                 face(v, idx, 2, atlas.region(b.faceSprite(2)), b.tintBits(),
                         x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0);   // +Y
-            if (fy && !covered(boxes, b, 1, y0, false, x0, x1, z0, z1))
+            if (fy && !covered(grid, b, 1, y0, false, x0, x1, z0, z1))
                 face(v, idx, 3, atlas.region(b.faceSprite(3)), b.tintBits(),
                         x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);   // -Y
-            if (fz && !covered(boxes, b, 2, z1, true, x0, x1, y0, y1))
+            if (fz && !covered(grid, b, 2, z1, true, x0, x1, y0, y1))
                 face(v, idx, 4, atlas.region(b.faceSprite(4)), b.tintBits(),
                         x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);   // +Z
-            if (fz && !covered(boxes, b, 2, z0, false, x0, x1, y0, y1))
+            if (fz && !covered(grid, b, 2, z0, false, x0, x1, y0, y1))
                 face(v, idx, 5, atlas.region(b.faceSprite(5)), b.tintBits(),
                         x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0);   // -Z
         }
@@ -247,18 +259,34 @@ final class PartMesh implements Disposable {
      * [{@code a0},{@code a1}]×[{@code b0},{@code b1}] — is fully covered by an adjacent box abutting on the
      * outside ({@code positive} = the +axis side). Conservative: only a single fully-covering box hides it.
      */
-    private static boolean covered(List<Box> boxes, Box self, int axis, float coord, boolean positive,
-                                   float a0, float a1, float b0, float b1) {
+    /** Spatial-hash key of the cell containing {@code (x,y,z)}. */
+    private static long cellKey(float x, float y, float z) {
+        long cx = (long) Math.floor(x / CULL_CELL), cy = (long) Math.floor(y / CULL_CELL), cz = (long) Math.floor(z / CULL_CELL);
+        return cx * 73856093L ^ cy * 19349663L ^ cz * 83492791L;
+    }
+
+    private static boolean covered(java.util.HashMap<Long, java.util.ArrayList<Box>> grid, Box self, int axis,
+                                   float coord, boolean positive, float a0, float a1, float b0, float b1) {
         int ax = axis == 0 ? 1 : 0;
         int bx = axis == 2 ? 1 : 2;
-        for (Box o : boxes) {
-            if (o == self) continue;
-            float oFace = positive ? o.min(axis) : o.max(axis);
-            if (Math.abs(oFace - coord) > EPS) continue;
-            if (o.min(ax) <= a0 + EPS && o.max(ax) >= a1 - EPS && o.min(bx) <= b0 + EPS && o.max(bx) >= b1 - EPS) {
-                return true;
-            }
-        }
+        long scx = (long) Math.floor(self.cx() / CULL_CELL);
+        long scy = (long) Math.floor(self.cy() / CULL_CELL);
+        long scz = (long) Math.floor(self.cz() / CULL_CELL);
+        for (long dx = -1; dx <= 1; dx++)
+            for (long dy = -1; dy <= 1; dy++)
+                for (long dz = -1; dz <= 1; dz++) {
+                    java.util.ArrayList<Box> bucket = grid.get(
+                            (scx + dx) * 73856093L ^ (scy + dy) * 19349663L ^ (scz + dz) * 83492791L);
+                    if (bucket == null) continue;
+                    for (Box o : bucket) {
+                        if (o == self) continue;
+                        float oFace = positive ? o.min(axis) : o.max(axis);
+                        if (Math.abs(oFace - coord) > EPS) continue;
+                        if (o.min(ax) <= a0 + EPS && o.max(ax) >= a1 - EPS && o.min(bx) <= b0 + EPS && o.max(bx) >= b1 - EPS) {
+                            return true;
+                        }
+                    }
+                }
         return false;
     }
 
