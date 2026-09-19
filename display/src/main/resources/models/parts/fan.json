@@ -3,75 +3,141 @@
   "elements": [
     {
       "from": [
-        -7.5,
-        0.0,
-        -1.5
+        -2.5,
+        -0.5,
+        -2.5
       ],
       "to": [
-        7.5,
-        1.0,
-        1.5
+        2.5,
+        0.5,
+        2.5
       ],
       "faces": {
-        "east": "sp4101f2abccf4c73_1x3",
-        "west": "sp32bdb754be12b2f4_1x3",
-        "up": "sp6c04d2e6ff42ca75_15x3",
-        "down": "sp253fa11392afd8f6_15x3",
-        "south": "sp5e8162c40e1a5f77_15x1",
-        "north": "sp2255feddeec554f8_15x1"
+        "east": "sp864d1744ef7db3_1x5",
+        "west": "sp3641b6763c4a9334_1x5",
+        "up": "sp6f88c284c6011235_5x5",
+        "down": "sp28c33080b4b140b6_5x5",
+        "south": "sp62055261d4da78b7_5x1",
+        "north": "sp1ecc3c4e2e5d4d38_5x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -1.5,
-        0.0,
-        -7.5
+        -2.5,
+        -0.5,
+        2.5
       ],
       "to": [
-        1.5,
-        1.0,
-        7.5
+        2.5,
+        0.5,
+        11.5
       ],
       "faces": {
-        "east": "sp6eb8b6526c6eb692_1x15",
-        "west": "sp25df173f1225ef13_1x15",
-        "up": "sp5f26203343f74f94_3x15",
-        "down": "sp185ead3bfaf71e15_3x15",
-        "south": "sp51a2b01052d9cd96_3x1",
-        "north": "spcfea8a3adb88d17_3x1"
+        "east": "sp1732298570a01771_1x9",
+        "west": "sp4cee5345b174ecf2_1x9",
+        "up": "sp6355f543b2b6bf3_5x9",
+        "down": "sp3f6f0ceee061da74_5x9",
+        "south": "sp78b1ef314a087575_5x1",
+        "north": "sp357818bc5a0a43f6_5x1"
       },
       "tint": false,
-      "translucent": false
+      "translucent": true
+    },
+    {
+      "from": [
+        -2.5,
+        -0.5,
+        -11.5
+      ],
+      "to": [
+        2.5,
+        0.5,
+        -2.5
+      ],
+      "faces": {
+        "east": "sp61483b9f135d590_1x9",
+        "west": "sp3bd0ad7a320aab11_1x9",
+        "up": "sp7517b988bbc12a12_5x9",
+        "down": "sp2e51672360f79893_5x9",
+        "south": "sp67944965ca9e3394_5x1",
+        "north": "sp245a72f0daa00215_5x1"
+      },
+      "tint": false,
+      "translucent": true
+    },
+    {
+      "from": [
+        2.5,
+        -0.5,
+        -2.5
+      ],
+      "to": [
+        11.5,
+        0.5,
+        2.5
+      ],
+      "faces": {
+        "east": "sp7b5415d4ee72c0af_1x5",
+        "west": "sp2e3d51fef8765030_1x5",
+        "up": "sp6784644231f70c31_9x5",
+        "down": "sp20bed23e20a73ab2_9x5",
+        "south": "sp5a00f41f40d072b3_9x1",
+        "north": "sp1999fed728165334_9x1"
+      },
+      "tint": false,
+      "translucent": true
+    },
+    {
+      "from": [
+        -11.5,
+        -0.5,
+        -2.5
+      ],
+      "to": [
+        -2.5,
+        0.5,
+        2.5
+      ],
+      "faces": {
+        "east": "sp60597324b199bece_1x5",
+        "west": "sp1342af4ebb9d4e4f_1x5",
+        "up": "sp4c89c191f51e0a50_9x5",
+        "down": "sp5c42f8de3ce38d1_9x5",
+        "south": "sp3f06516f03f770d2_9x1",
+        "north": "sp7e9f5c26eb3d5153_9x1"
+      },
+      "tint": false,
+      "translucent": true
     }
   ],
   "quads": [],
   "movables": [],
   "collision": {
     "from": [
-      -7.5,
-      0.0,
-      -7.5
+      -11.5,
+      -0.5,
+      -11.5
     ],
     "to": [
-      7.5,
-      1.0,
-      7.5
+      11.5,
+      0.5,
+      11.5
     ],
     "friction": 0.9,
     "restitution": 0.0
   },
   "visual": {
     "from": [
-      -7.5,
-      0.0,
-      -7.5
+      -11.5,
+      -0.5,
+      -11.5
     ],
     "to": [
-      7.5,
-      1.0,
-      7.5
+      11.5,
+      0.5,
+      11.5
     ],
     "friction": 0.9,
     "restitution": 0.0
