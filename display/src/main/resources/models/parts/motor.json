@@ -13,12 +13,12 @@
         4.5
       ],
       "faces": {
-        "east": "sp796ba157bc5b23b8_1x9",
-        "west": "sp1b688ea57fcb4f39_1x9",
-        "up": "sp54afc624d809793a_33x9",
-        "down": "spde973bf7d3fe7bb_33x9",
-        "south": "sp472c5601e6e682bc_33x1",
-        "north": "sp17b1651dd73da53d_33x1"
+        "east": "sp44fa37feee4aedb8_1x9",
+        "west": "sp66f7254cb1bb1939_1x9",
+        "up": "sp203e5ccc09f9433a_33x9",
+        "down": "sp59780a66af2fb1bb_33x9",
+        "south": "sp12baeca918d64cbc_33x1",
+        "north": "sp633ffbc5092d6f3d_33x1"
       },
       "tint": false,
       "translucent": false
@@ -35,12 +35,12 @@
         4.5
       ],
       "faces": {
-        "east": "sp39d4573b6410ba73_1x9",
-        "west": "sp5bd144892780e5f4_1x9",
-        "up": "sp15187c087fbf0ff5_33x9",
-        "down": "sp4e5229a324f57e76_33x9",
-        "south": "sp7950be58e9c1977_33x1",
-        "north": "sp581a1b017ef33bf8_33x1"
+        "east": "sp562ede296008473_1x9",
+        "west": "sp275fdb305970aff4_1x9",
+        "up": "sp60a712afb1aed9f5_33x9",
+        "down": "sp19e0c04a56e54876_33x9",
+        "south": "sp5323a28cc08be377_33x1",
+        "north": "sp23a8b1a8b0e305f8_33x1"
       },
       "tint": false,
       "translucent": false
@@ -331,38 +331,38 @@
       ],
       "to": [
         3.5,
-        8.0,
+        10.0,
         3.5
       ],
       "faces": {
-        "east": "spab00f2b95d25d7d_4x7",
-        "west": "sp3f02c220bb3e8ffe_4x7",
-        "up": "sp785b49f91a365ebf_7x7",
-        "down": "sp3183deee7731e1c0_7x7",
-        "south": "sp6ac661003c6e5901_7x4",
-        "north": "sp28f5fb21b8123082_7x4"
+        "east": "sp563ea5ec677f38fd_6x7",
+        "west": "spa9158e18ceb6b7e_6x7",
+        "up": "sp43f586843f7605bf_7x7",
+        "down": "sp7d127595a921abc0_7x7",
+        "south": "sp3654f7a76e968181_7x6",
+        "north": "sp748491c8ea3a5902_7x6"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -1.5,
-        8.0,
-        -1.5
+        -3.5,
+        11.0,
+        -3.5
       ],
       "to": [
-        1.5,
-        9.0,
-        1.5
+        3.5,
+        13.0,
+        3.5
       ],
       "faces": {
-        "east": "sp8db96a31740de7b_1x3",
-        "west": "sp3fffb66be08ad6fc_1x3",
-        "up": "sp7946bf60125c377d_3x3",
-        "down": "sp32818d8ca5c945fe_3x3",
-        "south": "sp6bc34f3d2133cc7f_3x1",
-        "north": "sp272188f458959e00_3x1"
+        "east": "sp454c65dffd75ee9c_2x7",
+        "west": "sp799f18d522e2211d_2x7",
+        "up": "sp32ebfae32e47245e_7x7",
+        "down": "sp6c2035bc7e92845f_7x7",
+        "south": "sp2562b7ce43969d20_7x2",
+        "north": "sp639251efbf3a74a1_7x2"
       },
       "tint": false,
       "translucent": false
@@ -374,7 +374,7 @@
       "part": "fan",
       "at": [
         0.0,
-        9.0,
+        10.5,
         0.0
       ],
       "bindingType": "rotate",
@@ -416,7 +416,7 @@
     ],
     "to": [
       16.5,
-      9.0,
+      13.0,
       4.5
     ],
     "friction": 0.9,

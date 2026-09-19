@@ -132,6 +132,11 @@ final class Parts {
         return new PaletteDither.Paint(pal, Color.WHITE, 2, 0.3f, false, seed, 0f, 2f, 0f, r, 1f);
     }
 
+    /** Half-translucent white plastic (alpha baked into the sprite → survives datagen) for the fan blades. */
+    private static PaletteDither.Paint bladePaint(long seed) {
+        return new PaletteDither.Paint(WHITE_PLASTIC, Color.WHITE, 2, 0.3f, false, seed, 0f, 0f, 0f, SHADE_R, 0.5f);
+    }
+
     private static PaletteDither.Paint band(long seed) {
         return band(seed, SHADE_R);
     }
@@ -204,11 +209,21 @@ final class Parts {
         // The "spin" channel rotates it about the origin's Y axis (the clock centre) — a sweeping hand.
         pointer = new PartType("pointer", List.of(
                 new PartMesh.Box(0f, 0.5f, 1.5f, 1f, 1f, 3f, pointerPaint(270L), 0f, 6f, 1.5f, null, false, false, PartMesh.WHITE_BITS, null)));
-        // Motor FAN: a 2-blade black propeller (a + of two bars) centred on the origin so it spins about Y. The
-        // "spin" channel is advanced by the solved current each frame (updateMotors), not dragged.
+        // Motor FAN (2026-09-19 redesign, owner spec): a black CORE plate (5×1×5) + FOUR flat, half-translucent
+        // blades radiating at 90°, no tilt — all 1px thin in Y, centred at local origin so it spins about Y. Each
+        // blade is 9-reach (radial) × 7-wide (tangential), flush at the core edge (2.5) out to 11.5. The whole
+        // assembly is mounted in the groove (world y10–11) and its "spin" channel is advanced by solved current.
         fan = new PartType("fan", List.of(
-                new PartMesh.Box(0f, 0.5f, 0f, 15f, 1f, 3f, knob(970L), 0f, 0.5f, 0f, null, false, false, PartMesh.WHITE_BITS, null),
-                new PartMesh.Box(0f, 0.5f, 0f, 3f, 1f, 15f, knob(971L), 0f, 0.5f, 0f, null, false, false, PartMesh.WHITE_BITS, null)));
+                // black core / hub — opaque
+                new PartMesh.Box(0f, 0f, 0f, 5f, 1f, 5f, knob(970L), 0f, 0f, 0f, null, false, false, PartMesh.WHITE_BITS, null),
+                // +Z blade: reach 9 along +Z (z 2.5→11.5), 5 wide in X, 1 thin in Y — half-translucent
+                new PartMesh.Box(0f, 0f, 7f, 5f, 1f, 9f, bladePaint(972L), 0f, 0f, 7f, null, false, true, PartMesh.WHITE_BITS, null),
+                // −Z blade
+                new PartMesh.Box(0f, 0f, -7f, 5f, 1f, 9f, bladePaint(973L), 0f, 0f, -7f, null, false, true, PartMesh.WHITE_BITS, null),
+                // +X blade: reach 9 along +X, 5 wide in Z
+                new PartMesh.Box(7f, 0f, 0f, 9f, 1f, 5f, bladePaint(974L), 7f, 0f, 0f, null, false, true, PartMesh.WHITE_BITS, null),
+                // −X blade
+                new PartMesh.Box(-7f, 0f, 0f, 9f, 1f, 5f, bladePaint(975L), -7f, 0f, 0f, null, false, true, PartMesh.WHITE_BITS, null)));
         Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
             capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
@@ -650,10 +665,13 @@ final class Parts {
      * turns faster the more current flows and stops when the circuit opens. NOT draggable (no interaction).
      */
     private ComponentModel buildMotor(Color[] pal) {
-        return base("motor", pal)
-                .box(0f, 6f, 0f, 7f, 4f, 7f, plastic(960L, pal))  // motor hub y4..8
-                .box(0f, 8.5f, 0f, 3f, 1f, 3f, knob(962L))        // hub cap / axle collar y8..9
-                .movable(fan, 0f, 9f, 0f, BindingSpec.rotate("spin", 0f, 0f, 0f, 0f, 1f, 0f, 360f))
+        // 2026-09-19 redesign (owner spec): a WHITE 7×7×9 housing on the standard base, with a 1px groove at the
+        // 3rd pixel from the top (world y10–11) — the lower housing (y4–10) and a 2px top cap (y11–13) leave that
+        // 1px gap, in which a recessed black core (5×5) + 4 half-translucent blades spin about Y, driven by current.
+        return base("motor", WHITE_PLASTIC)
+                .box(0f, 7f, 0f, 7f, 6f, 7f, plastic(960L, WHITE_PLASTIC))   // white housing, lower, y4..10
+                .box(0f, 12f, 0f, 7f, 2f, 7f, plastic(961L, WHITE_PLASTIC))  // white cap, y11..13 (rows 1–2 from top)
+                .movable(fan, 0f, 10.5f, 0f, BindingSpec.rotate("spin", 0f, 0f, 0f, 0f, 1f, 0f, 360f)) // core+blades in the groove
                 .build();
     }
 
