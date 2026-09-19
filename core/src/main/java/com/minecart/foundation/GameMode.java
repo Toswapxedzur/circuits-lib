@@ -28,10 +28,11 @@ public enum GameMode {
     SNAP_3D("snap_3d", "3D Snap"),
 
     /**
-     * A client-side <b>debug</b> mode: instead of an editable board, the screen lays out EVERY committed part
-     * model in a square grid (the merged in-game "texture displayer"). It creates an empty save like the 2D
-     * default (no board is seeded) and needs no server — joining it opens the model gallery directly. For
-     * eyeballing the whole part catalogue at a glance; not a building paradigm.
+     * A client-side <b>debug</b> mode: instead of an editable board, the screen lays out every component TYPE
+     * exactly once (the curated {@code SnapModelBridge} catalogue — one tile per part, no colour/size variants)
+     * on a single flat plane. It creates an empty save like the 2D default (no board is seeded) and needs no
+     * server — joining it opens the component gallery directly. For eyeballing the whole catalogue at a glance;
+     * normal game logic does not apply. (The all-models "texture displayer" is the standalone modelworld task.)
      */
     DEBUG_MODELS("debug_models", "Debug");
 
