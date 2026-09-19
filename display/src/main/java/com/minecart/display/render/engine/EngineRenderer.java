@@ -122,7 +122,8 @@ final class EngineRenderer implements Disposable {
     private final List<ComponentInstance> components = new ArrayList<>();
     private final List<PartMesh.Box> extraStatic = new ArrayList<>();
     private final Map<PartType, List<ComponentInstance.PartInstance>> movableBuckets = new LinkedHashMap<>();
-    private final Map<PartType, PartMesh> movableMeshes = new LinkedHashMap<>();
+    private final Map<PartType, PartMesh> movableMeshes = new LinkedHashMap<>();            // opaque boxes of each type
+    private final Map<PartType, PartMesh> movableTranslucentMeshes = new LinkedHashMap<>(); // translucent boxes (e.g. fan blades)
     private final List<DynamicEntity> entities = new ArrayList<>();
     private final Map<DynamicEntity, PartMesh> entityMeshes = new IdentityHashMap<>();
     private final Map<PartType, PartMesh> entityMovableMeshes = new LinkedHashMap<>(); // one instanced mesh per knob type
@@ -210,8 +211,14 @@ final class EngineRenderer implements Disposable {
         staticOpaque = PartMesh.of(opaque, allQuads, 1, atlas, instanced);
         staticTranslucent = PartMesh.of(translucent, List.of(), 1, atlas, instanced);
         for (Map.Entry<PartType, List<ComponentInstance.PartInstance>> e : movableBuckets.entrySet()) {
-            movableMeshes.put(e.getKey(),
-                    PartMesh.of(e.getKey().boxes(), List.of(), Math.max(1, e.getValue().size()), atlas, instanced));
+            int inst = Math.max(1, e.getValue().size());
+            List<PartMesh.Box> mo = new ArrayList<>();       // opaque boxes
+            List<PartMesh.Box> mt = new ArrayList<>();       // translucent boxes (blended pass)
+            for (PartMesh.Box b : e.getKey().boxes()) (b.translucent() ? mt : mo).add(b);
+            movableMeshes.put(e.getKey(), PartMesh.of(mo, List.of(), inst, atlas, instanced));
+            if (!mt.isEmpty()) {
+                movableTranslucentMeshes.put(e.getKey(), PartMesh.of(mt, List.of(), inst, atlas, instanced));
+            }
         }
         // One single-instance mesh per entity (its whole model, object space). Rendered in the opaque pass at its
         // pose. (Entities are assumed opaque — the battery cell is; a translucent-boxed entity would need the same
@@ -364,13 +371,25 @@ final class EngineRenderer implements Disposable {
         renderOpaqueMeshes(shader);
 
         // --- Translucent pass: alpha-blended, depth-TESTED but not depth-WRITTEN (glass over the opaque cores). ---
-        if (staticTranslucent != null) {
+        if (staticTranslucent != null || !movableTranslucentMeshes.isEmpty()) {
             Gdx.gl.glEnable(GL20.GL_BLEND);
             Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
             Gdx.gl.glDepthMask(false);
-            staticTranslucent.begin();
-            staticTranslucent.add(identity);
-            staticTranslucent.render(shader);
+            if (staticTranslucent != null) {
+                staticTranslucent.begin();
+                staticTranslucent.add(identity);
+                staticTranslucent.render(shader);
+            }
+            // Translucent boxes on MOVABLE part-types (e.g. the fan's blades) — same per-instance transforms as
+            // the opaque movable pass, drawn blended after the opaque geometry.
+            for (Map.Entry<PartType, PartMesh> e : movableTranslucentMeshes.entrySet()) {
+                PartMesh mesh = e.getValue();
+                mesh.begin();
+                for (ComponentInstance.PartInstance p : movableBuckets.get(e.getKey())) {
+                    mesh.add(p.world);
+                }
+                mesh.render(shader);
+            }
             Gdx.gl.glDepthMask(true);
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
@@ -512,6 +531,10 @@ final class EngineRenderer implements Disposable {
             staticTranslucent.dispose();
             staticTranslucent = null;
         }
+        for (PartMesh m : movableTranslucentMeshes.values()) {
+            m.dispose();
+        }
+        movableTranslucentMeshes.clear();
         for (PartMesh m : movableMeshes.values()) {
             m.dispose();
         }
