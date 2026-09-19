@@ -179,7 +179,7 @@ public class WorldListScreen extends ScreenAdapter {
             modeDebug.setColor(chosen[0] == GameMode.DEBUG_MODELS ? Color.LIME : Color.WHITE);
             modeHint.setText(switch (chosen[0]) {
                 case SNAP_3D -> "Snap parts onto a 3D baseboard.";
-                case DEBUG_MODELS -> "Debug: browse every part model in a grid.";
+                case DEBUG_MODELS -> "Debug: every component shown once on a flat plane (no game logic).";
                 default -> "Free-form 2D wiring (default).";
             });
         };

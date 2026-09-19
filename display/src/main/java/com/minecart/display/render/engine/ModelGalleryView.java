@@ -41,16 +41,27 @@ public final class ModelGalleryView implements Disposable {
         if (engine != null) engine.setLightDir(x, y, z);
     }
 
-    /** (Re)discover every model, load the ready non-excluded ones, lay them in a square grid, and bake. */
+    /** (Re)discover EVERY committed model, load the ready non-excluded ones, lay them in a square grid, bake.
+     *  Used by the standalone datagen "texture displayer" ({@code ModelWorldApp}) — shows colour/size variants. */
     public void build() {
+        buildFrom(discover());
+    }
+
+    /** Build from a SPECIFIC id list (each laid out once, same square-grid layout) — used by the in-game debug
+     *  world to show every component TYPE exactly once (the curated catalogue), not every colour/size variant. */
+    public void build(List<String> ids) {
+        buildFrom(ids);
+    }
+
+    private void buildFrom(List<String> ids) {
         if (engine != null) engine.dispose();
         engine = new EngineRenderer();
         engine.setLightDir(lx, ly, lz);
         ModelLoader loader = new ModelLoader();
 
         List<ComponentModel> ready = new ArrayList<>();
-        for (String id : discover()) {
-            if (EXCLUDED.contains(id)) continue;
+        for (String id : ids) {
+            if (id == null || id.isEmpty() || EXCLUDED.contains(id)) continue;
             try {
                 ComponentModel m = loader.model(id);
                 if (spritesReady(m)) ready.add(m);
