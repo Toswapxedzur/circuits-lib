@@ -3,12 +3,14 @@ package com.minecart.spice;
 import com.sun.jna.Callback;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
+import com.sun.jna.Platform;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
 import com.sun.jna.Structure.FieldOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,9 +19,12 @@ import java.util.Locale;
  * Thin, process-wide binding to the ngspice shared library ({@code libngspice}, "sharedspice" API).
  *
  * <p>ngspice keeps global state and is not re-entrant, so this class is a singleton and every entry
- * point is {@code synchronized}. The library is located through {@code jna.library.path}, the
- * {@code NGSPICE_LIB} environment variable (a directory), or the usual Homebrew/Linux locations.
- * If it cannot be loaded, {@link #available()} is false and callers fall back to the built-in solver.
+ * point is {@code synchronized}. The native library is located in this order: the {@code NGSPICE_LIB}
+ * environment variable (a directory, for dev overrides); the copy <b>bundled in the jar</b> for the
+ * current platform ({@code /<os-arch>/libngspice.*} in resources), extracted to a temp file and loaded
+ * by path so the app is self-contained; then a system install (Homebrew/Linux). ngspice is the sole
+ * electrical solver — there is no fallback — so if none of these load, {@link #available()} is false
+ * and the simulation is disabled (every tick zeroes the circuit).
  *
  * <p>Only what the electrical backend needs is exposed: load a netlist, run a command, read a vector.
  * ngspice's console output is captured (not printed) and the last error lines are kept for diagnostics.
@@ -65,6 +70,8 @@ public final class NgSpice {
 
     private static NgSpice instance;
     private static boolean loadAttempted;
+    /** How the native lib was located: {@code "NGSPICE_LIB"}, {@code "bundled"}, {@code "system"}, or {@code null}. */
+    private static String loadedFrom;
 
     private final Lib lib;
     private final List<String> recentErrors = new ArrayList<>();
@@ -90,12 +97,10 @@ public final class NgSpice {
         if (!loadAttempted) {
             loadAttempted = true;
             try {
-                addSearchPaths();
-                Lib lib = Native.load("ngspice", Lib.class);
+                Lib lib = loadLibrary();
                 instance = new NgSpice(lib);
-                log.info("ngspice shared library loaded");
             } catch (Throwable t) {
-                log.warn("ngspice shared library unavailable ({}); using the built-in linear solver", t.toString());
+                log.warn("ngspice shared library unavailable ({}); electrical simulation is disabled", t.toString());
                 instance = null;
             }
         }
@@ -106,12 +111,65 @@ public final class NgSpice {
         return get() != null;
     }
 
-    private static void addSearchPaths() {
+    /** How the loaded native lib was located ({@code "NGSPICE_LIB"}/{@code "bundled"}/{@code "system"}), or {@code null} if not loaded. Diagnostics/tests. */
+    public static String loadedFrom() {
+        get();
+        return loadedFrom;
+    }
+
+    /**
+     * Loads libngspice, trying in order: an explicit {@code NGSPICE_LIB} override, the platform copy
+     * bundled in the jar (extracted and loaded by path — the app needs no system ngspice), then a
+     * system install. Each stage falls through to the next on failure; the last failure propagates.
+     */
+    private static Lib loadLibrary() {
+        Throwable last = null;
+
+        // 1. Explicit dev override: NGSPICE_LIB is a directory holding libngspice.
         String env = System.getenv("NGSPICE_LIB");
-        if (env != null && !env.isBlank()) com.sun.jna.NativeLibrary.addSearchPath("ngspice", env);
-        for (String dir : new String[]{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib", "/usr/lib/x86_64-linux-gnu"}) {
-            com.sun.jna.NativeLibrary.addSearchPath("ngspice", dir);
+        if (env != null && !env.isBlank()) {
+            try {
+                com.sun.jna.NativeLibrary.addSearchPath("ngspice", env);
+                Lib lib = Native.load("ngspice", Lib.class);
+                loadedFrom = "NGSPICE_LIB";
+                log.info("loaded libngspice from NGSPICE_LIB={}", env);
+                return lib;
+            } catch (Throwable t) {
+                last = t;
+                log.warn("NGSPICE_LIB={} did not yield a loadable libngspice ({})", env, t.toString());
+            }
         }
+
+        // 2. Bundled native for this platform: /<os-arch>/libngspice.* in resources (see
+        //    core/src/main/resources/<Platform.RESOURCE_PREFIX>/). JNA maps "ngspice" to the
+        //    platform's library name, extracts the resource to a temp file, and we load it by path.
+        try {
+            File bundled = Native.extractFromResourcePath("ngspice", NgSpice.class.getClassLoader());
+            Lib lib = Native.load(bundled.getAbsolutePath(), Lib.class);
+            loadedFrom = "bundled";
+            log.info("loaded bundled libngspice for {}", Platform.RESOURCE_PREFIX);
+            return lib;
+        } catch (Throwable t) {
+            last = t;
+            log.debug("no usable bundled libngspice for {} ({}); trying a system install",
+                    Platform.RESOURCE_PREFIX, t.toString());
+        }
+
+        // 3. System install (Homebrew / Linux).
+        try {
+            for (String dir : new String[]{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib", "/usr/lib/x86_64-linux-gnu"}) {
+                com.sun.jna.NativeLibrary.addSearchPath("ngspice", dir);
+            }
+            Lib lib = Native.load("ngspice", Lib.class);
+            loadedFrom = "system";
+            log.info("loaded system libngspice");
+            return lib;
+        } catch (Throwable t) {
+            last = t;
+        }
+
+        throw new IllegalStateException(
+                "libngspice not loadable (NGSPICE_LIB override, bundled copy, and system paths all failed)", last);
     }
 
     private void onOutput(String text) {
