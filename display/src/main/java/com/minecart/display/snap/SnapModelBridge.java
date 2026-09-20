@@ -32,11 +32,12 @@ public final class SnapModelBridge {
 
     /**
      * A placeable snap COMPONENT: its committed model id, hotbar label, and electrical {@code kind} char used by the
-     * physical board's circuit builder — {@code w}=wire/junction (unifies its terminals), {@code s}=switch (a closed
-     * conductor for now), {@code r}=resistor, {@code c}=capacitor, {@code d}=diode, {@code l}=LED (diode + light),
-     * {@code p}=lamp (resistor + light), {@code b}=battery, {@code .}=place-only (no 2-terminal electrical yet, e.g.
-     * a 3-pin transistor or an IC). This CATALOG is the single registration point — the hotbar, the atlas preload,
-     * and {@link #kindOf} all derive from it.
+     * physical board's circuit builder — {@code w}=wire/junction (unifies ALL its terminals), {@code s}=switch (a
+     * closed conductor when toggled shut), {@code r}=resistor, {@code c}=capacitor, {@code d}=diode, {@code l}=LED
+     * (diode + light), {@code p}=lamp (resistor + light), {@code b}=battery, {@code m}=motor (resistive load +
+     * current-driven spin), {@code t}=transistor (a 3-terminal BJT: base=stem, collector/emitter=the two bar studs),
+     * {@code .}=place-only with no electrical model yet (e.g. the IC). This CATALOG is the single registration point
+     * — the hotbar, the atlas preload, and {@link #kindOf} all derive from it.
      */
     public record Comp(String modelId, String label, char kind) {}
 
@@ -60,8 +61,8 @@ public final class SnapModelBridge {
             new Comp("battery", "Battery", 'b'),
             new Comp("battery_cell", "Cell", 'b'),
             new Comp("motor", "Motor", 'm'),
-            new Comp("transistor_npn", "NPN", '.'),
-            new Comp("transistor_pnp", "PNP", '.'),
+            new Comp("transistor_npn", "NPN", 't'),
+            new Comp("transistor_pnp", "PNP", 't'),
             new Comp("ic", "IC", '.'));
 
     /** The hotbar label of a model id (from the {@link #CATALOG}); the id itself if unregistered. */
