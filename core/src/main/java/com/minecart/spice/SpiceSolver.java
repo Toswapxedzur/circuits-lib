@@ -27,8 +27,8 @@ import java.util.Map;
  * <p>The circuit graph is emitted as a SPICE netlist: every {@link CircuitNode} becomes a node
  * ({@code 0} for the per-component ground the circuit already picks), every {@link CircuitEdge}
  * becomes its device in series with a 0 V "ammeter" source so its branch current is a first-class
- * vector ({@code i(vmN)}, positive from the edge's start to its end — the same convention the
- * built-in solver uses). Then ONE transient of exactly one tick is run with ngspice's adaptive,
+ * vector ({@code i(vmN)}, positive from the edge's start to its end). Then ONE transient of exactly
+ * one tick is run with ngspice's adaptive,
  * error-controlled integration ({@code .tran ... uic}); capacitor charge is carried across ticks as
  * an initial condition, so the integration error is bounded per tick and never accumulates with
  * simulated time.
@@ -38,16 +38,19 @@ import java.util.Map;
  *   <li>Wire: the ammeter alone (V_start = V_end).</li>
  *   <li>Resistor: {@code R}.</li>
  *   <li>Battery: EMF source from start to a mid node, internal resistance to the end
- *       (V_start - V_end = EMF + I·R, matching {@link Battery#collectRule}).</li>
+ *       (V_start - V_end = EMF + I·R).</li>
  *   <li>Capacitor: {@code C} with {@code ic = Q/C} in series with its internal resistance; after the
  *       tick the charge is read back as C·V (no Euler step).</li>
  *   <li>Diode: piecewise resistance (forward / reverse) as a behavioural resistor with a steep
  *       tanh transition, so it stays the same idealised device the rest of the code expects.</li>
  *   <li>BJTransistor: its collector edge becomes a current-controlled current source
- *       {@code beta · i(base ammeter)}, exactly the constitutive rule the component stamps.</li>
+ *       {@code beta · i(base ammeter)}, the transistor's constitutive relation.</li>
  * </ul>
- * Any other edge type makes the circuit unsupported ({@link #solve} returns {@link Result#UNSUPPORTED}),
- * and the caller uses the built-in linear solver instead.
+ * ngspice is the sole electrical solver. Any element type this builder doesn't recognise makes the
+ * circuit unsupported ({@link #solve} returns {@link Result#UNSUPPORTED}); there is no fallback solver,
+ * so the caller ({@link com.minecart.logic.ServerCircuit#tick}) zeroes the circuit for that tick. Every
+ * element type that currently exists is modelled here, so this only fires for a newly-added element that
+ * has not yet been given a branch below.
  */
 public final class SpiceSolver {
     private static final Logger log = LoggerFactory.getLogger(SpiceSolver.class);
@@ -76,7 +79,7 @@ public final class SpiceSolver {
         try {
             net = build(nodes, edges, components, dt);
         } catch (UnsupportedElement e) {
-            log.warn("ngspice backend cannot model {}; using the built-in solver", e.getMessage());
+            log.warn("ngspice backend cannot model {}; no fallback solver, tick will be zeroed", e.getMessage());
             return Result.UNSUPPORTED;
         }
         if (net == null) { // nothing to solve: isolated nodes are their own ground, no current anywhere

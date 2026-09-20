@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Reproduces M6/B7: {@link com.minecart.variant.Informations.CapacitorInfo} must clamp capacitance
  * and internal resistance to {@link Informations#DELTA}, so {@code voltage = charge / capacitance}
- * can never produce Inf/NaN that would poison the solver via {@code Capacitor.collectRule}.
+ * can never produce Inf/NaN that would poison the ngspice netlist SpiceSolver builds.
  */
 class CapacitorInfoClampTest {
 

@@ -20,7 +20,6 @@ import com.minecart.variant.info.LockState;
 import com.minecart.variant.info.PositionInfo;
 import com.minecart.variant.info.RigidityInfo;
 
-import java.util.Set;
 import java.util.UUID;
 
 public non-sealed class CircuitEdge extends CircuitElement {
@@ -47,12 +46,6 @@ public non-sealed class CircuitEdge extends CircuitElement {
         setWorld(world);
         current = DoubleVar.create();
         overpowered = false;
-    }
-
-    @Override
-    public void collectVariable(Set<DoubleVar> variables) {
-        super.collectVariable(variables);
-        variables.add(current);
     }
 
     @Override

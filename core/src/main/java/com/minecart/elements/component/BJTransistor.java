@@ -6,7 +6,6 @@ import com.minecart.foundation.Circuit;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
-import com.minecart.math.LinearSystem;
 import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.TagUtil;
@@ -97,8 +96,9 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
      * Builds internal nodes and edges. Idempotent; skips if already generated or restored from tags.
      * {@code base}, {@code collector}, and {@code emitter} are registered as public ports 0/1/2 via
      * the {@code (type, portIndex)} overload so external wires can attach to them; {@code center} is
-     * an auxiliary internal junction (only the constitutive equation in {@link #collectRule} touches
-     * it) and goes through the un-indexed {@code newNode} so it stays hidden + unwireable.
+     * an auxiliary internal junction (only the constitutive current-source relation emitted by
+     * {@link com.minecart.spice.SpiceSolver} touches it) and goes through the un-indexed {@code newNode}
+     * so it stays hidden + unwireable.
      */
     @Override
     public void generate() {
@@ -112,17 +112,6 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
         edgeBase = newEdge(AllComponents.WIRE, center, base);
         edgeCollector = newEdge(AllComponents.CIRCUIT_EDGE, center, collector);
         edgeEmitter = newEdge(AllComponents.RESISTOR, center, emitter);
-    }
-
-    @Override
-    public void collectRule(LinearSystem.RelationProvider equations) {
-        if (edgeCollector == null || edgeBase == null || info == null) {
-            return;
-        }
-        equations.stampCoefficient(edgeCollector.getCurrent(), 1.0);
-        equations.stampCoefficient(edgeBase.getCurrent(), -info.getBeta());
-        equations.stampConstant(0.0);
-        equations.endRelation();
     }
 
     // getPort(int) is inherited from CircuitComponent and reads portsByIndex, populated above.
@@ -167,9 +156,10 @@ public class BJTransistor extends CircuitComponent implements ElectricalVariate<
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
-        // Rebind the typed port handles from the now-populated port map. {@link #collectRule} doesn't
-        // touch them today (it uses the typed edges), but downstream code that reaches into BJT for
-        // base/collector/emitter directly still expects them populated post-load.
+        // Rebind the typed port handles from the now-populated port map. The ngspice netlist builder
+        // reads the typed internal edges (base/collector) via getEdgeBase()/getEdgeCollector(), and
+        // downstream code that reaches into BJT for base/collector/emitter directly still expects them
+        // populated post-load.
         base = getPort(0);
         collector = getPort(1);
         emitter = getPort(2);

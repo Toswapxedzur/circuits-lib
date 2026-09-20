@@ -4,7 +4,6 @@ import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.foundation.World;
 import com.minecart.logic.CircuitEdge;
-import com.minecart.math.LinearSystem.RelationProvider;
 import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
@@ -43,21 +42,12 @@ public class Diode extends CircuitEdge implements ElectricalVariate<DiodeInfo> {
         this.info = getDefault();
     }
 
-    @Override
-    public void collectRule(RelationProvider equations) {
-        super.collectRule(equations);
-
-        if (!isConnected() || info == null) {
-            return;
-        }
-
-        equations.stampCoefficient(getStart().getVoltage(), 1.0);
-        equations.stampCoefficient(getEnd().getVoltage(), -1.0);
-        equations.stampCoefficient(getCurrent(), -info.getEffectiveResistance());
-        equations.stampConstant(0.0);
-        equations.endRelation();
-    }
-
+    /**
+     * Refreshes the {@link DiodeInfo#getEffectiveResistance() effective resistance} shown in the info
+     * panel from the sign of the solved branch current (forward vs reverse). ngspice models the diode
+     * itself as a tanh-blended piecewise resistor (see {@link com.minecart.spice.SpiceSolver}); this is
+     * purely the display value for the panel's read-only "Effective Resistance" label.
+     */
     @Override
     public void tick() {
         super.tick();
