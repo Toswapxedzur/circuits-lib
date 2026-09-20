@@ -82,7 +82,9 @@ final class EngineRenderer implements Disposable {
 
     // GL3+ core context → hardware instancing; the live app's GL2.0 context → one draw per instance (u_world).
     private final boolean instanced = Gdx.gl30 != null;
-    private final ShaderProgram shader = InstancedShader.create(instanced);
+    // Lazily created on the first render — compiling a shader needs a live GL context, so deferring it lets the
+    // circuit-mapping logic (buildCircuit) run headless (unit tests) without a window.
+    private ShaderProgram shader;
     private final Matrix4 identity = new Matrix4();
 
     // Point-light collection buffers (LEDs / glowing entities) — filled each frame, pushed to the shader arrays.
@@ -109,7 +111,13 @@ final class EngineRenderer implements Disposable {
     // the main shader — omitting them left stale VAO arrays enabled → GL_INVALID_OPERATION that blanked the scene.
     // On by default; -Dsnap.shadows=off disables (also the fail-safe path if a driver rejects the depth-texture FBO).
     private static final boolean SHADOWS = !"off".equals(System.getProperty("snap.shadows"));
-    private final ShaderProgram depthShader = DepthShader.create(instanced);
+    private ShaderProgram depthShader; // lazily created on first render (see shader above)
+
+    /** Compiles the render shaders on first use — needs a GL context, so it is NOT done in the constructor. */
+    private void ensureShaders() {
+        if (shader == null) shader = InstancedShader.create(instanced);
+        if (depthShader == null) depthShader = DepthShader.create(instanced);
+    }
     private ShadowMap shadowMap;
     private final Vector3 sceneCentre = new Vector3();
     private final Vector3 sceneHalf = new Vector3(100f, 100f, 100f); // tight AABB half-extents for the light ortho
@@ -326,6 +334,7 @@ final class EngineRenderer implements Disposable {
     }
 
     void render(Camera cam) {
+        ensureShaders();
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
         Gdx.gl.glCullFace(GL20.GL_BACK);
@@ -408,6 +417,7 @@ final class EngineRenderer implements Disposable {
         if (mesh == null) {
             return;
         }
+        ensureShaders();
         shader.bind();
         shader.setUniformMatrix("u_projView", cam.combined);
         shader.setUniformf("u_ambient", 1f, 1f, 1f);
@@ -559,8 +569,8 @@ final class EngineRenderer implements Disposable {
 
     @Override
     public void dispose() {
-        shader.dispose();
-        depthShader.dispose();
+        if (shader != null) shader.dispose();
+        if (depthShader != null) depthShader.dispose();
         if (shadowMap != null) {
             shadowMap.dispose();
         }
