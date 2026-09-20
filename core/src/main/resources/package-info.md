@@ -18,21 +18,32 @@ system install. `NgSpice.loadedFrom()` reports which won.
 
 | Platform | Folder | File | Status |
 |---|---|---|---|
-| macOS Apple Silicon | `darwin-aarch64/` | `libngspice.dylib` | ✅ bundled |
-| macOS Intel | `darwin-x86-64/` | `libngspice.dylib` | ⬜ not bundled (drop file in) |
-| Linux x86-64 | `linux-x86-64/` | `libngspice.so` | ⬜ |
-| Windows x86-64 | `win32-x86-64/` | `ngspice.dll` | ⬜ |
+| macOS Apple Silicon | `darwin-aarch64/` | `libngspice.dylib` | ✅ bundled (Homebrew v47) |
+| macOS Intel | `darwin-x86-64/` | `libngspice.dylib` | ✅ bundled (Homebrew v47) |
+| Linux x86-64 | `linux-x86-64/` | `libngspice.so` | ✅ bundled (Ubuntu 24.04 v42) |
+| Windows x86-64 | `win32-x86-64/` | `ngspice.dll` | ⬜ not bundled (drop file in) |
 
 On an un-bundled platform the app falls back to a system libngspice; if none, simulation is disabled.
 
-### Provenance of `darwin-aarch64/libngspice.dylib`
-Copied verbatim from Homebrew **libngspice 47**
-(`/opt/homebrew/Cellar/libngspice/47/lib/libngspice.0.dylib`), renamed to the unversioned mapped name.
-It links only against system libraries (`libSystem`, `libc++` — verified with `otool -L`), so no other
-dylibs need to travel with it. It is ad-hoc code-signed (required for arm64); the file is copied
-**unmodified** so that signature stays valid — do **not** run `install_name_tool`/`strip` on it (that
-would break the signature and the load). To refresh for a new ngspice version, re-copy from Homebrew
-the same way.
+### Provenance & deps (all verified to need only standard system libraries)
+- **`darwin-aarch64/libngspice.dylib`** — Homebrew **libngspice 47**
+  (`/opt/homebrew/Cellar/libngspice/47/lib/libngspice.0.dylib`), renamed to the unversioned mapped
+  name. `otool -L`: only `libSystem` + `libc++`. Ad-hoc code-signed (required for arm64).
+- **`darwin-x86-64/libngspice.dylib`** — Homebrew **libngspice 47** bottle (`brew fetch libngspice`,
+  extracted from the Intel bottle on the mini, 2026-09-20). `otool -L`: only `libSystem` + `libc++`.
+  Its `LC_ID_DYLIB` still carries the `@@HOMEBREW_PREFIX@@` bottle placeholder — harmless, because we
+  load by explicit path (`dlopen` ignores `LC_ID`); verified loading + solving on an Intel Mac.
+- **`linux-x86-64/libngspice.so`** — Ubuntu 24.04 `libngspice0` **42+ds-3build1**
+  (`apt-get download libngspice0` → extracted `libngspice.so.0.0.9`, renamed). `ldd`/`objdump -p`
+  NEEDED: only `libm`, `libstdc++`, `libgomp`, `libgcc_s`, `libc` — all standard glibc + gcc runtime.
+
+**Verified with a real solve on each platform (2026-09-20):** a 12 V / 100 Ω / 200 Ω divider gives
+`v(2) = 8.0` V — on arm64 via the core test suite, on Intel via a JNA load test on the mini, on Linux
+via a Python-`ctypes` `dlopen` test on the VPS (ctypes uses the same `dlopen`/`dlsym` path as JNA).
+
+⛔ Copy each binary **unmodified** — they are (or may be) code-signed and their internal deps are set;
+do **not** run `install_name_tool`/`strip`/`patchelf` on them. To refresh for a new ngspice version,
+re-fetch the same way (Homebrew bottle for macOS, the distro package for Linux).
 
 ### To add another platform
 Install libngspice there, confirm `otool -L` / `ldd` shows only system deps (else vendor those too),
