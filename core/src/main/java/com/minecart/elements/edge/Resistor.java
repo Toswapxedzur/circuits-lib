@@ -13,7 +13,6 @@ import com.minecart.ui.panel.PanelFieldKey;
 import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations.ResistorInfo;
-import com.minecart.math.LinearSystem.RelationProvider;
 
 import java.util.Objects;
 
@@ -32,25 +31,6 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
     public Resistor(World world) {
         super(world);
         this.info = getDefault();
-    }
-
-    @Override
-    public void collectRule(RelationProvider equations) {
-        super.collectRule(equations);
-
-        if(!isConnected())
-            return;
-
-        // Ohm's Law: V_start - V_end - (I * R) = 0
-        equations.stampCoefficient(getStart().getVoltage(), 1.0);
-        equations.stampCoefficient(getEnd().getVoltage(), -1.0);
-
-        // Multiply current by negative resistance to balance the equation to 0
-        equations.stampCoefficient(getCurrent(), -info.getResistance());
-
-        equations.stampConstant(0.0);
-
-        equations.endRelation();
     }
 
     @Override

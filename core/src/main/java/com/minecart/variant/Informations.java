@@ -142,7 +142,7 @@ public class Informations {
 
         public void setCapacitance(double capacitance) {
             // Clamp to DELTA so voltage = charge / capacitance can never divide by zero and feed
-            // Inf/NaN into the solver via Capacitor.collectRule (mirrors ResistorInfo/DiodeInfo/BJTInfo).
+            // Inf/NaN into the ngspice netlist (mirrors ResistorInfo/DiodeInfo/BJTInfo).
             this.capacitance = Math.max(capacitance, DELTA);
         }
 
