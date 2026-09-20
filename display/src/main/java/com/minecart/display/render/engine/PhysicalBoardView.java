@@ -4,6 +4,9 @@ import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
+import com.minecart.display.render.engine.behaviour.BehaviourContext;
+import com.minecart.display.render.engine.behaviour.ComponentBehaviours;
+import com.minecart.display.render.engine.behaviour.ReactiveBehaviour;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -157,8 +160,8 @@ public final class PhysicalBoardView implements Disposable {
         placed.clear();
         deviceEdge.clear();
         subState.clear();
-        motorSpin.clear();
-        rebuild();
+        rebuild(); // rebuild recreates entities, so per-part spin/swell channels reset with them
+
     }
 
     /** One saved placement: model id + its 16-float world matrix. */
@@ -232,53 +235,53 @@ public final class PhysicalBoardView implements Disposable {
         built = hasBase || !placed.isEmpty();
     }
 
-    // Glow colours: a resistor "heats up" warm-orange; an LED lights red; a lamp glows bright warm-white.
-    private static final com.badlogic.gdx.graphics.Color GLOW_HEAT = new com.badlogic.gdx.graphics.Color(1f, 0.55f, 0.2f, 1f);
-    private static final com.badlogic.gdx.graphics.Color GLOW_LED = new com.badlogic.gdx.graphics.Color(1f, 0.15f, 0.1f, 1f);
-    private static final com.badlogic.gdx.graphics.Color GLOW_LAMP = new com.badlogic.gdx.graphics.Color(1f, 0.92f, 0.7f, 1f);
-    private final com.badlogic.gdx.graphics.Color glowTmp = new com.badlogic.gdx.graphics.Color();
+    private long lastFrameNanos; // for per-frame dt
 
-    /** Reads each device's solved current and makes the part EMIT light proportional to it — so a live circuit
-     *  glows in-world (a resistor "heats up", an LED lights its colour), not just in the HUD. Called per frame. */
-    private long lastFrameNanos;
-    private final java.util.Map<Integer, Float> motorSpin = new java.util.HashMap<>();
-    private static final float MOTOR_SPIN_GAIN = 90f; // fan turns/second per amp of coil current
-
-    /** Advances each motor's {@code "spin"} channel by its solved current × {@code dt} — the blade turns faster the
-     *  more current flows, and freezes when the loop opens. Wraps in [0,1) (one channel unit = a full 360° turn). */
-    private void updateMotors(float dt) {
+    /**
+     * The single reactive-animation pass: for each placed part, run its composed {@link ReactiveBehaviour}s
+     * (motor spin, glow, …) against its freshly-solved electrical state. Behaviour lives in
+     * {@link ComponentBehaviours} — this only supplies the {@link BehaviourContext} and eases the channels.
+     * Replaces the old per-{@code kind} {@code updateMotors}/{@code updateElectricalGlow} switches.
+     */
+    private void updateReactive(float dt) {
         for (int i = 0; i < ents.size(); i++) {
-            if (kind(placed.get(i).modelId()) != 'm') continue;
+            List<ReactiveBehaviour> behs = ComponentBehaviours.reactive(placed.get(i).modelId());
+            if (behs.isEmpty()) continue; // conductors / IC — nothing reactive (emission stays cleared)
+            EngineRenderer.DynamicEntity e = ents.get(i);
             com.minecart.logic.CircuitEdge edge = deviceEdge.get(i);
-            double cur = edge == null ? 0.0 : Math.abs(edge.getCurrent().getValue());
-            float v = motorSpin.getOrDefault(i, 0f) + (float) (cur * MOTOR_SPIN_GAIN) * dt;
-            v -= (float) Math.floor(v);
-            motorSpin.put(i, v);
-            ents.get(i).anim.set("spin", v);
+            float cur = edge == null ? 0f : (float) Math.abs(edge.getCurrent().getValue());
+            float volt = (edge != null && edge.getStart() != null && edge.getEnd() != null)
+                    ? (float) Math.abs(edge.getStart().getVoltage().getValue() - edge.getEnd().getVoltage().getValue())
+                    : 0f;
+            float charge = edge instanceof com.minecart.elements.edge.Capacitor cap
+                    ? (float) cap.get().getCharge() : 0f;
+            BehaviourContext ctx = new BehaviourContext(dt, cur, volt, charge, channelsOf(e), emissionOf(e));
+            for (ReactiveBehaviour b : behs) b.react(ctx);
+            e.anim.update(dt); // ease any targeted (LEVEL) channels; a no-op for immediate set() channels
         }
     }
 
-    /** TEST: motor {@code i}'s current spin channel (0..1 = one turn), or NaN if it's not a motor. */
-    public float debugSpin(int i) { return kind(placed.get(i).modelId()) == 'm' ? motorSpin.getOrDefault(i, 0f) : Float.NaN; }
+    private BehaviourContext.Channels channelsOf(EngineRenderer.DynamicEntity e) {
+        return new BehaviourContext.Channels() {
+            @Override public float value(String c) { return e.anim.value(c); }
+            @Override public void set(String c, float v) { e.anim.set(c, v); }
+            @Override public void target(String c, float v) { e.anim.target(c, v); }
+        };
+    }
 
-    private void updateElectricalGlow() {
-        for (int i = 0; i < ents.size(); i++) {
-            EngineRenderer.DynamicEntity e = ents.get(i);
-            com.minecart.logic.CircuitEdge edge = deviceEdge.get(i);
-            double cur = edge == null ? 0.0 : Math.abs(edge.getCurrent().getValue());
-            if (cur > 1e-4) {
-                char k = kind(placed.get(i).modelId());
-                boolean emitter = (k == 'l' || k == 'p'); // LED / lamp are light SOURCES (bright, wide)
-                com.badlogic.gdx.graphics.Color base = k == 'l' ? GLOW_LED : k == 'p' ? GLOW_LAMP : GLOW_HEAT;
-                float b = emitter ? (float) Math.min(1.0, 0.9 + cur * 4.0) : (float) Math.min(1.0, 0.5 + cur * 8.0);
-                e.light = glowTmp.set(base.r * b, base.g * b, base.b * b, 1f);
-                e.lightRange = emitter ? (float) Math.min(110.0, 60.0 + cur * 800.0)
-                        : (float) Math.min(90.0, 30.0 + cur * 600.0);
-            } else {
-                e.light = null;
-                e.lightRange = 0f;
+    private BehaviourContext.Emission emissionOf(EngineRenderer.DynamicEntity e) {
+        return new BehaviourContext.Emission() {
+            @Override public void emit(float r, float g, float b, float range) {
+                e.light = new com.badlogic.gdx.graphics.Color(r, g, b, 1f);
+                e.lightRange = range;
             }
-        }
+            @Override public void clear() { e.light = null; e.lightRange = 0f; }
+        };
+    }
+
+    /** TEST: motor {@code i}'s current spin channel (0..1 = one turn), or NaN if it's not a motor. */
+    public float debugSpin(int i) {
+        return kind(placed.get(i).modelId()) == 'm' ? ents.get(i).anim.value("spin") : Float.NaN;
     }
 
     private com.minecart.logic.CircuitEdge lastBattery; // captured to read solved current (a live-circuit proof)
@@ -1145,11 +1148,10 @@ public final class PhysicalBoardView implements Disposable {
         if (!built) {
             return;
         }
-        updateElectricalGlow(); // live current → per-part emission (glow) before the lighting pass
-        long now = System.nanoTime(); // dt for the current-driven motor spin
+        long now = System.nanoTime();
         float dt = lastFrameNanos == 0L ? 0f : Math.min(0.1f, (now - lastFrameNanos) / 1e9f);
         lastFrameNanos = now;
-        updateMotors(dt);
+        updateReactive(dt); // live current/charge → per-part motion + emission (behaviours) before the lighting pass
         engine.render(cam);
         if (gPresent) {
             if (gValid) {
