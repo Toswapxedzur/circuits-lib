@@ -9,14 +9,16 @@ import com.minecart.registry.AllComponents;
 import com.minecart.variant.Informations;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 /**
- * Not an assertion: prints the RC-charge error per simulated second and the mean tick cost for
- * whichever backend is active, so the two can be compared by running the suite twice
- * ({@code -Dcircuitslib.solver=ejml} vs the default ngspice). Output lands in the test report XML.
+ * Not an assertion: prints the RC-charge error per simulated second and the mean tick cost for the
+ * ngspice backend. Output lands in the test report XML. Skipped when libngspice isn't installed.
  */
 class SolverDriftMeasurement {
     @Test
     void printDriftAndTickCost() {
+        assumeTrue(ServerCircuit.SPICE_BACKEND, "ngspice backend not active");
         ServerLevel level = new ServerLevel();
         double dt = level.getTickRate();
         ServerWorld world = level.createWorld();
@@ -24,7 +26,7 @@ class SolverDriftMeasurement {
         CircuitNode b = world.createNode(AllComponents.CONNECTION);
         world.connect(AllComponents.BATTERY, a, b, new Informations.BatteryInfo(10.0, 1e-9));
         Capacitor cap = (Capacitor) world.connect(AllComponents.CAPACITOR, a, b, new Informations.CapacitorInfo(1.0, 1.0));
-        StringBuilder sb = new StringBuilder("backend=" + (ServerCircuit.SPICE_BACKEND ? "ngspice" : "ejml") + " dt=" + dt + "\n");
+        StringBuilder sb = new StringBuilder("backend=ngspice dt=" + dt + "\n");
         long t0 = System.nanoTime();
         int ticks = (int) Math.round(10.0 / dt);
         double worst = 0;

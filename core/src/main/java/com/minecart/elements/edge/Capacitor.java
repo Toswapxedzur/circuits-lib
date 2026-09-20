@@ -4,7 +4,6 @@ import com.minecart.action.ActionTypes;
 import com.minecart.action.Actions;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.foundation.World;
-import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
 import com.minecart.serialization.tag.CompoundTag;
 import com.minecart.ui.panel.InfoPanelElementType;
@@ -34,56 +33,15 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
         info = getDefault();
     }
 
-    @Override
-    public void collectRule(LinearSystem.RelationProvider equations) {
-        super.collectRule(equations);
-
-        if(!isConnected())
-            return;
-
-        double voltage = get().getCharge() / get().getCapacitance();
-
-        equations.stampCoefficient(getStart().getVoltage(), 1.0);
-        equations.stampCoefficient(getEnd().getVoltage(), -1.0);
-
-        // Multiply current by negative internal resistance to match the
-        // "V_start - V_end - I*R = const" convention used by Resistor/Battery.
-        // Stamping +R here inverts the RC feedback sign and makes the solve
-        // diverge exponentially instead of converging to Q = C*V.
-        equations.stampCoefficient(getCurrent(), -get().getInternalResistance());
-
-        equations.stampConstant(voltage);
-
-        equations.endRelation();
-    }
-
-    /** Set when an external solver (ngspice) already integrated this tick; consumed by {@link #tick()}. */
-    private boolean chargeSolvedExternally;
-
     /**
-     * Records the charge an external, error-controlled solver found at the end of the tick, so
-     * {@link #tick()} does not add its own explicit-Euler increment on top.
+     * Records the charge ngspice found at the end of the tick ({@code Q = C·V}). ngspice carries the
+     * charge across ticks as an initial condition and integrates it with adaptive, error-controlled
+     * steps (see {@link com.minecart.spice.SpiceSolver}), so the capacitor no longer does any
+     * integration of its own — this is a plain write-back of the solved value.
      */
     public void setSolvedCharge(double charge) {
         if (get() == null) return;
         get().setCharge(charge);
-        chargeSolvedExternally = true;
-    }
-
-    @Override
-    public void tick() {
-        super.tick();
-
-        if (!isConnected() || get() == null) return;
-        if (chargeSolvedExternally) {
-            chargeSolvedExternally = false;
-            return;
-        }
-
-        double tickRate = getWorld().getTickRate();
-        double deltaCharge = getCurrent().getValue() * tickRate;
-
-        get().setCharge(get().getCharge() + deltaCharge);
     }
 
     @Override

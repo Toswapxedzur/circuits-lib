@@ -5,7 +5,6 @@ import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
 import com.minecart.logic.cascade.CombineCascadeEngine;
 import com.minecart.math.DoubleVar;
-import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
@@ -38,34 +37,6 @@ public non-sealed class CircuitNode extends CircuitElement {
         setWorld(world);
         voltage = DoubleVar.create();
         connection = new LinkedHashSet<>();
-    }
-
-    @Override
-    public void collectVariable(Set<DoubleVar> variables) {
-        super.collectVariable(variables);
-        variables.add(this.voltage);
-    }
-
-    @Override
-    public void collectRule(LinearSystem.RelationProvider equations) {
-        super.collectRule(equations);
-
-        //Ground node don't provide kirchoff current rule, but its voltage is always zero
-        if(isGrounded()){
-            equations.stampCoefficient(this.voltage, 1);
-            equations.stampConstant(0.0);
-            equations.endRelation();
-            return;
-        }
-
-        //implementation of default kirchoff current rule
-        if (connection.isEmpty()) return;
-        for (CircuitEdge edge : connection) {
-            double coef = edge.shouldRevert(this) ? -1.0 : 1.0;
-            equations.stampCoefficient(edge.getCurrent(), coef);
-        }
-        equations.stampConstant(0.0);
-        equations.endRelation();
     }
 
     @Override

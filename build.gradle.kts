@@ -40,8 +40,6 @@ subprojects{
         useJUnitPlatform()
         // JNA (ngspice binding) loads a native library; Java 24 warns unless native access is granted.
         jvmArgs("--enable-native-access=ALL-UNNAMED")
-        // Pass the solver choice through to the test JVM: ./gradlew test -Dcircuitslib.solver=ejml
-        systemProperty("circuitslib.solver", System.getProperty("circuitslib.solver") ?: "ngspice")
     }
 }
 

@@ -3,8 +3,6 @@ package com.minecart.logic;
 import com.minecart.misc.CoreStrings;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
-import com.minecart.math.DoubleVar;
-import com.minecart.math.LinearSystem;
 import com.minecart.registry.AllComponents;
 import com.minecart.registry.CircuitElementRegistry;
 import com.minecart.registry.CircuitElementType;
@@ -20,7 +18,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 public sealed class CircuitElement implements Comparable<CircuitElement>, TagSerializable
@@ -217,24 +214,6 @@ public sealed class CircuitElement implements Comparable<CircuitElement>, TagSer
 
     public CircuitElement() {
         this.id = UUID.randomUUID();
-    }
-
-    /**
-     * A set of relationship between different current and voltages that helps figure out the final current and voltages
-     *
-     * @param equations Append equation representing limitations by overriding this method
-     */
-    public void collectRule(LinearSystem.RelationProvider equations) {
-
-    }
-
-    /**
-     * Collect all the variables
-     *
-     * @param variables All the data that could change and impacted by Rules
-     */
-    public void collectVariable(Set<DoubleVar> variables) {
-
     }
 
     @Override

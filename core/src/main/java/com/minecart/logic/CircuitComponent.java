@@ -1,6 +1,5 @@
 package com.minecart.logic;
 
-import com.minecart.math.LinearSystem;
 import com.minecart.misc.CoreStrings;
 import com.minecart.registry.AllElementInfos;
 import com.minecart.variant.ElectricalVariate;
@@ -40,7 +39,9 @@ import java.util.UUID;
  * The {@link #nodes} / {@link #edges} sets hold every internal element. A subset of the nodes are
  * <em>ports</em>: nodes deliberately exposed for external wiring. Ports are tracked in
  * {@link #portsByIndex} via {@link #newNode(CircuitElementType, int)} (or one of its electrical-info
- * overloads). Anything else in {@link #nodes} / {@link #edges} is considered <em>internal</em> — not
+ * overloads). Constitutive relations beyond the branch/device equations (e.g. a transistor's controlled
+ * source) are emitted to ngspice by {@link com.minecart.spice.SpiceSolver}, which recognises the concrete
+ * component type. Anything else in {@link #nodes} / {@link #edges} is considered <em>internal</em> — not
  * exposed to user-driven wiring (the server's connect handler rejects edges that target a non-port
  * internal node) and not drawn on the canvas (the client's renderer skips them). The base class
  * {@link #getPort(int)} reads the map; subclasses no longer need to override it just to thread index →
@@ -69,12 +70,6 @@ public non-sealed class CircuitComponent extends CircuitElement {
         if (circuit != null && circuit.getWorld() != null) {
             setWorld(circuit.getWorld());
         }
-    }
-
-    /**
-     * Extra constitutive relations beyond branch/device equations (e.g. controlled sources). Default: none.
-     */
-    public void collectRule(LinearSystem.RelationProvider equations) {
     }
 
     /**

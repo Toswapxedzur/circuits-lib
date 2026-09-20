@@ -7,8 +7,6 @@ import com.minecart.event.events.Event;
 import com.minecart.event.events.ServerTickEvent;
 import com.minecart.foundation.Circuit;
 import com.minecart.foundation.World;
-import com.minecart.math.DoubleVar;
-import com.minecart.math.LinearSystem;
 import com.minecart.registry.CircuitElementType;
 import com.minecart.serialization.TagUtil;
 import com.minecart.serialization.tag.CompoundTag;
@@ -23,8 +21,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Server-side simulation for a {@link Circuit}: linear system, tick, and world integration.
- * Structure and serialization are on {@link Circuit}.
+ * Server-side simulation for a {@link Circuit}: per-tick electrical solve (via ngspice, see
+ * {@link SpiceSolver}) and world integration. Structure and serialization are on {@link Circuit}.
  */
 public class ServerCircuit extends Circuit {
 
@@ -32,7 +30,6 @@ public class ServerCircuit extends Circuit {
     private static final double CURRENT_SYNC_EPSILON = 1e-12;
 
     protected boolean dirty;
-    protected LinearSystem system;
 
     /** Edges that transitioned into overpowered this tick; drained by {@link ServerWorld} after {@link #tick()}. */
     protected final List<CircuitEdge> overpoweredThisTick = new ArrayList<>();
@@ -106,22 +103,21 @@ public class ServerCircuit extends Circuit {
 
     public ServerCircuit() {
         super(UUID.randomUUID());
-        system = new LinearSystem();
         dirty = false;
     }
 
     public ServerCircuit(UUID id) {
         super(id);
-        system = new LinearSystem();
         dirty = false;
     }
 
     /**
-     * Electrical backend: ngspice (adaptive, error-controlled transient per tick) unless
-     * {@code -Dcircuitslib.solver=ejml} asks for the built-in linear solver, or libngspice is missing.
+     * Whether the ngspice electrical backend is available (libngspice loaded). ngspice is the sole
+     * electrical solver — the old hand-rolled EJML linear solver was removed on 2026-09-20 — so when
+     * this is {@code false} the simulation cannot solve and every tick zeroes the circuit. Tests use it
+     * to skip electrical assertions on a machine without ngspice installed.
      */
-    public static final boolean SPICE_BACKEND =
-            !"ejml".equalsIgnoreCase(System.getProperty("circuitslib.solver", "ngspice")) && NgSpice.available();
+    public static final boolean SPICE_BACKEND = NgSpice.available();
 
     private double tickRateOrDefault() {
         ServerWorld w = getWorld();
@@ -137,17 +133,10 @@ public class ServerCircuit extends Circuit {
         }
 
         Map<CircuitEdge, Double> previousCurrents = snapshotCurrents();
-        boolean solved = false;
-        boolean useBuiltin = true;
-        if (SPICE_BACKEND) {
-            SpiceSolver.Result r = SpiceSolver.solve(nodes, edges, components, tickRateOrDefault());
-            if (r == SpiceSolver.Result.OK) { solved = true; useBuiltin = false; }
-            else if (r == SpiceSolver.Result.FAILED) { useBuiltin = false; } // a failed ngspice solve is a real failure: zero, don't mask it
-        }
-        if (useBuiltin) {
-            system.stampRelation(this::collectRelation);
-            solved = system.solve();
-        }
+        // ngspice is the sole electrical solver. Any non-OK result (a real solve failure, an element
+        // ngspice can't model, or libngspice missing) is a failure: zero the circuit, don't mask it.
+        boolean solved = SpiceSolver.solve(nodes, edges, components, tickRateOrDefault())
+                == SpiceSolver.Result.OK;
         if (!solved) {
             log.warn("electrical solve failed for circuit {}; resetting {} nodes and {} edges to zero",
                     getId(), nodes.size(), edges.size());
@@ -196,10 +185,10 @@ public class ServerCircuit extends Circuit {
         }
         // Ground exactly one reference node PER connected component. A circuit can hold several
         // disconnected subgraphs (circuits only ever merge, never split), so grounding only the
-        // first node of the whole circuit leaves every other component's voltages unconstrained
-        // and the matrix singular -> solve() fails -> everything gets zeroed each tick. A degree-0
-        // node forms its own component and is grounded too, giving it a well-posed V=0 equation
-        // (CircuitNode.collectRule stamps nothing for an isolated, ungrounded node). For the normal
+        // first node of the whole circuit leaves every other subgraph without a voltage reference —
+        // ngspice sees a floating subcircuit (no DC path to node 0), the solve is singular and the
+        // tick zeroes everything. SpiceSolver maps a grounded node to SPICE node "0"; a degree-0 node
+        // forms its own component and is grounded too so it has a well-posed V=0. For the normal
         // single-connected-circuit case this grounds exactly the first node, identical to before.
         Set<CircuitNode> visited = new java.util.HashSet<>();
         for (CircuitNode seed : nodes) {
@@ -209,8 +198,6 @@ public class ServerCircuit extends Circuit {
             seed.setGround(true);
             bfs(seed, visited::add, e -> {});
         }
-        system.collectVar(this::collectVariable);
-        system.init();
     }
 
     private Map<CircuitEdge, Double> snapshotCurrents() {
@@ -241,35 +228,6 @@ public class ServerCircuit extends Circuit {
             if (Math.abs(after - before) > CURRENT_SYNC_EPSILON) {
                 world.getLevel().notifyElementChanged(edge);
             }
-        }
-    }
-
-    public void collectRelation(LinearSystem.RelationProvider provider) {
-        for (CircuitNode node : nodes) {
-            node.collectRule(provider);
-        }
-        for (CircuitEdge edge : edges) {
-            edge.collectRule(provider);
-        }
-        // Components contribute their constitutive relations (e.g. BJTransistor's I_C = beta*I_B)
-        // on top of the branch/device equations their internal nodes/edges already supply. Without
-        // this loop CircuitComponent.collectRule is dead and controlled sources are never enforced.
-        for (CircuitComponent component : components) {
-            component.collectRule(provider);
-        }
-    }
-
-    public void collectVariable(Set<DoubleVar> collector) {
-        for (CircuitNode node : nodes) {
-            node.collectVariable(collector);
-        }
-        for (CircuitEdge edge : edges) {
-            edge.collectVariable(collector);
-        }
-        // Mirror collectRelation: give components a chance to register any extra variables their
-        // constitutive relations reference beyond the internal node/edge variables above.
-        for (CircuitComponent component : components) {
-            component.collectVariable(collector);
         }
     }
 

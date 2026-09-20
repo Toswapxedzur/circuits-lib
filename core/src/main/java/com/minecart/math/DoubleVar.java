@@ -3,12 +3,11 @@ package com.minecart.math;
 import java.util.UUID;
 
  /**
- * Representing a mutable reference that has an unique id and a temporary index
- * @param <T> Type
+ * A mutable {@code double} value with a stable unique id. Holds a node's voltage or an edge's current:
+ * ngspice writes solved values in, and rendering / sync / persistence read them back out.
  */
 public class DoubleVar {
     protected final UUID id;
-    protected int index;
     protected double value = 0;
 
     protected DoubleVar() {
@@ -38,14 +37,6 @@ public class DoubleVar {
 
     public UUID getUUID() {
         return id;
-    }
-
-    public int getIndex() {
-        return index;
-    }
-
-    public void setIndex(int index) {
-        this.index = index;
     }
 
 }

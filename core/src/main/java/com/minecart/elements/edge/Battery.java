@@ -13,7 +13,6 @@ import com.minecart.ui.panel.PanelFieldKey;
 import com.minecart.ui.panel.fields.NumberFieldSpec;
 import com.minecart.variant.ElectricalVariate;
 import com.minecart.variant.Informations.BatteryInfo;
-import com.minecart.math.LinearSystem.RelationProvider;
 
 import java.util.Objects;
 
@@ -34,24 +33,6 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
     public Battery(World world) {
         super(world);
         this.info = getDefault();
-    }
-
-    @Override
-    public void collectRule(RelationProvider equations) {
-        super.collectRule(equations);
-
-        if (!isConnected() || info == null) return;
-
-        equations.stampCoefficient(getStart().getVoltage(), 1.0);
-        equations.stampCoefficient(getEnd().getVoltage(), -1.0);
-
-        // Internal resistance causes a voltage drop proportional to the current
-        equations.stampCoefficient(getCurrent(), -get().getResistance());
-
-        // The target constant is the battery's rated electromotive force (EMF)
-        equations.stampConstant(info.getVoltage());
-
-        equations.endRelation();
     }
 
     @Override

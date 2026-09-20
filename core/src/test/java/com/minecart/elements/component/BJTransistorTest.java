@@ -46,13 +46,10 @@ class BJTransistorTest {
     }
 
     /**
-     * Reproduces H6: once the circuit collects component constitutive relations, the BJT enforces
-     * {@code I_C = beta * I_B}. A common-emitter bias (base battery 11V through 9 Ohm, collector
-     * supply 5V) yields I_B = 11/(1+beta+9) = 0.1A and I_C = beta*I_B = 10A for beta = 100.
-     *
-     * <p>Before the fix, {@link com.minecart.logic.ServerCircuit#collectRelation} never iterated
-     * components, so the constitutive relation was dead and the collector current only satisfied KCL
-     * (I_C = -I_B). The assertion below fails under that old behavior.
+     * Reproduces H6: the BJT enforces {@code I_C = beta * I_B}. A common-emitter bias (base battery
+     * 11V through 9 Ohm, collector supply 5V) yields I_B = 11/(1+beta+9) = 0.1A and I_C = beta*I_B = 10A
+     * for beta = 100. {@link com.minecart.spice.SpiceSolver} emits the collector edge as a
+     * current-controlled current source sensing the base ammeter, which is what makes this hold.
      */
     @Test
     void enforcesCollectorEqualsBetaTimesBase() {
