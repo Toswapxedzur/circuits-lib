@@ -24,10 +24,14 @@ public final class ComponentBehaviours {
         reactive("motor", new SpinBehaviour("spin", 90f), GlowBehaviour.HEAT);
         reactive("led", GlowBehaviour.LED);
         reactive("lamp", GlowBehaviour.LAMP);
+        // Capacitors also SWELL with stored charge (scale channel "swell"), on top of the heat glow.
+        SwellBehaviour swell = new SwellBehaviour("swell", 0.15f, 1e-3f, 0.4f);
+        for (String cap : new String[]{"capacitor_small", "capacitor_medium", "capacitor_big"}) {
+            reactive(cap, swell, GlowBehaviour.HEAT);
+        }
         // Every other current-carrying device just heats up (matches the old default glow branch).
         for (String heat : new String[]{
                 "resistor", "varres_bar", "varres_clock", "diode",
-                "capacitor_small", "capacitor_medium", "capacitor_big",
                 "battery", "battery_cell", "transistor_npn", "transistor_pnp"}) {
             reactive(heat, GlowBehaviour.HEAT);
         }

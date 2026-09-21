@@ -1,0 +1,58 @@
+{
+  "id": "cap_body_1",
+  "elements": [
+    {
+      "from": [
+        -2.5,
+        -3.0,
+        -2.5
+      ],
+      "to": [
+        2.5,
+        3.0,
+        2.5
+      ],
+      "faces": {
+        "east": "sp2010ec5270ea40f2_6x5",
+        "west": "sp55cc55b168455673_6x5",
+        "up": "spf308039c2ead234_5x5",
+        "down": "sp484dcf7bd1535835_5x5",
+        "south": "sp18ff15cf2097c76_5x6",
+        "north": "sp3e56db494b8c50f7_5x6"
+      },
+      "tint": false,
+      "translucent": false
+    }
+  ],
+  "quads": [],
+  "movables": [],
+  "collision": {
+    "from": [
+      -2.5,
+      -3.0,
+      -2.5
+    ],
+    "to": [
+      2.5,
+      3.0,
+      2.5
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  },
+  "visual": {
+    "from": [
+      -2.5,
+      -3.0,
+      -2.5
+    ],
+    "to": [
+      2.5,
+      3.0,
+      2.5
+    ],
+    "friction": 0.9,
+    "restitution": 0.0
+  },
+  "connectors": []
+}

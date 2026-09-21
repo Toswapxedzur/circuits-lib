@@ -30,4 +30,13 @@ interface MovableBinding {
             return out;
         };
     }
+
+    /** Uniformly scales about the local origin by {@code 1 + value} (0 = identity; grows the part as the
+     *  channel rises — e.g. a capacitor swelling with charge). Boxes should be centred at the origin. */
+    static MovableBinding scale(String channel) {
+        return (state, out) -> {
+            float s = 1f + state.value(channel);
+            return out.setToScaling(s, s, s);
+        };
+    }
 }
