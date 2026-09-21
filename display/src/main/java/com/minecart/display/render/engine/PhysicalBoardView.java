@@ -1053,8 +1053,45 @@ public final class PhysicalBoardView implements Disposable {
         grabValid = it != null;
         if (!grabValid) return;
         grabProj = rawAim(f, ray);
-        grabChannel = subState.getOrDefault(f.placementIndex(), it.min());
+        if (it.momentary()) { // a push-button: grabbing presses it fully (closed) until released
+            subState.put(f.placementIndex(), it.max());
+            ents.get(f.placementIndex()).anim.set(it.channel(), it.max());
+            grabChannel = it.max();
+        } else {
+            grabChannel = subState.getOrDefault(f.placementIndex(), it.min());
+        }
         if (Float.isNaN(grabProj)) grabValid = false;
+    }
+
+    /** True if the focused sub-part is a momentary control (springs back on release). */
+    public boolean isMomentary(Focus f) {
+        InteractiveBehaviour b = interactiveFor(f);
+        return b != null && b.momentary();
+    }
+
+    private static final float MOMENTARY_RETURN_PER_SEC = 6f; // full travel returns in ~1/6 s
+
+    /**
+     * Eases every momentary control back toward its rest ({@code min}) — the button "pops up" after release —
+     * except the one currently grabbed ({@code grabbedIdx}, or −1). Mirrors the eased value to the render
+     * channel. Returns true if any part crossed its conduct threshold, so the caller re-solves the circuit
+     * (the switch opens as the button clears mid-travel).
+     */
+    public boolean tickMomentary(float dt, int grabbedIdx) {
+        boolean rebuild = false;
+        for (int i = 0; i < placed.size(); i++) {
+            if (i == grabbedIdx) continue;
+            InteractiveBehaviour b = InteractiveBehaviours.of(placed.get(i).modelId());
+            if (b == null || !b.momentary()) continue;
+            float cur = subState.getOrDefault(i, b.min());
+            if (cur <= b.min() + 1e-4f) continue; // already at rest
+            boolean wasClosed = b.conducts(cur);
+            float next = Math.max(b.min(), cur - (b.max() - b.min()) * MOMENTARY_RETURN_PER_SEC * dt);
+            subState.put(i, next);
+            if (i < ents.size()) ents.get(i).anim.set(b.channel(), next);
+            if (wasClosed != b.conducts(next)) rebuild = true;
+        }
+        return rebuild;
     }
 
     /** AIM-drives the grabbed sub-part: the knob FOLLOWS the crosshair (camera keeps turning freely) by the aim's
