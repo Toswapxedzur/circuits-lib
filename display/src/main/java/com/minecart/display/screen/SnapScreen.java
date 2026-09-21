@@ -635,6 +635,10 @@ public final class SnapScreen extends ScreenAdapter {
             if (grabbing && physWorld.aimSubPart(grabbed, cross)) {
                 rebuildPhysCircuit(); // the knob followed the aim → re-solve
             }
+            // Momentary controls (push-buttons) spring back toward rest when not held; re-solve as they open.
+            if (physWorld.tickMomentary(dt, grabbing ? grabbed.placementIndex() : -1)) {
+                rebuildPhysCircuit();
+            }
             // Suppress the placement ghost while hovering (or dragging) an interactive sub-part — LMB interacts.
             boolean interactive = grabbing || physWorld.isInteractive(physFocus);
             physWorld.setGhost(!interactive && physEditor.present() && cursorCaught, physEditor.modelId(),
@@ -1000,6 +1004,7 @@ public final class SnapScreen extends ScreenAdapter {
                         grabbed = physFocus;
                         physWorld.beginGrab(physFocus, // record the grabbed point so it stays under the cursor
                                 camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
+                        if (physWorld.isMomentary(physFocus)) rebuildPhysCircuit(); // button pressed closed on grab
                     } else if (physWorld.isClickUi(physFocus)) {
                         log.info("interact: click-UI on sub-part {} of placement {} (panel TODO)",
                                 physFocus.subPart(), physFocus.placementIndex());
