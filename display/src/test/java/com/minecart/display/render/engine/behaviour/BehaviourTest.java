@@ -74,6 +74,33 @@ class BehaviourTest {
     }
 
     @Test
+    void interactiveControlsExposeCorrectSemantics() {
+        InteractiveBehaviour sw = InteractiveBehaviours.of("switch");
+        assertTrue(sw.conductorControl());
+        assertFalse(sw.conducts(-2f), "open below mid");   // range -2..2, mid 0
+        assertTrue(sw.conducts(2f), "closed above mid");
+        assertFalse(sw.momentary());
+        assertFalse(sw.pivotDrag());
+
+        InteractiveBehaviour btn = InteractiveBehaviours.of("press");
+        assertTrue(btn.momentary(), "push-button springs back");
+        assertFalse(btn.conducts(0f), "released = open");   // range 0..1, mid 0.5
+        assertTrue(btn.conducts(1f), "held = closed");
+
+        InteractiveBehaviour bar = InteractiveBehaviours.of("varres_bar");
+        assertTrue(bar.resistorControl());
+        assertEquals(10.0, bar.resistanceOhms(0f), 1e-6);     // min → 10Ω
+        assertEquals(1000.0, bar.resistanceOhms(2f), 1e-6);   // max (range 0..2) → 1000Ω
+        assertEquals(505.0, bar.resistanceOhms(1f), 1e-6);    // mid → 505Ω
+
+        InteractiveBehaviour dial = InteractiveBehaviours.of("varres_clock");
+        assertTrue(dial.pivotDrag(), "dial is rotary");
+        assertEquals(1000.0, dial.resistanceOhms(1f), 1e-6);  // range 0..1 → max at 1
+
+        org.junit.jupiter.api.Assertions.assertNull(InteractiveBehaviours.of("wire_2")); // conductor, no control
+    }
+
+    @Test
     void registryComposesPerPart() {
         assertEquals(2, ComponentBehaviours.reactive("motor").size());   // Spin + HeatGlow
         assertEquals(1, ComponentBehaviours.reactive("led").size());     // LedGlow
