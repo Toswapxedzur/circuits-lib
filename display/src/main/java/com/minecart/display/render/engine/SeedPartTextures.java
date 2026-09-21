@@ -39,6 +39,7 @@ public final class SeedPartTextures extends ApplicationAdapter {
         boxes.addAll(parts.button.boxes());
         boxes.addAll(parts.pointer.boxes());
         boxes.addAll(parts.fan.boxes()); // motor propeller
+        for (PartType b : parts.capBodies) boxes.addAll(b.boxes()); // capacitor cans (swelling movable)
         boxes.add(EngineDemoApp.boardBox());
         boxes.addAll(SnapBaseBoard.seedBoxes()); // the 3D snap base board's tiled cell + stud sprites
 

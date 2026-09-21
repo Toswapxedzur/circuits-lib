@@ -105,28 +105,6 @@
     },
     {
       "from": [
-        -2.5,
-        7.0,
-        -2.5
-      ],
-      "to": [
-        2.5,
-        13.0,
-        2.5
-      ],
-      "faces": {
-        "east": "sp204b29c6317991f2_6x5",
-        "west": "sp5606932528d4a773_6x5",
-        "up": "spf6abdad837a2334_5x5",
-        "down": "sp48880cef91e2a935_5x5",
-        "south": "sp1ca2ed0b298cd76_5x6",
-        "north": "sp3e9118bd0c1ba1f7_5x6"
-      },
-      "tint": false,
-      "translucent": false
-    },
-    {
-      "from": [
         -13.5,
         4.0,
         -1.5
@@ -383,7 +361,21 @@
     }
   ],
   "quads": [],
-  "movables": [],
+  "movables": [
+    {
+      "part": "cap_body_1",
+      "at": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "bindingType": "scale",
+      "channel": "swell",
+      "degPerUnit": 0.0,
+      "interMin": 0.0,
+      "interMax": 0.0
+    }
+  ],
   "collision": {
     "from": [
       -16.5,
@@ -406,7 +398,7 @@
     ],
     "to": [
       16.5,
-      13.0,
+      7.0,
       4.5
     ],
     "friction": 0.9,

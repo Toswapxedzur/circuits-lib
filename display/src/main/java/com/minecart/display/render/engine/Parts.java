@@ -104,6 +104,7 @@ final class Parts {
     final ComponentModel[] bases = new ComponentModel[PLASTIC_HSV.length];          // blank rectangular board, every colour
     final ComponentModel[] teeBlanks = new ComponentModel[PLASTIC_HSV.length];      // blank triangular board, every colour
     final ComponentModel[] capacitorSizes = new ComponentModel[CAP_SIZES.length];  // big/medium/small (teal)
+    final PartType[] capBodies = new PartType[CAP_SIZES.length];  // each cap's black box as a swelling movable (∝ charge)
     final ComponentModel lamp;                                                     // white-encased bulb (single)
     final ComponentModel ic;                                                       // integrated circuit — 2×3 base + big red blob
     final ComponentModel transistorNpn;                                            // red base, cube top-black/bottom-white
@@ -226,7 +227,7 @@ final class Parts {
                 new PartMesh.Box(-7f, 0f, 0f, 9f, 1f, 5f, bladePaint(975L), -7f, 0f, 0f, null, false, true, PartMesh.WHITE_BITS, null)));
         Color[] teal = PaletteDither.rampHsv(160f, 0.92f, 0.80f);
         for (int s = 0; s < CAP_SIZES.length; s++) { // the 3 sizes, in teal
-            capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L);
+            capacitorSizes[s] = buildCapacitor(teal, CAP_SIZES[s][0], CAP_SIZES[s][1], CAP_SIZES[s][2], 800L + s * 10L, s);
         }
         // ⛔ NO COLOUR VARIANTS (owner 2026-08-29): each component is built ONCE in its canonical colour.
         Color[] green = PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2]);  // lime
@@ -689,17 +690,21 @@ final class Parts {
      * 0-thickness legs (1 wide in Z, {@code legH} tall) that <b>face each other</b> (0-thick in X), 3 apart.
      * Base rims reuse seeds 101/202/303 → they dedupe with the other parts' bodies of the same colour.
      */
-    private ComponentModel buildCapacitor(Color[] pal, float w, float h, float legH, long seed) {
+    private ComponentModel buildCapacitor(Color[] pal, float w, float h, float legH, long seed, int sizeIndex) {
         float top = 4f;                        // body y0..4 (rim + white band + rim), like the switches
         float cy = top + legH + h / 2f;        // black box centre Y (legs bridge body-top → box-bottom)
         float r = Math.max(1f, Math.abs(0.5f / L) * (w / 2f) + Math.abs(0.7f / L) * (h / 2f)
                 + Math.abs(0.4f / L) * (w / 2f));
         PaletteDither.Paint black = new PaletteDither.Paint(SERIES_BLACK, Color.WHITE, 2, 0.3f, false, seed + 1, 0f, cy, 0f, r, 1f);
         PaletteDither.Paint metal = new PaletteDither.Paint(STEEL, Color.WHITE, 1, 1.6f, true, seed + 3, 0f, cy, 0f, r, 1f);
+        // The black can is a MOVABLE sub-part centred at its own origin, so its "swell" scale channel grows it
+        // symmetrically about its centre (base plate + legs stay put). Driven by charge via SwellBehaviour.
+        capBodies[sizeIndex] = new PartType("cap_body_" + sizeIndex, java.util.List.of(
+                new PartMesh.Box(0f, 0f, 0f, w, h, w, black, 0f, 0f, 0f, null, false, false, PartMesh.WHITE_BITS, null)));
         return studs(rims(ComponentModel.of("capacitor"), pal, capTrace())
                 .box(-1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)               // left leg  (faces +X)
-                .box(1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal)                // right leg (faces -X)
-                .box(0f, cy, 0f, w, h, w, black))                                   // black box on top
+                .box(1.5f, top + legH / 2f, 0f, 0f, legH, 1f, metal))               // right leg (faces -X)
+                .movable(capBodies[sizeIndex], 0f, cy, 0f, BindingSpec.scale("swell")) // black can, swells with charge
                 .build();
     }
 
@@ -787,6 +792,7 @@ final class Parts {
         m.put(button.id(), button);   // "button"
         m.put(pointer.id(), pointer); // "pointer" — clock's spinning red hand
         m.put(fan.id(), fan);         // "fan" — motor's current-driven propeller
+        for (PartType b : capBodies) m.put(b.id(), b); // "cap_body_N" — capacitor cans that swell with charge
         return m;
     }
 }
