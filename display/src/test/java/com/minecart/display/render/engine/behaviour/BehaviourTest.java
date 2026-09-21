@@ -59,6 +59,21 @@ class BehaviourTest {
     }
 
     @Test
+    void swellGrowsWithChargeAndClamps() {
+        Fake f = new Fake();
+        SwellBehaviour swell = new SwellBehaviour("swell", 0.15f, 1e-3f, 0.4f);
+        // No charge → identity (channel 0 → scale 1).
+        swell.react(f.ctx(0.05f, 0f, 0f, 0f));
+        assertEquals(0f, f.value("swell"), 1e-6);
+        // Some charge → positive, log-shaped growth: 0.15*ln(1 + 5e-3/1e-3) = 0.15*ln(6) ≈ 0.2688.
+        swell.react(f.ctx(0.05f, 0f, 0f, 5e-3f));
+        assertEquals(0.15f * (float) Math.log(6.0), f.value("swell"), 1e-4);
+        // Huge charge clamps to maxExtra.
+        swell.react(f.ctx(0.05f, 0f, 0f, 100f));
+        assertEquals(0.4f, f.value("swell"), 1e-6);
+    }
+
+    @Test
     void registryComposesPerPart() {
         assertEquals(2, ComponentBehaviours.reactive("motor").size());   // Spin + HeatGlow
         assertEquals(1, ComponentBehaviours.reactive("led").size());     // LedGlow

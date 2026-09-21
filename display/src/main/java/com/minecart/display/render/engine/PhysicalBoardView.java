@@ -284,6 +284,11 @@ public final class PhysicalBoardView implements Disposable {
         return kind(placed.get(i).modelId()) == 'm' ? ents.get(i).anim.value("spin") : Float.NaN;
     }
 
+    /** TEST: capacitor {@code i}'s swell channel (0 = uncharged/identity, grows with charge), or NaN if not a cap. */
+    public float debugSwell(int i) {
+        return kind(placed.get(i).modelId()) == 'c' ? ents.get(i).anim.value("swell") : Float.NaN;
+    }
+
     private com.minecart.logic.CircuitEdge lastBattery; // captured to read solved current (a live-circuit proof)
 
     /**

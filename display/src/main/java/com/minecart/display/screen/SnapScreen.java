@@ -933,6 +933,7 @@ public final class SnapScreen extends ScreenAdapter {
                 return q[1].equals("x") ? t.x : q[1].equals("y") ? t.y : t.z;
             }
             if (n.startsWith("motor.spin.")) return physWorld.debugSpin(Integer.parseInt(n.substring(11)));
+            if (n.startsWith("cap.swell.")) return physWorld.debugSwell(Integer.parseInt(n.substring(10)));
             if (n.startsWith("sub.channel.")) return physWorld.debugChannel(Integer.parseInt(n.substring(12)));
             if (n.startsWith("sub.closed."))  return physWorld.debugSwitchClosed(Integer.parseInt(n.substring(11)));
             return switch (n) {
