@@ -1,10 +1,8 @@
 package com.minecart.display.render.registry;
 
-import com.minecart.logic.CircuitComponent;
-import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
-import com.minecart.logic.CircuitNode;
 import com.minecart.registry.CircuitElementType;
+import com.minecart.registry.TypeAncestry;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -86,29 +84,11 @@ public final class RenderRegistry {
 
     private static RenderElementType<?> leafTypeFor(CircuitElement element) {
         RenderElementType<?> type = TYPE_BINDINGS.get(element.getRegistryTypeId());
-        if (type == null) {
-            if (element instanceof CircuitNode) {
-                type = RenderTypes.NODE;
-            } else if (element instanceof CircuitEdge) {
-                type = RenderTypes.EDGE;
-            } else if (element instanceof CircuitComponent) {
-                type = RenderTypes.COMPONENT;
-            } else {
-                type = RenderTypes.ELEMENT;
-            }
-        }
-        return type;
+        return type != null ? type
+                : TypeAncestry.byCategory(element, RenderTypes.NODE, RenderTypes.EDGE, RenderTypes.COMPONENT, RenderTypes.ELEMENT);
     }
 
     private static List<RenderElementType<?>> ancestryOf(RenderElementType<?> leaf) {
-        ArrayList<RenderElementType<?>> reversed = new ArrayList<>();
-        for (RenderElementType<?> p = leaf; p != null; p = p.parent()) {
-            reversed.add(p);
-        }
-        ArrayList<RenderElementType<?>> ordered = new ArrayList<>();
-        for (int i = reversed.size() - 1; i >= 0; i--) {
-            ordered.add(reversed.get(i));
-        }
-        return ordered;
+        return TypeAncestry.rootFirst(leaf, t -> t.parent());
     }
 }
