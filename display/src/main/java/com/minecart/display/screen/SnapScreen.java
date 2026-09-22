@@ -105,7 +105,7 @@ public final class SnapScreen extends ScreenAdapter {
     // Scripted-input harness (-Pinputtest=<script>): synthetic events through the SAME handlers + state probes.
     private EditInput editInput;
     private com.minecart.display.snap.InputScript script;
-    private ScriptHost scriptHost;                              // shared by the harness and the live console
+    private com.minecart.display.snap.InputScript.Host scriptHost; // = controller.harness (physical mode)
     private com.minecart.display.snap.LiveConsole console;      // -Pconsole=1: live inspect/drive over localhost
 
     private boolean shuttingDown;
@@ -167,7 +167,8 @@ public final class SnapScreen extends ScreenAdapter {
             physEditor = new com.minecart.display.snap.PhysicalEditor();
             deckHud = new DeckHud(physWorld, physEditor);
             controller = new SnapEditorController(physWorld, physEditor, flyCam, camera, deckHud,
-                    this::rebuildPhysCircuit, this::setCursorCaught, () -> cursorCaught);
+                    this::rebuildPhysCircuit, this::setCursorCaught, () -> cursorCaught,
+                    () -> connection != null && connection.isConnected(), on -> fixedCam = on);
             if (designWorld) {
                 log.info("design world: {}", physWorld.designLayout(
                         com.minecart.display.snap.SnapModelBridge.placeableIds(), DESIGN_PER_ROW));
@@ -180,7 +181,7 @@ public final class SnapScreen extends ScreenAdapter {
                 physEditor.deckSetSelected(0); physEditor.deckRemove(); // drop the leading Cursor → exactly 6
                 physEditor.deckSetSelected(2); // center on a middle card (led), so the fan is symmetric for the shot
             }
-            scriptHost = new ScriptHost();
+            scriptHost = controller.harness; // the physical editor's harness / live-console adapter
             String scriptSrc = System.getProperty("snap.inputtest");
             if (scriptSrc != null && !scriptSrc.isEmpty()) { // scripted-input harness: see InputScript
                 script = com.minecart.display.snap.InputScript.load(scriptSrc, scriptHost);
@@ -638,137 +639,6 @@ public final class SnapScreen extends ScreenAdapter {
             camera.viewportWidth = width;
             camera.viewportHeight = height;
             camera.update();
-        }
-    }
-
-    /** The scripted-input harness's view of this screen: events go through {@link EditInput} / the fly-cam
-     *  exactly as real input would; probes expose the state the tests assert on. */
-    private final class ScriptHost implements com.minecart.display.snap.InputScript.Host {
-        private int cx() { return Gdx.graphics.getWidth() / 2; }
-        private int cy() { return Gdx.graphics.getHeight() / 2; }
-        @Override public void keyDown(int keycode) { editInput.keyDown(keycode); }
-        @Override public void keyUp(int keycode) { editInput.keyUp(keycode); }
-        @Override public void mouse(int button, boolean down) {
-            if (down) editInput.touchDown(cx(), cy(), 0, button); else editInput.touchUp(cx(), cy(), 0, button);
-            if (button == Buttons.LEFT) controller.scriptLmbHeld = down;
-        }
-        @Override public void scroll(float amountY) { editInput.scrolled(0f, amountY); }
-        @Override public void look(float dYawDeg, float dPitchDeg) { flyCam.look(dYawDeg, dPitchDeg); }
-        @Override public String action(String verb, String[] a) {
-            switch (verb) {
-                case "cursor" -> { setCursorCaught(a[0].equalsIgnoreCase("caught")); return null; }
-                case "clear" -> { physWorld.clearAll(); rebuildPhysCircuit(); return null; }
-                case "deck" -> {
-                    if (a[0].equals("add")) physEditor.deckAddRight(a[1]);
-                    else if (a[0].equals("select")) physEditor.deckSetSelected(Integer.parseInt(a[1]));
-                    else if (a[0].equals("clear")) { // back to the pristine hand: just the Cursor
-                        while (physEditor.deckSize() > 1) physEditor.deckRemove();
-                        physEditor.deckReplace("");
-                        physEditor.deckSetSelected(0);
-                    }
-                    return "deck " + physEditor.deckSize() + " held=" + physEditor.modelId();
-                }
-                case "fixedcam" -> { fixedCam = a[0].equalsIgnoreCase("on"); return "fixedcam " + fixedCam; }
-                case "cam" -> { // cam <yaw> <pitch>: set the view angles directly (position unchanged)
-                    flyCam.look(Float.parseFloat(a[0]) - flyCam.yawDeg(), Float.parseFloat(a[1]) - flyCam.pitchDeg());
-                    return "cam yaw=" + flyCam.yawDeg() + " pitch=" + flyCam.pitchDeg();
-                }
-                case "aim" -> { // aim <placement> [sub]: point the crosshair at that hitbox's centre
-                    int pi = Integer.parseInt(a[0]), sub = a.length > 1 ? Integer.parseInt(a[1]) : -1;
-                    float[] b = physWorld.debugSubAabb(pi, sub);
-                    Vector3 c = new Vector3((b[0] + b[3]) / 2f, (b[1] + b[4]) / 2f, (b[2] + b[5]) / 2f);
-                    flyCam.lookAt(c);
-                    return "aimed at " + c;
-                }
-                case "force" -> { // force <modelId> <x> <z> [yaw] [y]: place WITHOUT canPlace (test setups only)
-                    float yaw = a.length > 3 ? Float.parseFloat(a[3]) : 0f, y = a.length > 4 ? Float.parseFloat(a[4]) : 0f;
-                    com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0], new com.badlogic.gdx.math.Matrix4()
-                            .setToTranslation(Float.parseFloat(a[1]), y, Float.parseFloat(a[2])).rotate(0f, 1f, 0f, yaw));
-                    physWorld.place(a[0], m); rebuildPhysCircuit();
-                    return "FORCED " + a[0] + " at " + m.getTranslation(new Vector3());
-                }
-                case "shot" -> { // shot [path]: dump the last rendered frame to a PNG (default: build/snap_shot.png)
-                    String path = a.length > 0 ? a[0] : "/Users/fengyue.john.zhu/Desktop/programme/java/CircuitsLib/build/snap_shot.png";
-                    com.badlogic.gdx.graphics.Pixmap p = com.badlogic.gdx.utils.ScreenUtils.getFrameBufferPixmap(
-                            0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
-                    com.badlogic.gdx.graphics.PixmapIO.writePNG(Gdx.files.absolute(path), p, -1, true);
-                    p.dispose();
-                    return "shot " + path;
-                }
-                case "why" -> { // why <modelId> <x> <z> [yaw] [y]: explain the placement verdict at that snapped pose
-                    float yaw = a.length > 3 ? Float.parseFloat(a[3]) : 0f, y = a.length > 4 ? Float.parseFloat(a[4]) : 0f;
-                    com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0], new com.badlogic.gdx.math.Matrix4()
-                            .setToTranslation(Float.parseFloat(a[1]), y, Float.parseFloat(a[2])).rotate(0f, 1f, 0f, yaw));
-                    return physWorld.explainPlace(a[0], m);
-                }
-                case "place" -> { // place <modelId> cross | <x> <z> [yaw] [y]  (snap grids the yaw + lands terminals)
-                    Vector3 at = new Vector3();
-                    float yaw = 0f;
-                    if (a[1].equalsIgnoreCase("cross")) {
-                        com.badlogic.gdx.math.Intersector.intersectRayPlane(camera.getPickRay(cx(), cy()),
-                                new com.badlogic.gdx.math.Plane(new Vector3(0, 1, 0), 0), at);
-                    } else {
-                        at.set(Float.parseFloat(a[1]), a.length > 4 ? Float.parseFloat(a[4]) : 0f, Float.parseFloat(a[2]));
-                        if (a.length > 3) yaw = Float.parseFloat(a[3]);
-                    }
-                    com.badlogic.gdx.math.Matrix4 m = physWorld.snap(a[0],
-                            new com.badlogic.gdx.math.Matrix4().setToTranslation(at.x, at.y, at.z).rotate(0f, 1f, 0f, yaw));
-                    Vector3 got = m.getTranslation(new Vector3());
-                    if (physWorld.canPlace(a[0], m)) { physWorld.place(a[0], m); rebuildPhysCircuit(); return "placed " + a[0] + " at " + got; }
-                    return "ERROR place " + a[0] + " BLOCKED at " + got;
-                }
-                default -> { return "ERROR unknown action " + verb; }
-            }
-        }
-        @Override public Object probe(String n) {
-            if (n.startsWith("part.")) { // part.x|y|z.<i>: a placement's world translation component
-                String[] q = n.split("\\.");
-                Vector3 t = physWorld.placements().get(Integer.parseInt(q[2])).transform().getTranslation(new Vector3());
-                return q[1].equals("x") ? t.x : q[1].equals("y") ? t.y : t.z;
-            }
-            if (n.startsWith("motor.spin.")) return physWorld.debugSpin(Integer.parseInt(n.substring(11)));
-            if (n.startsWith("cap.swell.")) return physWorld.debugSwell(Integer.parseInt(n.substring(10)));
-            if (n.startsWith("sub.channel.")) return physWorld.debugChannel(Integer.parseInt(n.substring(12)));
-            if (n.startsWith("sub.closed."))  return physWorld.debugSwitchClosed(Integer.parseInt(n.substring(11)));
-            return switch (n) {
-                case "ghost.yaw" -> physEditor.yawDeg();
-                case "ghost.x" -> physEditor.ghostTransform().getTranslation(new Vector3()).x;
-                case "ghost.y" -> physEditor.ghostTransform().getTranslation(new Vector3()).y;
-                case "ghost.z" -> physEditor.ghostTransform().getTranslation(new Vector3()).z;
-                case "ghost.anchor" -> physEditor.anchor();
-                case "ghost.present" -> physEditor.present();
-                case "ghost.valid" -> physEditor.valid();
-                case "ghost.model" -> physEditor.modelId();
-                case "scroll.accum" -> physEditor.debugScrollAccum();
-                case "deck.selected" -> physEditor.deckSelected();
-                case "deck.size" -> physEditor.deckSize();
-                case "deck.held" -> physEditor.modelId();
-                case "placed" -> physWorld.placements().size();
-                case "focus.placement" -> controller.physFocus == null ? -1 : controller.physFocus.placementIndex();
-                case "focus.sub" -> controller.physFocus == null ? -1 : controller.physFocus.subPart();
-                case "grabbed" -> controller.grabbed != null;
-                case "cursor.caught" -> cursorCaught;
-                case "cam.yaw" -> flyCam.yawDeg();
-                case "cam.pitch" -> flyCam.pitchDeg();
-                case "fan.center" -> deckHud.deckAnim.center;
-                case "fan.target" -> deckHud.deckAnim.target;
-                case "fan.raise" -> deckHud.deckAnim.raise;
-                case "net.connected" -> connection != null && connection.isConnected(); // client↔server link alive?
-                case "outline.segs" -> controller.outlineSegs;
-                case "picker.open" -> controller.deckPicker;
-                case "picker.index" -> controller.pickerIndex;
-                default -> null;
-            };
-        }
-        @Override public String[] probeNames() {
-            return new String[]{"ghost.yaw", "ghost.x", "ghost.y", "ghost.z", "ghost.anchor", "ghost.present", "ghost.valid", "ghost.model",
-                    "scroll.accum", "deck.selected", "deck.size", "deck.held", "placed", "focus.placement",
-                    "focus.sub", "grabbed", "cursor.caught", "cam.yaw", "cam.pitch", "fan.center", "fan.target",
-                    "fan.raise", "picker.open", "picker.index", "net.connected"};
-        }
-        @Override public void finish(int passed, int failed) {
-            // Hard exit: skips dispose() on purpose so the test's placements are NEVER saved into the world file.
-            System.exit(failed == 0 ? 0 : 1);
         }
     }
 
