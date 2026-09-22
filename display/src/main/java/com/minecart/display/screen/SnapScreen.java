@@ -96,9 +96,9 @@ public final class SnapScreen extends ScreenAdapter {
     private static final int DESIGN_PER_ROW = 5;
     private com.minecart.display.render.engine.PhysicalBoardView physWorld;
     private com.minecart.display.snap.PhysicalEditor physEditor;
-    private com.badlogic.gdx.graphics.glutils.ShapeRenderer outline; // Minecraft-style focus highlight
-    private com.minecart.display.render.engine.PhysicalBoardView.Focus physFocus; // what the crosshair is over
-    private com.minecart.display.render.engine.PhysicalBoardView.Focus grabbed;    // a sub-part being dragged (LMB held)
+    // The physical free-placement editor's per-frame brain: owns physFocus/grabbed/scriptLmbHeld/outlineSegs +
+    // the update/focus-outline logic (created in buildScene). The screen keeps the shared fly-cam capture.
+    private SnapEditorController controller;
     // The 3D deck (poker-hand inventory) HUD + the E-panel catalog picker. The screen owns the input-driven picker
     // state; DeckHud owns the fan rendering + eased animation (created in buildScene, once physWorld/physEditor exist).
     private DeckHud deckHud;
@@ -107,9 +107,7 @@ public final class SnapScreen extends ScreenAdapter {
     // Scripted-input harness (-Pinputtest=<script>): synthetic events through the SAME handlers + state probes.
     private EditInput editInput;
     private com.minecart.display.snap.InputScript script;
-    private boolean scriptLmbHeld; // the harness's "LMB is held" (Gdx.input can't be faked)
     private ScriptHost scriptHost;                              // shared by the harness and the live console
-    private int outlineSegs;                                    // probe: segments drawn by the last focus outline
     private com.minecart.display.snap.LiveConsole console;      // -Pconsole=1: live inspect/drive over localhost
 
     private boolean shuttingDown;
@@ -170,6 +168,7 @@ public final class SnapScreen extends ScreenAdapter {
             physWorld.setBaseBoard(cols, rows, 0f);
             physEditor = new com.minecart.display.snap.PhysicalEditor();
             deckHud = new DeckHud(physWorld, physEditor);
+            controller = new SnapEditorController(physWorld, physEditor, flyCam, camera, this::rebuildPhysCircuit);
             if (designWorld) {
                 log.info("design world: {}", physWorld.designLayout(
                         com.minecart.display.snap.SnapModelBridge.placeableIds(), DESIGN_PER_ROW));
@@ -443,8 +442,8 @@ public final class SnapScreen extends ScreenAdapter {
                 hud = "INVENTORY  |  Pick: " + pick
                         + "   |   ←/→ browse   Enter replace held   [ add-left   ] add-right   Del remove held   E/Esc close";
             } else {
-                String focusName = physFocus == null ? "" : "   |   looking at: " + physWorld.placements().get(physFocus.placementIndex()).modelId()
-                        + (physFocus.subPart() >= 0 ? " / sub " + physFocus.subPart() : "");
+                String focusName = controller.physFocus == null ? "" : "   |   looking at: " + physWorld.placements().get(controller.physFocus.placementIndex()).modelId()
+                        + (controller.physFocus.subPart() >= 0 ? " / sub " + controller.physFocus.subPart() : "");
                 hud = (designWorld ? "DESIGN WORLD" : "PHYSICAL") + "  |  Held: " + held + focusName
                         + "   |   ←/→ select   [ ] pin-terminal   scroll/R rotate   E inventory   LMB place   RMB remove   Esc cursor"
                         + (physEditor.present() && !physEditor.valid() ? "    |    BLOCKED" : "")
@@ -615,68 +614,22 @@ public final class SnapScreen extends ScreenAdapter {
     private void renderPhysical(float dt) {
         boolean ready = physWorld != null && camera != null;
         if (ready) {
-            // While GRABBING a knob, the camera keeps turning FREELY and the knob FOLLOWS the crosshair (line of
-            // sight) — it does NOT lock the view. LMB is released → grab ends in touchUp.
             if (console != null) console.drain(dt); // live console commands run here, between frames
             if (script != null) script.tick(dt); // scripted input runs BEFORE this frame's input is read
-            boolean grabbing = grabbed != null
-                    && (Gdx.input.isButtonPressed(com.badlogic.gdx.Input.Buttons.LEFT) || scriptLmbHeld);
-            if (!grabbing) grabbed = null;
-            flyCam.setLookEnabled(cursorCaught && !fixedCam);
-            flyCam.update(dt);
-            physEditor.update(camera, physWorld);
-            com.badlogic.gdx.math.collision.Ray cross =
-                    camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f);
-            physFocus = physWorld.focusAt(cross);
-            if (grabbing && physWorld.aimSubPart(grabbed, cross)) {
-                rebuildPhysCircuit(); // the knob followed the aim → re-solve
-            }
-            // Momentary controls (push-buttons) spring back toward rest when not held; re-solve as they open.
-            if (physWorld.tickMomentary(dt, grabbing ? grabbed.placementIndex() : -1)) {
-                rebuildPhysCircuit();
-            }
-            // Suppress the placement ghost while hovering (or dragging) an interactive sub-part — LMB interacts.
-            boolean interactive = grabbing || physWorld.isInteractive(physFocus);
-            physWorld.setGhost(!interactive && physEditor.present() && cursorCaught, physEditor.modelId(),
-                    physEditor.ghostTransform(), physEditor.valid(), dt);
+            controller.update(dt, cursorCaught, fixedCam); // grab-follows-cursor, focus pick, momentary, ghost
             updateStatus();
         }
         Gdx.gl.glClearColor(0.13f, 0.14f, 0.17f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         if (ready) {
             physWorld.render(camera);
-            drawFocusOutline();
+            controller.drawOutline();
             deckHud.draw(deckPicker, pickerIndex, dt); // 3D poker-hand inventory HUD (+ the E-panel picker when open)
         }
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         uiStage.act(dt);
         uiStage.draw();
-    }
-
-    /** Minecraft-style highlight: outline whatever the crosshair is over — a placed part (black) or one of its
-     *  movable sub-parts / knobs (cyan). {@link #physFocus} is remembered for the interaction layer. */
-    private void drawFocusOutline() {
-        if (physFocus == null) { // computed in renderPhysical
-            return;
-        }
-        if (outline == null) {
-            outline = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
-        }
-        // The model's OWN shape (crease edges) with hidden lines removed in software (ray-cast per sample), so
-        // the lines sit EXACTLY on the edges — no depth test, no bias, no expansion (owner: not bloated).
-        float[] seg = physWorld.focusEdges(physFocus, camera.position);
-        outlineSegs = seg.length / 6; // probe: outline.segs
-        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST); // draw on top: visibility was already decided per sample
-        outline.setProjectionMatrix(camera.combined);
-        outline.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        outline.setColor(0f, 0f, 0f, 0.55f); // Minecraft's block outline: thin black line (a touch denser than MC's 40% — 1px on a Retina frame)
-        for (int i = 0; i + 5 < seg.length; i += 6) {
-            outline.line(seg[i], seg[i + 1], seg[i + 2], seg[i + 3], seg[i + 4], seg[i + 5]);
-        }
-        outline.end();
     }
 
 
@@ -698,7 +651,7 @@ public final class SnapScreen extends ScreenAdapter {
         @Override public void keyUp(int keycode) { editInput.keyUp(keycode); }
         @Override public void mouse(int button, boolean down) {
             if (down) editInput.touchDown(cx(), cy(), 0, button); else editInput.touchUp(cx(), cy(), 0, button);
-            if (button == Buttons.LEFT) scriptLmbHeld = down;
+            if (button == Buttons.LEFT) controller.scriptLmbHeld = down;
         }
         @Override public void scroll(float amountY) { editInput.scrolled(0f, amountY); }
         @Override public void look(float dYawDeg, float dPitchDeg) { flyCam.look(dYawDeg, dPitchDeg); }
@@ -792,9 +745,9 @@ public final class SnapScreen extends ScreenAdapter {
                 case "deck.size" -> physEditor.deckSize();
                 case "deck.held" -> physEditor.modelId();
                 case "placed" -> physWorld.placements().size();
-                case "focus.placement" -> physFocus == null ? -1 : physFocus.placementIndex();
-                case "focus.sub" -> physFocus == null ? -1 : physFocus.subPart();
-                case "grabbed" -> grabbed != null;
+                case "focus.placement" -> controller.physFocus == null ? -1 : controller.physFocus.placementIndex();
+                case "focus.sub" -> controller.physFocus == null ? -1 : controller.physFocus.subPart();
+                case "grabbed" -> controller.grabbed != null;
                 case "cursor.caught" -> cursorCaught;
                 case "cam.yaw" -> flyCam.yawDeg();
                 case "cam.pitch" -> flyCam.pitchDeg();
@@ -802,7 +755,7 @@ public final class SnapScreen extends ScreenAdapter {
                 case "fan.target" -> deckHud.deckAnim.target;
                 case "fan.raise" -> deckHud.deckAnim.raise;
                 case "net.connected" -> connection != null && connection.isConnected(); // client↔server link alive?
-                case "outline.segs" -> outlineSegs;
+                case "outline.segs" -> controller.outlineSegs;
                 case "picker.open" -> deckPicker;
                 case "picker.index" -> pickerIndex;
                 default -> null;
@@ -838,14 +791,14 @@ public final class SnapScreen extends ScreenAdapter {
                 if (physical) {
                     // On an interactive sub-part, LMB INTERACTS (does not place): grab a draggable one (dragged
                     // per-frame in renderPhysical while held), or open a click-UI one (stub). Else place.
-                    if (physWorld.isDraggable(physFocus)) {
-                        grabbed = physFocus;
-                        physWorld.beginGrab(physFocus, // record the grabbed point so it stays under the cursor
+                    if (physWorld.isDraggable(controller.physFocus)) {
+                        controller.grabbed = controller.physFocus;
+                        physWorld.beginGrab(controller.physFocus, // record the grabbed point so it stays under the cursor
                                 camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
-                        if (physWorld.isMomentary(physFocus)) rebuildPhysCircuit(); // button pressed closed on grab
-                    } else if (physWorld.isClickUi(physFocus)) {
+                        if (physWorld.isMomentary(controller.physFocus)) rebuildPhysCircuit(); // button pressed closed on grab
+                    } else if (physWorld.isClickUi(controller.physFocus)) {
                         log.info("interact: click-UI on sub-part {} of placement {} (panel TODO)",
-                                physFocus.subPart(), physFocus.placementIndex());
+                                controller.physFocus.subPart(), controller.physFocus.placementIndex());
                     } else if (physEditor.place(physWorld)) {
                         rebuildPhysCircuit();
                     }
@@ -866,7 +819,7 @@ public final class SnapScreen extends ScreenAdapter {
 
         @Override public boolean touchUp(int screenX, int screenY, int pointer, int button) {
             if (physical && button == Buttons.LEFT) {
-                grabbed = null; // release a dragged knob → camera-look resumes next frame
+                controller.grabbed = null; // release a dragged knob → camera-look resumes next frame
             }
             return false;
         }
@@ -907,7 +860,7 @@ public final class SnapScreen extends ScreenAdapter {
                     return true; // swallow everything else while the panel is open
                 }
                 if (keycode == Keys.E) { // open the panel — this also ENDS any knob drag (the cursor is being released)
-                    grabbed = null; scriptLmbHeld = false;
+                    controller.grabbed = null; controller.scriptLmbHeld = false;
                     deckPicker = true; pickerIndex = 0; deckHud.resetPickerAnim(); setCursorCaught(false); return true;
                 }
                 if (keycode == Keys.R) { physEditor.rotate(90f); return true; } // quick 90° direction turn
