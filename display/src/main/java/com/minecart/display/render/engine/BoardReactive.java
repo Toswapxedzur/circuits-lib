@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.minecart.display.render.engine.PhysicalBoardView.Placed;
+import com.minecart.display.snap.SnapModelBridge.Electrical;
 
 /**
  * The reactive-animation driver for the physical board — each frame it feeds every placed part's freshly-solved
@@ -75,11 +76,13 @@ final class BoardReactive {
 
     /** TEST: motor {@code i}'s current spin channel (0..1 = one turn), or NaN if it's not a motor. */
     float debugSpin(int i) {
-        return PhysicalBoardView.kind(placed.get(i).modelId()) == 'm' ? ents.get(i).anim.value("spin") : Float.NaN;
+        return PhysicalBoardView.electrical(placed.get(i).modelId()) == Electrical.MOTOR
+                ? ents.get(i).anim.value("spin") : Float.NaN;
     }
 
     /** TEST: capacitor {@code i}'s swell channel (0 = uncharged/identity, grows with charge), or NaN if not a cap. */
     float debugSwell(int i) {
-        return PhysicalBoardView.kind(placed.get(i).modelId()) == 'c' ? ents.get(i).anim.value("swell") : Float.NaN;
+        return PhysicalBoardView.electrical(placed.get(i).modelId()) == Electrical.CAPACITOR
+                ? ents.get(i).anim.value("swell") : Float.NaN;
     }
 }
