@@ -371,9 +371,7 @@
       ],
       "bindingType": "scale",
       "channel": "swell",
-      "degPerUnit": 0.0,
-      "interMin": 0.0,
-      "interMax": 0.0
+      "degPerUnit": 0.0
     }
   ],
   "collision": {

@@ -389,9 +389,7 @@
         0.0,
         0.0
       ],
-      "degPerUnit": 360.0,
-      "interMin": 0.0,
-      "interMax": 0.0
+      "degPerUnit": 360.0
     }
   ],
   "collision": {

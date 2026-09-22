@@ -516,11 +516,7 @@
         0.0,
         0.0
       ],
-      "degPerUnit": 0.0,
-      "interaction": "drag_axis",
-      "interMin": -2.0,
-      "interMax": 2.0,
-      "drives": "switch"
+      "degPerUnit": 0.0
     }
   ],
   "collision": {
