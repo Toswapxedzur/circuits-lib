@@ -9,6 +9,8 @@ import com.minecart.display.render.engine.behaviour.ComponentBehaviours;
 import com.minecart.display.render.engine.behaviour.InteractiveBehaviour;
 import com.minecart.display.render.engine.behaviour.InteractiveBehaviours;
 import com.minecart.display.render.engine.behaviour.ReactiveBehaviour;
+import com.minecart.logic.PhysicalCircuitBuilder;
+import com.minecart.logic.PhysicalCircuitBuilder.Kind;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,8 +22,9 @@ import java.util.List;
  * it MAGNETICALLY snaps to mate exactly. Placement is rejected when the part's collision box overlaps another.
  *
  * <p>This is the display-side seam (like {@link EngineBoardView}): it holds the placements + the engine renderer,
- * and exposes snap / collision / connector queries for the editor. Electrical connectivity (a {@code ConnectorField}
- * that unions coincident connectors into circuit nodes) is layered on top of {@link #connectorsWorld()} next.
+ * and exposes snap / collision / connector queries for the editor. Electrical connectivity — unioning coincident
+ * connectors into circuit nodes — is domain logic and lives in the core {@link com.minecart.logic.PhysicalCircuitBuilder};
+ * this board only computes each placement's terminal geometry ({@link #terminalXZ}) and hands it over.
  */
 public final class PhysicalBoardView implements Disposable {
 
@@ -294,88 +297,42 @@ public final class PhysicalBoardView implements Disposable {
     private com.minecart.logic.CircuitEdge lastBattery; // captured to read solved current (a live-circuit proof)
 
     /**
-     * Rebuilds the world's ELECTRICAL circuit from the physical placements — the {@code ConnectorField} unions
-     * connectors that COINCIDE in world space into shared {@link com.minecart.logic.CircuitNode}s (replacing the
-     * grid's post-sharing), then wires union their terminals and devices attach elements between nodes. Reuses the
-     * exact core solver. Call after every place/remove.
+     * Rebuilds the world's ELECTRICAL circuit from the physical placements. This board computes each placement's
+     * terminal world (x,z) + electrical kind + params and hands a gdx-free plan to the core
+     * {@link com.minecart.logic.PhysicalCircuitBuilder}, which unions coincident connectors into shared
+     * {@link com.minecart.logic.CircuitNode}s, attaches device elements and wires transistors. Call after every
+     * place/remove; reads back {@code deviceEdge} (glow/spin) + {@code lastBattery} (HUD).
      */
     public void buildCircuit(com.minecart.logic.ServerWorld world) {
-        for (com.minecart.foundation.Circuit c : new ArrayList<>(world.getCircuits())) {
-            world.removeCircuit(c);
-        }
-        lastBattery = null;
-        deviceEdge.clear();
-        ConnectorField field = new ConnectorField(world);
-        // Pass 1: pure conductors union ALL their terminals into one net — a wire/tee run always; a switch ONLY
-        // when closed. N-terminal aware: a 3-way tee joins all three legs, not just two (a resistor etc. is a
-        // device, handled in pass 2, so this only runs for conductors).
+        // Build a plain, gdx-free plan (each placement's terminal world x,z + electrical kind + params) and hand it
+        // to the core PhysicalCircuitBuilder, which owns the connector-field union-find, device attach and BJT
+        // wiring. This board keeps only presentation: it reads back deviceEdge (glow/spin) + lastBattery (HUD).
+        List<PhysicalCircuitBuilder.Part> plan = new ArrayList<>(placed.size());
         for (int i = 0; i < placed.size(); i++) {
             Placed p = placed.get(i);
-            char k = kind(p.modelId());
-            if (k == 'w' || (k == 's' && switchClosed(i, loader.model(p.modelId())))) {
-                List<Vector3> ts = allTerminals(p);
-                for (int j = 1; j < ts.size(); j++) field.union(ts.get(0), ts.get(j));
-            }
-        }
-        // Pass 2: devices attach their element between the (now-merged) coincident-connector nodes.
-        for (int i = 0; i < placed.size(); i++) {
-            Placed p = placed.get(i);
-            char k = kind(p.modelId());
-            if (k == 'r' || k == 'b' || k == 'l' || k == 'p' || k == 'c' || k == 'd' || k == 'm') {
-                Vector3[] t = terminals(p);
-                if (t == null) continue;
-                com.minecart.logic.CircuitNode a = field.at(t[0]), bb = field.at(t[1]);
-                if (a == bb) continue; // terminals shorted onto one net
-                switch (k) {
-                    case 'r' -> deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
-                            new com.minecart.variant.Informations.ResistorInfo(resistanceOhms(i, loader.model(p.modelId())))));
-                    case 'm' -> deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
-                            new com.minecart.variant.Informations.ResistorInfo(100.0))); // motor coil ~100Ω
-                    case 'l' -> // LED: a true DIODE — forward ~220Ω limits current + lights; reverse ~1MΩ blocks
-                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.DIODE, a, bb,
-                                    new com.minecart.variant.Informations.DiodeInfo(220.0, 1.0e6)));
-                    case 'd' -> // plain diode: one-way conductor (no light)
-                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.DIODE, a, bb,
-                                    new com.minecart.variant.Informations.DiodeInfo(1.0, 1.0e6)));
-                    case 'p' -> // lamp: a low-resistance heating element (bright warm glow)
-                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.RESISTOR, a, bb,
-                                    new com.minecart.variant.Informations.ResistorInfo(50.0)));
-                    case 'c' -> // capacitor: charges then blocks DC (transient current)
-                            deviceEdge.put(i, world.connect(com.minecart.registry.AllComponents.CAPACITOR, a, bb,
-                                    new com.minecart.variant.Informations.CapacitorInfo(1.0e-3, 1.0)));
-                    default -> {
-                        lastBattery = world.connect(com.minecart.registry.AllComponents.BATTERY, a, bb,
-                                new com.minecart.variant.Informations.BatteryInfo(5.0, 0.01));
-                        deviceEdge.put(i, lastBattery);
-                    }
-                }
-            }
-        }
-        // Pass 3: transistors — a true 3-terminal BJT. Build a core BJTransistor component and FUSE each of its
-        // ports onto the coincident-connector node at the matching stud (base = the stem, terminal 2; collector =
-        // terminal 0, emitter = terminal 1). ngspice models it as I_C = beta*I_B. Runs after pass 2 so any wire /
-        // device already attached at a transistor stud gets repointed onto the port by combineNodes.
-        for (int i = 0; i < placed.size(); i++) {
-            Placed p = placed.get(i);
-            if (kind(p.modelId()) != 't') continue;
             ComponentModel m = loader.model(p.modelId());
-            Vector3 base = termAt(m, p.transform(), 2);
-            Vector3 collector = termAt(m, p.transform(), 0);
-            Vector3 emitter = termAt(m, p.transform(), 1);
-            if (base == null || collector == null || emitter == null) continue;
-            com.minecart.elements.component.BJTransistor bjt =
-                    (com.minecart.elements.component.BJTransistor) com.minecart.registry.AllComponents.BJ_TRANSISTOR.create(world);
-            com.minecart.logic.ServerCircuit tc = new com.minecart.logic.ServerCircuit();
-            tc.setWorld(world);
-            world.addCircuit(tc);
-            tc.addComponent(bjt);
-            bjt.generate();
-            fusePort(world, field, base, bjt.getPort(0));       // base   ← stem stud
-            fusePort(world, field, collector, bjt.getPort(1));  // collector ← −X bar stud
-            fusePort(world, field, emitter, bjt.getPort(2));    // emitter   ← +X bar stud
-            // Glow / current readout follows the collector current (like the motor reads its edge current).
-            if (bjt.getEdgeCollector() != null) deviceEdge.put(i, bjt.getEdgeCollector());
+            char k = kind(p.modelId());
+            Kind pk;
+            double[] params = null;
+            switch (k) {
+                case 'w' -> pk = Kind.CONDUCTOR;
+                case 's' -> pk = switchClosed(i, m) ? Kind.CONDUCTOR : Kind.NONE; // closed switch conducts, open = open
+                case 'r' -> { pk = Kind.RESISTOR; params = new double[]{resistanceOhms(i, m)}; }
+                case 'm' -> { pk = Kind.RESISTOR; params = new double[]{100.0}; }       // motor coil ~100Ω
+                case 'l' -> { pk = Kind.DIODE; params = new double[]{220.0, 1.0e6}; }   // LED: fwd ~220Ω lights, rev blocks
+                case 'd' -> { pk = Kind.DIODE; params = new double[]{1.0, 1.0e6}; }     // plain diode (no light)
+                case 'p' -> { pk = Kind.RESISTOR; params = new double[]{50.0}; }        // lamp: low-R heater (warm glow)
+                case 'c' -> { pk = Kind.CAPACITOR; params = new double[]{1.0e-3, 1.0}; } // charges then blocks DC
+                case 'b' -> { pk = Kind.BATTERY; params = new double[]{5.0, 0.01}; }
+                case 't' -> pk = Kind.TRANSISTOR;
+                default -> pk = Kind.NONE;
+            }
+            plan.add(new PhysicalCircuitBuilder.Part(i, terminalXZ(p), pk, params));
         }
+        PhysicalCircuitBuilder.Result res = PhysicalCircuitBuilder.build(world, plan);
+        deviceEdge.clear();
+        deviceEdge.putAll(res.edges());
+        lastBattery = res.lastBattery();
         if (DBG) {
             com.badlogic.gdx.Gdx.app.log("PHYS-CIRCUIT", "placed=" + placed.size() + " circuits="
                     + world.getCircuits().size() + " battery=" + (lastBattery != null)
@@ -389,8 +346,9 @@ public final class PhysicalBoardView implements Disposable {
     private String[] termKeys(String modelId) {
         for (Placed p : placed) {
             if (p.modelId().equals(modelId)) {
-                Vector3[] t = terminals(p);
-                if (t != null) return new String[]{ConnectorField.key(t[0]), ConnectorField.key(t[1])};
+                float[] xz = terminalXZ(p);
+                if (xz.length >= 4) return new String[]{
+                        PhysicalCircuitBuilder.key(xz[0], xz[1]), PhysicalCircuitBuilder.key(xz[2], xz[3])};
             }
         }
         return new String[0];
@@ -405,99 +363,20 @@ public final class PhysicalBoardView implements Disposable {
         return com.minecart.display.snap.SnapModelBridge.kindOf(modelId);
     }
 
-    /** A placement's two terminal world positions (index 0 / 1), or null if it lacks both. For 2-terminal devices. */
-    private Vector3[] terminals(Placed p) {
+    /** A placement's terminal world (x,z) positions as flat pairs, ordered by terminal index (terminal k at
+     *  {@code [2k],[2k+1]}). This is the whole geometric contract the core {@link PhysicalCircuitBuilder} needs. */
+    private float[] terminalXZ(Placed p) {
         ComponentModel m = loader.model(p.modelId());
-        Vector3 t0 = null, t1 = null;
+        int n = m.connectors.size();
+        float[] xz = new float[n * 2];
         for (ComponentModel.Connector c : m.connectors) {
+            int k = c.terminal();
+            if (k < 0 || 2 * k + 1 >= xz.length) continue;
             Vector3 w = new Vector3(c.local()).mul(p.transform());
-            if (c.terminal() == 0) t0 = w;
-            else if (c.terminal() == 1) t1 = w;
+            xz[2 * k] = w.x;
+            xz[2 * k + 1] = w.z;
         }
-        return (t0 != null && t1 != null) ? new Vector3[]{t0, t1} : null;
-    }
-
-    /** EVERY connector's world position on a placement (all terminals), in model order — for N-terminal junctions. */
-    private List<Vector3> allTerminals(Placed p) {
-        ComponentModel m = loader.model(p.modelId());
-        List<Vector3> out = new ArrayList<>(m.connectors.size());
-        for (ComponentModel.Connector c : m.connectors) {
-            out.add(new Vector3(c.local()).mul(p.transform()));
-        }
-        return out;
-    }
-
-    /** World position of the connector with the given {@code terminal} index, or null if the model lacks it. */
-    private static Vector3 termAt(ComponentModel m, Matrix4 transform, int terminal) {
-        for (ComponentModel.Connector c : m.connectors) {
-            if (c.terminal() == terminal) return new Vector3(c.local()).mul(transform);
-        }
-        return null;
-    }
-
-    /**
-     * Fuses a component's port node onto the board net at {@code pos}: {@link com.minecart.logic.ServerWorld#combineNodes
-     * combineNodes} elects the registered port as the survivor, so every wire/device already coincident at that stud
-     * is repointed onto the port and the two circuits merge. The field is then rebound so any later lookup of that
-     * net returns the port too.
-     */
-    private static void fusePort(com.minecart.logic.ServerWorld world, ConnectorField field, Vector3 pos,
-                                 com.minecart.logic.CircuitNode port) {
-        com.minecart.logic.CircuitNode net = field.at(pos);
-        if (net == port) return;
-        if (world.combineNodes(net, port)) {
-            field.rebind(pos, port); // port won the combine; net was destroyed — later at() must return the port
-        } else if (DBG) {
-            com.badlogic.gdx.Gdx.app.log("PHYS-CIRCUIT", "transistor port fuse rejected at " + ConnectorField.key(pos)
-                    + " (e.g. two component ports on one net — unsupported)");
-        }
-    }
-
-    /** Union-find over connectors that COINCIDE in world space → one shared circuit node each (grid PostGrid's
-     *  role, but keyed by quantised world position since snapping mates connectors exactly). */
-    private static final class ConnectorField {
-        private final com.minecart.logic.ServerWorld world;
-        private final java.util.Map<String, Integer> keyId = new java.util.HashMap<>();
-        private final List<Integer> parent = new ArrayList<>();
-        private final java.util.Map<Integer, com.minecart.logic.CircuitNode> node = new java.util.HashMap<>();
-
-        ConnectorField(com.minecart.logic.ServerWorld world) {
-            this.world = world;
-        }
-
-        private static String key(Vector3 p) { // round to 2u; Y DROPPED — a board post is one vertical conductor, so
-            return Math.round(p.x / 2f) + "," + Math.round(p.z / 2f); // stacked parts sharing an (x,z) post are one node
-        }
-
-        private int id(Vector3 p) {
-            return keyId.computeIfAbsent(key(p), k -> {
-                parent.add(parent.size());
-                return parent.size() - 1;
-            });
-        }
-
-        private int find(int i) {
-            while (parent.get(i) != i) {
-                parent.set(i, parent.get(parent.get(i)));
-                i = parent.get(i);
-            }
-            return i;
-        }
-
-        void union(Vector3 a, Vector3 b) {
-            int ra = find(id(a)), rb = find(id(b));
-            if (ra != rb) parent.set(ra, rb);
-        }
-
-        com.minecart.logic.CircuitNode at(Vector3 p) {
-            return node.computeIfAbsent(find(id(p)),
-                    r -> world.createNode(com.minecart.registry.AllComponents.CONNECTION));
-        }
-
-        /** Force this net's shared node to {@code n} (used after a combineNodes fuses a component port onto it). */
-        void rebind(Vector3 p, com.minecart.logic.CircuitNode n) {
-            node.put(find(id(p)), n);
-        }
+        return xz;
     }
 
     /** Every placed part's connectors in world space (for snapping + electrical connectivity). */
