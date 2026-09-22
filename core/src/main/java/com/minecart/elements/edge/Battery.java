@@ -35,6 +35,15 @@ public class Battery extends CircuitEdge implements ElectricalVariate<BatteryInf
         this.info = getDefault();
     }
 
+    /** EMF source (start → mid) then internal resistance to the end, so V_start − V_end = EMF + I·R. */
+    @Override
+    public void emitSpice(com.minecart.spice.SpiceContext ctx) {
+        String mid2 = ctx.mid() + "b";
+        ctx.line("v" + ctx.id() + " " + ctx.start() + " " + mid2 + " dc "
+                + com.minecart.spice.SpiceContext.num(info.getVoltage()));
+        ctx.ammeterFrom(ctx.series(mid2, ctx.mid(), info.getResistance()));
+    }
+
     @Override
     public BatteryInfo get() {
         return this.info;

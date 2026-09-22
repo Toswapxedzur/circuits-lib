@@ -1,11 +1,7 @@
 package com.minecart.spice;
 
 import com.minecart.elements.component.BJTransistor;
-import com.minecart.elements.edge.Battery;
 import com.minecart.elements.edge.Capacitor;
-import com.minecart.elements.edge.Diode;
-import com.minecart.elements.edge.Resistor;
-import com.minecart.elements.edge.Wire;
 import com.minecart.logic.CircuitComponent;
 import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitNode;
@@ -78,7 +74,7 @@ public final class SpiceSolver {
         Netlist net;
         try {
             net = build(nodes, edges, components, dt);
-        } catch (UnsupportedElement e) {
+        } catch (SpiceContext.Unsupported e) {
             log.warn("ngspice backend cannot model {}; no fallback solver, tick will be zeroed", e.getMessage());
             return Result.UNSUPPORTED;
         }
@@ -122,13 +118,9 @@ public final class SpiceSolver {
         return v == null || v.isNaN() ? fallback : v;
     }
 
-    static final class UnsupportedElement extends Exception {
-        UnsupportedElement(String what) { super(what); }
-    }
-
     /** Builds the netlist; visible for tests. Returns {@code null} when there is nothing to solve. */
     static Netlist build(Collection<CircuitNode> nodes, Collection<CircuitEdge> edges,
-                         Collection<CircuitComponent> components, double dt) throws UnsupportedElement {
+                         Collection<CircuitComponent> components, double dt) throws SpiceContext.Unsupported {
         Netlist net = new Netlist();
         int nodeIdx = 0;
         for (CircuitNode n : nodes) {
@@ -140,7 +132,7 @@ public final class SpiceSolver {
             if (c instanceof BJTransistor bjt) {
                 if (bjt.getEdgeCollector() != null) collectorOf.put(bjt.getEdgeCollector(), bjt);
             } else if (c != null && !(c.getClass() == CircuitComponent.class)) {
-                throw new UnsupportedElement(c.getClass().getSimpleName());
+                throw new SpiceContext.Unsupported(c.getClass().getSimpleName());
             }
         }
 
@@ -156,42 +148,18 @@ public final class SpiceSolver {
             if (!e.isConnected()) continue;
             String s = net.nodeNames.get(e.getStart()), t = net.nodeNames.get(e.getEnd());
             String vm = net.ammeters.get(e);
-            String mid = "m_" + vm;
-            String id = vm.substring(2);
-            if (e instanceof Wire && !collectorOf.containsKey(e)) {
-                body.add(vm + " " + s + " " + t + " dc 0");
-            } else if (e instanceof Resistor r) {
-                String end = series(body, id, s, mid, r.get().getResistance());
-                body.add(vm + " " + end + " " + t + " dc 0");
-            } else if (e instanceof Battery b) {
-                Informations.BatteryInfo info = b.get();
-                String mid2 = mid + "b";
-                body.add("v" + id + " " + s + " " + mid2 + " dc " + num(info.getVoltage()));
-                String end = series(body, id, mid2, mid, info.getResistance());
-                body.add(vm + " " + end + " " + t + " dc 0");
-            } else if (e instanceof Capacitor c) {
-                Informations.CapacitorInfo info = c.get();
-                double v0 = info.getCharge() / info.getCapacitance();
-                String mid2 = mid + "c";
-                body.add("c" + id + " " + s + " " + mid2 + " " + num(info.getCapacitance()) + " ic=" + num(v0));
-                String end = series(body, id, mid2, mid, info.getInternalResistance());
-                body.add(vm + " " + end + " " + t + " dc 0");
-                net.capacitorTerminals.put(c, new String[]{s, mid2});
-            } else if (e instanceof Diode d) {
-                Informations.DiodeInfo info = d.get();
-                // Piecewise resistance: forward for V_start > V_end, reverse otherwise, blended over ~1 mV.
-                body.add("r" + id + " " + s + " " + mid + " r='" + num(info.getForwardResistance()) + "+("
-                        + num(info.getReverseResistance()) + "-" + num(info.getForwardResistance())
-                        + ")*(1-tanh(v(" + s + "," + mid + ")*1000))/2'");
-                body.add(vm + " " + mid + " " + t + " dc 0");
-            } else if (collectorOf.containsKey(e)) {
+            if (collectorOf.containsKey(e)) {
+                // A transistor's collector edge is a current-controlled current source sensing the base
+                // ammeter — component-cross-edge topology, so it stays here rather than on the edge type.
                 BJTransistor bjt = collectorOf.get(e);
                 String sense = net.ammeters.get(bjt.getEdgeBase());
-                if (sense == null) throw new UnsupportedElement("transistor without a connected base edge");
+                if (sense == null) throw new SpiceContext.Unsupported("transistor without a connected base edge");
+                String mid = "m_" + vm, id = vm.substring(2);
                 body.add("f" + id + " " + s + " " + mid + " " + sense + " " + num(bjt.getInfo().getBeta()));
                 body.add(vm + " " + mid + " " + t + " dc 0");
             } else {
-                throw new UnsupportedElement(e.getClass().getSimpleName());
+                // Every ordinary device emits its own SPICE model (Wire/Resistor/Battery/Capacitor/Diode …).
+                e.emitSpice(new SpiceContext(body, net, e, s, t, vm));
             }
             anyDevice = true;
         }
@@ -211,14 +179,15 @@ public final class SpiceSolver {
     /** Below this, a series resistance is treated as an ideal short (keeps the matrix well conditioned). */
     private static final double SHORT_OHMS = 1e-6;
 
-    /** Emits {@code r<id> a b R} unless R is negligible, in which case it returns b renamed to a (no device). */
-    private static String series(List<String> body, String id, String a, String b, double ohms) {
+    /** Emits {@code r<id> a b R} unless R is negligible, in which case it returns b renamed to a (no device).
+     *  Package-visible so {@link SpiceContext} can offer it to elements' {@code emitSpice}. */
+    static String series(List<String> body, String id, String a, String b, double ohms) {
         if (ohms < SHORT_OHMS) return a;
         body.add("r" + id + " " + a + " " + b + " " + num(ohms));
         return b;
     }
 
-    private static String num(double v) {
+    static String num(double v) {
         if (Double.isNaN(v) || Double.isInfinite(v)) v = Informations.LARGE;
         return String.format(Locale.ROOT, "%.12g", v);
     }

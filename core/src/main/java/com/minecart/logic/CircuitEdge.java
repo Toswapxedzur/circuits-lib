@@ -54,6 +54,16 @@ public non-sealed class CircuitEdge extends CircuitElement {
     }
 
     /**
+     * Emits this edge's SPICE netlist model through {@code ctx} (see {@link com.minecart.spice.SpiceSolver}).
+     * The base edge has no electrical model → the circuit is unsupported; each concrete device (Wire, Resistor,
+     * Battery, Capacitor, Diode) overrides this to emit itself. Keeps each device's SPICE model on the device
+     * instead of a central {@code instanceof} switch in the solver.
+     */
+    public void emitSpice(com.minecart.spice.SpiceContext ctx) throws com.minecart.spice.SpiceContext.Unsupported {
+        throw new com.minecart.spice.SpiceContext.Unsupported(getClass().getSimpleName());
+    }
+
+    /**
      * Whether this edge was last evaluated as overpowered ({@link #shortCircuit()}) after the previous tick.
      * Used with {@link #shortCircuit()} before {@link #tick()} to detect a transition into overpowered.
      */

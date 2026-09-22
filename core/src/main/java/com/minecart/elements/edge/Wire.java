@@ -13,4 +13,10 @@ public class Wire extends CircuitEdge {
     public Wire(World world) {
         super(world);
     }
+
+    /** An ideal wire = just the branch ammeter (V_start = V_end, current = i(vm)). */
+    @Override
+    public void emitSpice(com.minecart.spice.SpiceContext ctx) {
+        ctx.ammeterFrom(ctx.start());
+    }
 }
