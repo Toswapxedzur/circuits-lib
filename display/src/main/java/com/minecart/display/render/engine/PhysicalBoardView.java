@@ -67,7 +67,7 @@ public final class PhysicalBoardView implements Disposable {
     private String gModelId;
     private boolean gPresent, gValid;
 
-    private final Vector3 tmp = new Vector3(), tmp2 = new Vector3();
+    private final Vector3 tmp = new Vector3();
 
     public PhysicalBoardView() {
         for (String id : com.minecart.display.snap.SnapModelBridge.allModelIds()) {
@@ -118,7 +118,7 @@ public final class PhysicalBoardView implements Disposable {
             if (i == exclude) continue;
             ComponentModel pm = loader.model(placed.get(i).modelId());
             if (pm.collision == null) continue;
-            float[] b = worldAabb(pm.collision, placed.get(i).transform());
+            float[] b = BoardGeometry.collisionWorldAabb(pm.collision, placed.get(i).transform());
             boolean coversXZ = s.x > b[0] - 1f && s.x < b[3] + 1f && s.z > b[2] - 1f && s.z < b[5] + 1f;
             if (coversXZ && Math.abs(b[4] - s.y) < 1.6f) {
                 return true; // resting on this part's top face
@@ -446,7 +446,7 @@ public final class PhysicalBoardView implements Disposable {
             if (pm.collision == null) {
                 continue;
             }
-            float[] ab = worldAabb(pm.collision, p.transform());
+            float[] ab = BoardGeometry.collisionWorldAabb(pm.collision, p.transform());
             com.badlogic.gdx.math.collision.BoundingBox bb = new com.badlogic.gdx.math.collision.BoundingBox(
                     new Vector3(ab[0], ab[1], ab[2]), new Vector3(ab[3], ab[4], ab[5]));
             // ANY face of the part's box aliases a stud (owner: "a portion of a face is an alias of a port"). The old
@@ -526,13 +526,13 @@ public final class PhysicalBoardView implements Disposable {
         if (m.collision == null) {
             return true;
         }
-        float[] a = worldAabb(m.collision, transform);
+        float[] a = BoardGeometry.collisionWorldAabb(m.collision, transform);
         for (Placed p : placed) {
             ComponentModel pm = loader.model(p.modelId());
             if (pm.collision == null) {
                 continue;
             }
-            if (overlap(a, worldAabb(pm.collision, p.transform()))) {
+            if (BoardGeometry.overlap(a, BoardGeometry.collisionWorldAabb(pm.collision, p.transform()))) {
                 return false; // 3D boxes clash — a body already occupies this space at this height
             }
         }
@@ -556,7 +556,7 @@ public final class PhysicalBoardView implements Disposable {
             EngineRenderer.DynamicEntity ent = i < ents.size() ? ents.get(i) : null;
             for (int s = 0; s < m.movableParts.size(); s++) {
                 float[] ab = movableWorldAabb(m.movableParts.get(s), tf, ent);
-                if (rayHitsAabb(ray, ab, hit)) {
+                if (BoardGeometry.rayHitsAabb(ray, ab, hit)) {
                     float d = ray.origin.dst2(hit);
                     if (d < bestDist) { bestDist = d; best = new Focus(i, s, ab); }
                 }
@@ -564,22 +564,16 @@ public final class PhysicalBoardView implements Disposable {
             // The base is picked by the MODEL'S OWN BOXES (its real shape, like Minecraft's voxel shape), so aiming at
             // empty air beside a dome doesn't focus the part. Focus.aabb stays the whole part's box (aim/debug).
             for (PartMesh.Box b : m.staticBoxes) {
-                if (rayHitsAabb(ray, boxWorldAabb(b, tf), hit)) {
+                if (BoardGeometry.rayHitsAabb(ray, BoardGeometry.boxWorldAabb(b, tf), hit)) {
                     float d = ray.origin.dst2(hit);
                     if (d < bestDist) {
                         bestDist = d;
-                        best = new Focus(i, -1, worldAabb(m.visual != null ? m.visual : m.collision, tf));
+                        best = new Focus(i, -1, BoardGeometry.collisionWorldAabb(m.visual != null ? m.visual : m.collision, tf));
                     }
                 }
             }
         }
         return best;
-    }
-
-    private static boolean rayHitsAabb(com.badlogic.gdx.math.collision.Ray ray, float[] ab, Vector3 out) {
-        return com.badlogic.gdx.math.Intersector.intersectRayBounds(ray,
-                new com.badlogic.gdx.math.collision.BoundingBox(
-                        new Vector3(ab[0], ab[1], ab[2]), new Vector3(ab[3], ab[4], ab[5])), out);
     }
 
     /** World AABB of a movable sub-part (its boxes, at component transform · local · current channel motion), so
@@ -597,23 +591,9 @@ public final class PhysicalBoardView implements Disposable {
         Matrix4 w = movableWorldMatrix(mv, placement, ent);
         float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
         for (PartMesh.Box b : mv.type().boxes()) {
-            float[] a = boxWorldAabb(b, w);
+            float[] a = BoardGeometry.boxWorldAabb(b, w);
             minx = Math.min(minx, a[0]); miny = Math.min(miny, a[1]); minz = Math.min(minz, a[2]);
             maxx = Math.max(maxx, a[3]); maxy = Math.max(maxy, a[4]); maxz = Math.max(maxz, a[5]);
-        }
-        return new float[]{minx, miny, minz, maxx, maxy, maxz};
-    }
-
-    /** World AABB of one model box under {@code world} (boxes stay axis-aligned under the 90° yaws parts use). */
-    private float[] boxWorldAabb(PartMesh.Box b, Matrix4 world) {
-        float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
-        for (int c = 0; c < 8; c++) {
-            tmp2.set(b.cx() + ((c & 1) == 0 ? -b.sx() : b.sx()) / 2f,
-                    b.cy() + ((c & 2) == 0 ? -b.sy() : b.sy()) / 2f,
-                    b.cz() + ((c & 4) == 0 ? -b.sz() : b.sz()) / 2f).mul(world);
-            minx = Math.min(minx, tmp2.x); maxx = Math.max(maxx, tmp2.x);
-            miny = Math.min(miny, tmp2.y); maxy = Math.max(maxy, tmp2.y);
-            minz = Math.min(minz, tmp2.z); maxz = Math.max(maxz, tmp2.z);
         }
         return new float[]{minx, miny, minz, maxx, maxy, maxz};
     }
@@ -624,46 +604,6 @@ public final class PhysicalBoardView implements Disposable {
     // point just outside each face lies in no box). Flush seams between stacked/adjacent boxes vanish; plate, stud,
     // dome and knob silhouettes remain. Computed once per model / part-type in object space, transformed per draw.
     private final java.util.Map<Object, float[]> edgeCache = new java.util.HashMap<>();
-    private static final float EDGE_EPS = 0.05f;   // probe distance for the "face exposed here?" test
-
-    private static boolean insideAny(List<PartMesh.Box> boxes, float x, float y, float z) {
-        for (PartMesh.Box b : boxes) {
-            if (Math.abs(x - b.cx()) <= b.sx() / 2f && Math.abs(y - b.cy()) <= b.sy() / 2f && Math.abs(z - b.cz()) <= b.sz() / 2f) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** Object-space crease edges of the union of {@code boxes}: flat array of segments (x0,y0,z0,x1,y1,z1)*N. */
-    private static float[] shapeEdges(List<PartMesh.Box> boxes) {
-        java.util.List<Float> out = new java.util.ArrayList<>();
-        for (PartMesh.Box b : boxes) {
-            float hx = b.sx() / 2f, hy = b.sy() / 2f, hz = b.sz() / 2f;
-            // 12 edges: along X at (±y,±z), along Y at (±x,±z), along Z at (±x,±y); the two adjacent face normals
-            // are the signs of the two fixed coordinates.
-            for (int axis = 0; axis < 3; axis++) {
-                for (int s1 = -1; s1 <= 1; s1 += 2) {
-                    for (int s2 = -1; s2 <= 1; s2 += 2) {
-                        float[] p0 = new float[3], p1 = new float[3], mid = new float[3], n1 = new float[3], n2 = new float[3];
-                        int a1 = (axis + 1) % 3, a2 = (axis + 2) % 3;
-                        float[] c = {b.cx(), b.cy(), b.cz()}, h = {hx, hy, hz};
-                        p0[axis] = c[axis] - h[axis]; p1[axis] = c[axis] + h[axis];
-                        p0[a1] = p1[a1] = c[a1] + s1 * h[a1];
-                        p0[a2] = p1[a2] = c[a2] + s2 * h[a2];
-                        for (int k = 0; k < 3; k++) mid[k] = (p0[k] + p1[k]) / 2f;
-                        n1[a1] = s1; n2[a2] = s2;
-                        boolean f1 = !insideAny(boxes, mid[0] + n1[0] * EDGE_EPS, mid[1] + n1[1] * EDGE_EPS, mid[2] + n1[2] * EDGE_EPS);
-                        boolean f2 = !insideAny(boxes, mid[0] + n2[0] * EDGE_EPS, mid[1] + n2[1] * EDGE_EPS, mid[2] + n2[2] * EDGE_EPS);
-                        if (f1 && f2) { for (float v : p0) out.add(v); for (float v : p1) out.add(v); }
-                    }
-                }
-            }
-        }
-        float[] r = new float[out.size()];
-        for (int i = 0; i < r.length; i++) r[i] = out.get(i);
-        return r;
-    }
 
     /** World-space outline segments of what {@code f} focuses — the part's own shape, or its movable sub-part's —
      *  with HIDDEN LINES REMOVED in software: every edge is sampled and each sample is ray-cast from {@code eye}
@@ -679,28 +619,28 @@ public final class PhysicalBoardView implements Disposable {
         EngineRenderer.DynamicEntity ent = f.placementIndex() < ents.size() ? ents.get(f.placementIndex()) : null;
         if (f.subPart() >= 0 && f.subPart() < m.movableParts.size()) {
             ComponentModel.MovablePart mv = m.movableParts.get(f.subPart());
-            local = edgeCache.computeIfAbsent(mv.type(), k -> shapeEdges(mv.type().boxes()));
+            local = edgeCache.computeIfAbsent(mv.type(), k -> BoardGeometry.shapeEdges(mv.type().boxes()));
             w = movableWorldMatrix(mv, p.transform(), ent);
-            for (PartMesh.Box b : mv.type().boxes()) occ.add(boxWorldAabb(b, w));
+            for (PartMesh.Box b : mv.type().boxes()) occ.add(BoardGeometry.boxWorldAabb(b, w));
         } else {
-            local = edgeCache.computeIfAbsent(p.modelId(), k -> shapeEdges(m.staticBoxes));
+            local = edgeCache.computeIfAbsent(p.modelId(), k -> BoardGeometry.shapeEdges(m.staticBoxes));
             w = p.transform();
         }
-        for (PartMesh.Box b : m.staticBoxes) occ.add(boxWorldAabb(b, p.transform()));
+        for (PartMesh.Box b : m.staticBoxes) occ.add(BoardGeometry.boxWorldAabb(b, p.transform()));
         for (int s = 0; s < m.movableParts.size(); s++) { // the part's own knobs can hide its base edges too
             ComponentModel.MovablePart mv = m.movableParts.get(s);
             Matrix4 mw = movableWorldMatrix(mv, p.transform(), ent);
-            for (PartMesh.Box b : mv.type().boxes()) occ.add(boxWorldAabb(b, mw));
+            for (PartMesh.Box b : mv.type().boxes()) occ.add(BoardGeometry.boxWorldAabb(b, mw));
         }
         for (int i = 0; i < placed.size(); i++) { // other parts: only those whose whole box the eye→part ray can cross
             if (i == f.placementIndex()) continue;
             ComponentModel om = loader.model(placed.get(i).modelId());
             ComponentModel.Collision ob = om.visual != null ? om.visual : om.collision;
             if (ob == null) continue;
-            float[] whole = worldAabb(ob, placed.get(i).transform());
+            float[] whole = BoardGeometry.collisionWorldAabb(ob, placed.get(i).transform());
             Vector3 c = new Vector3((f.aabb()[0] + f.aabb()[3]) / 2f, (f.aabb()[1] + f.aabb()[4]) / 2f, (f.aabb()[2] + f.aabb()[5]) / 2f);
-            if (rayBoxEntry(eye, c.sub(eye), whole) < 1.2f) { // near the line of sight → its boxes are occluders
-                for (PartMesh.Box b : om.staticBoxes) occ.add(boxWorldAabb(b, placed.get(i).transform()));
+            if (BoardGeometry.rayBoxEntry(eye, c.sub(eye), whole) < 1.2f) { // near the line of sight → its boxes are occluders
+                for (PartMesh.Box b : om.staticBoxes) occ.add(BoardGeometry.boxWorldAabb(b, placed.get(i).transform()));
             }
         }
         java.util.List<Float> out = new java.util.ArrayList<>();
@@ -718,7 +658,7 @@ public final class PhysicalBoardView implements Disposable {
                     dir.set(pt).sub(eye);
                     vis = true;
                     for (float[] box : occ) {
-                        float t = rayBoxEntry(eye, dir, box);
+                        float t = BoardGeometry.rayBoxEntry(eye, dir, box);
                         if (t > 1e-4f && t < 1f - 1e-3f) { vis = false; break; } // something strictly in front
                     }
                 }
@@ -740,9 +680,9 @@ public final class PhysicalBoardView implements Disposable {
     public String debugOutline(int i, float ex, float ey, float ez) {
         Placed p = placed.get(i);
         ComponentModel m = loader.model(p.modelId());
-        float[] local = edgeCache.computeIfAbsent(p.modelId(), k -> shapeEdges(m.staticBoxes));
+        float[] local = edgeCache.computeIfAbsent(p.modelId(), k -> BoardGeometry.shapeEdges(m.staticBoxes));
         Vector3 eye = new Vector3(ex, ey, ez);
-        Focus f = new Focus(i, -1, worldAabb(m.visual != null ? m.visual : m.collision, p.transform()));
+        Focus f = new Focus(i, -1, BoardGeometry.collisionWorldAabb(m.visual != null ? m.visual : m.collision, p.transform()));
         float[] segs = focusEdges(f, eye);
         StringBuilder sb = new StringBuilder("edges=" + local.length / 6 + " visibleSegs=" + segs.length / 6 + " boxes=" + m.staticBoxes.size());
         for (int k = 0; k < Math.min(segs.length, 18); k += 6) {
@@ -756,8 +696,8 @@ public final class PhysicalBoardView implements Disposable {
             sb.append(" edge0=").append(a).append("→").append(b).append(" mid=").append(pt);
             int bi = 0;
             for (PartMesh.Box bx : m.staticBoxes) {
-                float[] wb = boxWorldAabb(bx, p.transform());
-                float t = rayBoxEntry(eye, dir, wb);
+                float[] wb = BoardGeometry.boxWorldAabb(bx, p.transform());
+                float t = BoardGeometry.rayBoxEntry(eye, dir, wb);
                 if (t > 1e-4f && t < 1f - 1e-3f) sb.append(" HIT box").append(bi).append(" t=").append(t)
                         .append(" [").append(wb[0]).append(',').append(wb[1]).append(',').append(wb[2]).append("..")
                         .append(wb[3]).append(',').append(wb[4]).append(',').append(wb[5]).append(']');
@@ -765,25 +705,6 @@ public final class PhysicalBoardView implements Disposable {
             }
         }
         return sb.toString();
-    }
-
-    /** Ray/AABB slab test: the ray parameter where {@code eye + t·dir} ENTERS {@code box}, or +∞ if it misses. */
-    private static float rayBoxEntry(Vector3 eye, Vector3 dir, float[] box) {
-        float tmin = -Float.MAX_VALUE, tmax = Float.MAX_VALUE;
-        for (int ax = 0; ax < 3; ax++) {
-            float o = ax == 0 ? eye.x : ax == 1 ? eye.y : eye.z;
-            float dd = ax == 0 ? dir.x : ax == 1 ? dir.y : dir.z;
-            float lo = box[ax], hi = box[ax + 3];
-            if (Math.abs(dd) < 1e-9f) {
-                if (o < lo || o > hi) return Float.MAX_VALUE;
-            } else {
-                float t1 = (lo - o) / dd, t2 = (hi - o) / dd;
-                if (t1 > t2) { float t = t1; t1 = t2; t2 = t; }
-                tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
-                if (tmin > tmax) return Float.MAX_VALUE;
-            }
-        }
-        return tmax < 0 ? Float.MAX_VALUE : tmin;
     }
 
     /** True if the focused sub-part is interactive (has a drag control). */
@@ -810,13 +731,13 @@ public final class PhysicalBoardView implements Disposable {
               .append(studSupported(w, -1) ? " supported✓" : " UNSUPPORTED✗").append("; ");
         }
         if (m.collision != null) {
-            float[] a = worldAabb(m.collision, transform);
+            float[] a = BoardGeometry.collisionWorldAabb(m.collision, transform);
             sb.append("box y").append(a[1]).append("..").append(a[4]).append("; ");
             for (int i = 0; i < placed.size(); i++) {
                 ComponentModel pm = loader.model(placed.get(i).modelId());
                 if (pm.collision == null) continue;
-                float[] b = worldAabb(pm.collision, placed.get(i).transform());
-                if (overlap(a, b)) sb.append("OVERLAPS placement ").append(i).append(" (").append(placed.get(i).modelId())
+                float[] b = BoardGeometry.collisionWorldAabb(pm.collision, placed.get(i).transform());
+                if (BoardGeometry.overlap(a, b)) sb.append("OVERLAPS placement ").append(i).append(" (").append(placed.get(i).modelId())
                         .append(" box y").append(b[1]).append("..").append(b[4]).append("); ");
             }
         }
@@ -828,7 +749,7 @@ public final class PhysicalBoardView implements Disposable {
     public float[] debugSubAabb(int i, int sub) {
         Placed p = placed.get(i);
         ComponentModel m = loader.model(p.modelId());
-        if (sub < 0 || sub >= m.movableParts.size()) return worldAabb(m.visual != null ? m.visual : m.collision, p.transform());
+        if (sub < 0 || sub >= m.movableParts.size()) return BoardGeometry.collisionWorldAabb(m.visual != null ? m.visual : m.collision, p.transform());
         return movableWorldAabb(m.movableParts.get(sub), p.transform(), i < ents.size() ? ents.get(i) : null);
     }
 
@@ -1013,28 +934,6 @@ public final class PhysicalBoardView implements Disposable {
             return b.conducts(subState.getOrDefault(i, b.min()));
         }
         return true;
-    }
-
-    /** World-space AABB {minx,miny,minz,maxx,maxy,maxz} of a collision box under {@code world} (8-corner bound). */
-    private float[] worldAabb(ComponentModel.Collision c, Matrix4 world) {
-        float minx = Float.MAX_VALUE, miny = minx, minz = minx, maxx = -minx, maxy = -minx, maxz = -minx;
-        for (int i = 0; i < 8; i++) {
-            tmp2.set(c.cx() + ((i & 1) == 0 ? -c.hx() : c.hx()),
-                    c.cy() + ((i & 2) == 0 ? -c.hy() : c.hy()),
-                    c.cz() + ((i & 4) == 0 ? -c.hz() : c.hz())).mul(world);
-            minx = Math.min(minx, tmp2.x); maxx = Math.max(maxx, tmp2.x);
-            miny = Math.min(miny, tmp2.y); maxy = Math.max(maxy, tmp2.y);
-            minz = Math.min(minz, tmp2.z); maxz = Math.max(maxz, tmp2.z);
-        }
-        return new float[]{minx, miny, minz, maxx, maxy, maxz};
-    }
-
-    private static boolean overlap(float[] a, float[] b) {
-        float eps = 0.5f;    // x/z: touching faces allowed
-        float epsY = 1.5f;   // y: the under-stud PEG interlock at a stacked joint (~1u) is a connection, not a clash
-        return a[0] < b[3] - eps && a[3] > b[0] + eps
-                && a[1] < b[4] - epsY && a[4] > b[1] + epsY
-                && a[2] < b[5] - eps && a[5] > b[2] + eps;
     }
 
     /** Sets the eased translucent ghost (real model) for this frame; {@code present=false} hides it. */
