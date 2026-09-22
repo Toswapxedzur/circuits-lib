@@ -1,6 +1,7 @@
 package com.minecart.display.snap;
 
 import com.badlogic.gdx.math.Matrix4;
+import com.minecart.logic.PhysicalCircuitBuilder.Kind;
 import com.minecart.snap.SnapPlacement;
 
 import java.util.ArrayList;
@@ -31,39 +32,67 @@ public final class SnapModelBridge {
     private SnapModelBridge() {}
 
     /**
-     * A placeable snap COMPONENT: its committed model id, hotbar label, and electrical {@code kind} char used by the
-     * physical board's circuit builder — {@code w}=wire/junction (unifies ALL its terminals), {@code s}=switch (a
-     * closed conductor when toggled shut), {@code r}=resistor, {@code c}=capacitor, {@code d}=diode, {@code l}=LED
-     * (diode + light), {@code p}=lamp (resistor + light), {@code b}=battery, {@code m}=motor (resistive load +
-     * current-driven spin), {@code t}=transistor (a 3-terminal BJT: base=stem, collector/emitter=the two bar studs),
-     * {@code .}=place-only with no electrical model yet (e.g. the IC). This CATALOG is the single registration point
-     * — the hotbar, the atlas preload, and {@link #kindOf} all derive from it.
+     * A placed part's electrical role — the typed classification the physical board's circuit builder attaches from,
+     * replacing the old single-letter {@code kind} char. Each value carries its {@link Kind circuit-builder role} and
+     * its static device params AS DATA (behaviour-on-type, not a central switch). Two roles are resolved dynamically
+     * at build time from the interactive-control state: {@link #SWITCH} gates its conductor on the toggle, and
+     * {@link #RESISTOR}'s ohms come from the (optional) var-res control — so their {@link #params} carry no fixed value.
      */
-    public record Comp(String modelId, String label, char kind) {}
+    public enum Electrical {
+        WIRE(Kind.CONDUCTOR),                 // wire / tee junction: unifies ALL its terminals into one net
+        SWITCH(Kind.CONDUCTOR),               // gated: conducts only when toggled closed (else NONE) — see buildCircuit
+        RESISTOR(Kind.RESISTOR),              // ohms are dynamic: fixed 100Ω, or a var-res control's dialed value
+        MOTOR(Kind.RESISTOR, 100.0),          // resistive coil (~100Ω) + current-driven spin
+        LED(Kind.DIODE, 220.0, 1.0e6),        // diode + light: forward ~220Ω lights, reverse blocks
+        DIODE(Kind.DIODE, 1.0, 1.0e6),        // plain one-way conductor (no light)
+        LAMP(Kind.RESISTOR, 50.0),            // low-resistance heating element (warm glow)
+        CAPACITOR(Kind.CAPACITOR, 1.0e-3, 1.0), // charges then blocks DC
+        BATTERY(Kind.BATTERY, 5.0, 0.01),
+        TRANSISTOR(Kind.TRANSISTOR),          // 3-terminal BJT: base = stem, collector/emitter = the two bar studs
+        NONE(Kind.NONE);                      // place-only, no electrical model (the IC, the empty cursor)
+
+        /** The circuit-builder role this part attaches as. */
+        public final Kind kind;
+        /** Static device params for {@link #kind} (RESISTOR {@code [ohms]}, DIODE {@code [fwd,rev]}, CAPACITOR
+         *  {@code [farads,R]}, BATTERY {@code [volts,R]}), or {@code null}. SWITCH/RESISTOR resolve dynamically. */
+        public final double[] params;
+
+        Electrical(Kind kind, double... params) {
+            this.kind = kind;
+            this.params = params.length == 0 ? null : params;
+        }
+    }
+
+    /**
+     * A placeable snap COMPONENT: its committed model id, hotbar label, and typed {@link Electrical} role. This
+     * CATALOG is the single registration point — the hotbar, the atlas preload, and {@link #electricalOf} all
+     * derive from it.
+     */
+    public record Comp(String modelId, String label, Electrical electrical) {}
 
     /** Every component registered for the physical board. Order = hotbar order. The first entry is the CURSOR — an
      *  empty tool (no model) that places nothing; it just lets you look/focus and interact (drag knobs, etc.). */
     public static final List<Comp> CATALOG = List.of(
-            new Comp("", "Cursor", '.'),
-            new Comp("wire_2", "Wire", 'w'),
-            new Comp("tee_blue", "Tee", 'w'),
-            new Comp("resistor", "Resistor", 'r'),
-            new Comp("varres_bar", "Var.Res", 'r'),
-            new Comp("varres_clock", "Dial", 'r'),
-            new Comp("capacitor_small", "Cap S", 'c'),
-            new Comp("capacitor_medium", "Cap M", 'c'),
-            new Comp("capacitor_big", "Cap L", 'c'),
-            new Comp("diode", "Diode", 'd'),
-            new Comp("led", "LED", 'l'),
-            new Comp("lamp", "Lamp", 'p'),
-            new Comp("switch", "Switch", 's'),
-            new Comp("press", "Button", 's'),
-            new Comp("battery", "Battery", 'b'),
-            new Comp("battery_cell", "Cell", 'b'),
-            new Comp("motor", "Motor", 'm'),
-            new Comp("transistor_npn", "NPN", 't'),
-            new Comp("transistor_pnp", "PNP", 't'),
-            new Comp("ic", "IC", '.'));
+            new Comp("", "Cursor", Electrical.NONE),
+            new Comp("wire_2", "Wire", Electrical.WIRE),
+            new Comp("tee_blue", "Tee", Electrical.WIRE),
+            new Comp("resistor", "Resistor", Electrical.RESISTOR),
+            new Comp("varres_bar", "Var.Res", Electrical.RESISTOR),
+            new Comp("varres_clock", "Dial", Electrical.RESISTOR),
+            new Comp("capacitor_small", "Cap S", Electrical.CAPACITOR),
+            new Comp("capacitor_medium", "Cap M", Electrical.CAPACITOR),
+            new Comp("capacitor_big", "Cap L", Electrical.CAPACITOR),
+            new Comp("diode", "Diode", Electrical.DIODE),
+            new Comp("led", "LED", Electrical.LED),
+            new Comp("lamp", "Lamp", Electrical.LAMP),
+            new Comp("switch", "Switch", Electrical.SWITCH),
+            new Comp("press", "Button", Electrical.SWITCH),
+            new Comp("battery", "Battery", Electrical.BATTERY),
+            new Comp("battery_cell", "Cell", Electrical.BATTERY),
+            new Comp("motor", "Motor", Electrical.MOTOR),
+            new Comp("transistor_npn", "NPN", Electrical.TRANSISTOR),
+            new Comp("transistor_pnp", "PNP", Electrical.TRANSISTOR),
+            new Comp("ic", "IC", Electrical.NONE));
 
     /** The hotbar label of a model id (from the {@link #CATALOG}); the id itself if unregistered. */
     public static String labelOf(String modelId) {
@@ -94,14 +123,15 @@ public final class SnapModelBridge {
     /** The angle (deg) a card is held at in the deck hand — authored, default {@link #DEFAULT_HOLD_DEG}. */
     public static float holdAngle(String modelId) { return HOLD_DEG.getOrDefault(modelId, DEFAULT_HOLD_DEG); }
 
-    /** The electrical kind of a model id (from the {@link #CATALOG}); '.' if unregistered / place-only. */
-    public static char kindOf(String modelId) {
+    /** The {@link Electrical} role of a model id (from the {@link #CATALOG}); {@link Electrical#NONE} if
+     *  unregistered / place-only. */
+    public static Electrical electricalOf(String modelId) {
         for (Comp c : CATALOG) {
             if (c.modelId().equals(modelId)) {
-                return c.kind();
+                return c.electrical();
             }
         }
-        return '.';
+        return Electrical.NONE;
     }
 
     /** One thing for the engine to draw: which model, and where. */

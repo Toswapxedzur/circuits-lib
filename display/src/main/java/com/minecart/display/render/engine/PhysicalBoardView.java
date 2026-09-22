@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 import com.minecart.display.render.engine.behaviour.InteractiveBehaviour;
+import com.minecart.display.snap.SnapModelBridge.Electrical;
 import com.minecart.logic.PhysicalCircuitBuilder;
 import com.minecart.logic.PhysicalCircuitBuilder.Kind;
 
@@ -257,21 +258,16 @@ public final class PhysicalBoardView implements Disposable {
         List<PhysicalCircuitBuilder.Part> plan = new ArrayList<>(placed.size());
         for (int i = 0; i < placed.size(); i++) {
             Placed p = placed.get(i);
-            char k = kind(p.modelId());
-            Kind pk;
-            double[] params = null;
-            switch (k) {
-                case 'w' -> pk = Kind.CONDUCTOR;
-                case 's' -> pk = interaction.switchClosed(i) ? Kind.CONDUCTOR : Kind.NONE; // closed conducts, open = open
-                case 'r' -> { pk = Kind.RESISTOR; params = new double[]{interaction.resistanceOhms(i)}; }
-                case 'm' -> { pk = Kind.RESISTOR; params = new double[]{100.0}; }       // motor coil ~100Ω
-                case 'l' -> { pk = Kind.DIODE; params = new double[]{220.0, 1.0e6}; }   // LED: fwd ~220Ω lights, rev blocks
-                case 'd' -> { pk = Kind.DIODE; params = new double[]{1.0, 1.0e6}; }     // plain diode (no light)
-                case 'p' -> { pk = Kind.RESISTOR; params = new double[]{50.0}; }        // lamp: low-R heater (warm glow)
-                case 'c' -> { pk = Kind.CAPACITOR; params = new double[]{1.0e-3, 1.0}; } // charges then blocks DC
-                case 'b' -> { pk = Kind.BATTERY; params = new double[]{5.0, 0.01}; }
-                case 't' -> pk = Kind.TRANSISTOR;
-                default -> pk = Kind.NONE;
+            // Static role + params are DATA on the Electrical enum (behaviour-on-type). Only the two control-driven
+            // roles resolve dynamically here from the interactive state: a switch gates its conductor on the toggle,
+            // and a resistor's ohms come from the (optional) var-res control (fixed 100Ω otherwise).
+            Electrical el = electrical(p.modelId());
+            Kind pk = el.kind;
+            double[] params = el.params;
+            if (el == Electrical.SWITCH) {
+                pk = interaction.switchClosed(i) ? Kind.CONDUCTOR : Kind.NONE;
+            } else if (el == Electrical.RESISTOR) {
+                params = new double[]{interaction.resistanceOhms(i)};
             }
             plan.add(new PhysicalCircuitBuilder.Part(i, terminalXZ(p), pk, params));
         }
@@ -305,8 +301,8 @@ public final class PhysicalBoardView implements Disposable {
         return lastBattery == null ? 0.0 : Math.abs(lastBattery.getCurrent().getValue());
     }
 
-    static char kind(String modelId) {
-        return com.minecart.display.snap.SnapModelBridge.kindOf(modelId);
+    static Electrical electrical(String modelId) {
+        return com.minecart.display.snap.SnapModelBridge.electricalOf(modelId);
     }
 
     /** A placement's terminal world (x,z) positions as flat pairs, ordered by terminal index (terminal k at
