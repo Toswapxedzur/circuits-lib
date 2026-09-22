@@ -7,6 +7,7 @@ import com.minecart.logic.CircuitEdge;
 import com.minecart.logic.CircuitElement;
 import com.minecart.logic.CircuitNode;
 import com.minecart.registry.CircuitElementType;
+import com.minecart.registry.TypeAncestry;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -258,25 +259,10 @@ public final class InfoPanelRegistry {
     private static List<InfoPanelElementType<?>> ancestryFor(CircuitElement element) {
         InfoPanelElementType<?> type = TYPE_BINDINGS.get(element.getRegistryTypeId());
         if (type == null) {
-            if (element instanceof CircuitNode) {
-                type = InfoPanelTypes.NODE;
-            } else if (element instanceof CircuitEdge) {
-                type = InfoPanelTypes.EDGE;
-            } else if (element instanceof CircuitComponent) {
-                type = InfoPanelTypes.COMPONENT;
-            } else {
-                type = InfoPanelTypes.ELEMENT;
-            }
+            type = TypeAncestry.byCategory(element,
+                    InfoPanelTypes.NODE, InfoPanelTypes.EDGE, InfoPanelTypes.COMPONENT, InfoPanelTypes.ELEMENT);
         }
-        ArrayList<InfoPanelElementType<?>> reversed = new ArrayList<>();
-        for (InfoPanelElementType<?> p = type; p != null; p = p.parent()) {
-            reversed.add(p);
-        }
-        ArrayList<InfoPanelElementType<?>> ordered = new ArrayList<>();
-        for (int i = reversed.size() - 1; i >= 0; i--) {
-            ordered.add(reversed.get(i));
-        }
-        return ordered;
+        return TypeAncestry.rootFirst(type, t -> t.parent());
     }
 
     private static String defaultTitleFor(CircuitElement element) {
