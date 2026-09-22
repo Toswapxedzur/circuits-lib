@@ -40,13 +40,8 @@ public final class PhysicalBoardView implements Disposable {
     private final List<EngineRenderer.DynamicEntity> ents = new ArrayList<>(); // parallel to placed (render entities)
     // Populated on the server thread (buildCircuit), read on the render thread (glow) — concurrent-safe.
     private final java.util.Map<Integer, com.minecart.logic.CircuitEdge> deviceEdge = new java.util.concurrent.ConcurrentHashMap<>();
-    // Interactive sub-part state: placementIndex → the driven channel value (switch position, dial angle…). Written
-    // on the render thread (drag), read on the server thread (buildCircuit) — concurrent-safe.
-    private final java.util.Map<Integer, Float> subState = new java.util.concurrent.ConcurrentHashMap<>();
-    // Grab reference (drag-handle): the aim projection + channel value AT grab time, so the grabbed point stays under
-    // the cursor as it moves (relative drag, not absolute snap).
-    private float grabProj, grabChannel;
-    private boolean grabValid;
+    // Interactive-controls driver (drag/grab bookkeeping + per-part control state). Shares placed/ents by reference.
+    private final BoardInteraction interaction = new BoardInteraction(placed, ents, loader);
     private boolean built;
     private boolean hasBase;
 
@@ -164,7 +159,7 @@ public final class PhysicalBoardView implements Disposable {
     public void clearAll() {
         placed.clear();
         deviceEdge.clear();
-        subState.clear();
+        interaction.resetState();
         rebuild(); // rebuild recreates entities, so per-part spin/swell channels reset with them
 
     }
@@ -217,7 +212,7 @@ public final class PhysicalBoardView implements Disposable {
         }
         if (best >= 0) {
             placed.remove(best);
-            subState.clear(); // indices shift on remove — reset interactive states (rare, acceptable)
+            interaction.resetState(); // indices shift on remove — reset interactive states (rare, acceptable)
             rebuild();
             return true;
         }
@@ -310,14 +305,13 @@ public final class PhysicalBoardView implements Disposable {
         List<PhysicalCircuitBuilder.Part> plan = new ArrayList<>(placed.size());
         for (int i = 0; i < placed.size(); i++) {
             Placed p = placed.get(i);
-            ComponentModel m = loader.model(p.modelId());
             char k = kind(p.modelId());
             Kind pk;
             double[] params = null;
             switch (k) {
                 case 'w' -> pk = Kind.CONDUCTOR;
-                case 's' -> pk = switchClosed(i, m) ? Kind.CONDUCTOR : Kind.NONE; // closed switch conducts, open = open
-                case 'r' -> { pk = Kind.RESISTOR; params = new double[]{resistanceOhms(i, m)}; }
+                case 's' -> pk = interaction.switchClosed(i) ? Kind.CONDUCTOR : Kind.NONE; // closed conducts, open = open
+                case 'r' -> { pk = Kind.RESISTOR; params = new double[]{interaction.resistanceOhms(i)}; }
                 case 'm' -> { pk = Kind.RESISTOR; params = new double[]{100.0}; }       // motor coil ~100Ω
                 case 'l' -> { pk = Kind.DIODE; params = new double[]{220.0, 1.0e6}; }   // LED: fwd ~220Ω lights, rev blocks
                 case 'd' -> { pk = Kind.DIODE; params = new double[]{1.0, 1.0e6}; }     // plain diode (no light)
@@ -708,13 +702,13 @@ public final class PhysicalBoardView implements Disposable {
     }
 
     /** True if the focused sub-part is interactive (has a drag control). */
-    public boolean isInteractive(Focus f) { return interactiveFor(f) != null; }
+    public boolean isInteractive(Focus f) { return interaction.isInteractive(f); }
 
     /** DEBUG: "modelId movables=N inter=channel" for the focused part. */
     public String debugFocusInfo(Focus f) {
         if (f == null) return "null";
         ComponentModel m = loader.model(placed.get(f.placementIndex()).modelId());
-        InteractiveBehaviour b = interactiveFor(f);
+        InteractiveBehaviour b = interaction.interactiveFor(f);
         return placed.get(f.placementIndex()).modelId() + " movables=" + m.movableParts.size()
                 + " inter=" + (b == null ? "none" : b.channel() + (b.pivotDrag() ? "/pivot" : "/axis"));
     }
@@ -755,17 +749,14 @@ public final class PhysicalBoardView implements Disposable {
 
     /** TEST: the interactive channel value of placement {@code i} (its first movable's rest {@code min} if it was
      *  never touched); NaN if it has no interactive movable. */
-    public float debugChannel(int i) {
-        InteractiveBehaviour b = InteractiveBehaviours.of(placed.get(i).modelId());
-        return b == null ? Float.NaN : subState.getOrDefault(i, b.min());
-    }
+    public float debugChannel(int i) { return interaction.debugChannel(i); }
 
     /** TEST: is the switch at placement {@code i} currently closed (conducting)? */
-    public boolean debugSwitchClosed(int i) { return switchClosed(i, loader.model(placed.get(i).modelId())); }
+    public boolean debugSwitchClosed(int i) { return interaction.switchClosed(i); }
 
     /** True if the focused sub-part is DRAG-able. Every interactive control is a drag (linear or rotary). */
     public boolean isDraggable(Focus f) {
-        return interactiveFor(f) != null;
+        return interaction.isInteractive(f);
     }
 
     /** True if the focused sub-part opens a UI on click. No control is click-UI today (all are drags). */
@@ -773,167 +764,26 @@ public final class PhysicalBoardView implements Disposable {
         return false;
     }
 
-    /** The {@link InteractiveBehaviour} of the sub-part a {@link Focus} points at, or {@code null} if it's a
-     *  base or a non-interactive movable. Matched by the movable's binding channel == the control's channel. */
-    InteractiveBehaviour interactiveFor(Focus f) {
-        if (f == null || f.subPart() < 0) {
-            return null;
-        }
-        ComponentModel m = loader.model(placed.get(f.placementIndex()).modelId());
-        if (f.subPart() >= m.movableParts.size()) {
-            return null;
-        }
-        InteractiveBehaviour b = InteractiveBehaviours.of(placed.get(f.placementIndex()).modelId());
-        return (b != null && b.channel().equals(m.movableParts.get(f.subPart()).binding().channel())) ? b : null;
-    }
-
-    /** The aim's raw projection in CHANNEL units. A one-axis drag has 2 DOF from the mouse but only 1 the knob may
-     *  use, so we SACRIFICE the perpendicular freedom and keep only the slide axis:
-     *  <ul>
-     *    <li><b>drag_axis</b> — the knob is fixed to its world slide LINE {@code rest + t·worldAxis} (t in channel
-     *        units). We map the mouse to it by the closest point between the pick RAY and that line — projecting the
-     *        aim onto the axis and discarding the perpendicular. This is robust for ANY axis orientation (a
-     *        horizontal slider or a vertically-pressed button alike) and has none of the parallax a fixed-height
-     *        plane suffers when you look along it.</li>
-     *    <li><b>drag_pivot</b> — SAME handle, angular form: the dial turns so the grabbed point stays collinear with
-     *        the cursor and the pivot CENTRE. We sample the cursor angle in the dial's ACTUAL rotation plane (through
-     *        the pivot, normal = the world rotation axis), so viewing the dial at a shallow angle doesn't parallax
-     *        the collinearity. Angle (right-handed about the axis, matching the binding's rotation sense) / degPerUnit.</li>
-     *  </ul>
-     *  NaN if the ray can't resolve (misses the pivot plane, or runs parallel to the slide axis). */
-    private float rawAim(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
-        InteractiveBehaviour it = interactiveFor(f);
-        if (it == null) return Float.NaN;
-        Placed p = placed.get(f.placementIndex());
-        ComponentModel.MovablePart mv = loader.model(p.modelId()).movableParts.get(f.subPart());
-        Matrix4 tf = p.transform();
-        Vector3 rest = mv.local().getTranslation(new Vector3()).mul(tf);
-
-        if (it.pivotDrag()) {
-            float deg = mv.binding().degPerUnit();
-            if (deg == 0f) return 0f;
-            float[] ax = mv.binding().axis();
-            float[] pv = mv.binding().pivot();
-            Vector3 n = new Vector3(ax[0], ax[1], ax[2]).rot(tf).nor();     // world rotation axis
-            Vector3 pivot = new Vector3(pv[0], pv[1], pv[2]).mul(tf);
-            // Sample on the rotation plane THROUGH the pointer's height (project rest onto the axis from the pivot),
-            // so the hit is the real on-face point the cursor is over — parallax-free at any view angle.
-            Vector3 planePt = new Vector3(pivot).add(new Vector3(n).scl(new Vector3(rest).sub(pivot).dot(n)));
-            Vector3 hit = new Vector3();
-            if (!com.badlogic.gdx.math.Intersector.intersectRayPlane(ray,
-                    new com.badlogic.gdx.math.Plane(n, planePt), hit)) {
-                return Float.NaN;
-            }
-            // Right-handed angle of (hit - pivot) about n, via an orthonormal in-plane basis (u, w = n×u). Matches
-            // the binding, which rotates by +channel·deg about +n, so the pointer tracks the cursor's swing.
-            Vector3 ref = Math.abs(n.y) < 0.99f ? new Vector3(0f, 1f, 0f) : new Vector3(1f, 0f, 0f);
-            Vector3 u = new Vector3(ref).sub(new Vector3(n).scl(ref.dot(n))).nor();
-            Vector3 w = new Vector3(n).crs(u);
-            Vector3 v = new Vector3(hit).sub(pivot);
-            return (float) Math.toDegrees(Math.atan2(v.dot(w), v.dot(u))) / deg;
-        }
-        // drag_axis: closest point between the pick ray (origin o, unit dir B) and the slide line (rest, A), where
-        // A = worldAxis = one channel unit. Solving the 2-DOF least-squares gives the line param t straight in
-        // channel units: t = ((A·B)(B·W0) - (A·W0)) / ((A·A) - (A·B)²), with W0 = rest - o and B normalised.
-        float[] ax = mv.binding().axis();
-        Vector3 axisW = new Vector3(ax[0], ax[1], ax[2]).rot(tf);
-        if (axisW.len2() < 1e-6f) return Float.NaN;
-        Vector3 dir = new Vector3(ray.direction).nor();
-        Vector3 w0 = new Vector3(rest).sub(ray.origin);
-        float aa = axisW.dot(axisW), ab = axisW.dot(dir), bw = dir.dot(w0), aw = axisW.dot(w0);
-        float denom = aa - ab * ab;
-        if (Math.abs(denom) < 1e-6f) return Float.NaN; // ray runs parallel to the slide axis — no stable answer
-        return (ab * bw - aw) / denom;
-    }
-
-    /** Starts a drag on the focused sub-part: records the aim + channel at grab time, so subsequent {@link
-     *  #aimSubPart} moves the knob by the DELTA (the grabbed point stays under the cursor). */
+    /** Starts a drag on the focused sub-part (records the aim + channel at grab time; a momentary button presses
+     *  fully closed). Delegates to {@link BoardInteraction}. */
     public void beginGrab(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
-        InteractiveBehaviour it = interactiveFor(f);
-        grabValid = it != null;
-        if (!grabValid) return;
-        grabProj = rawAim(f, ray);
-        if (it.momentary()) { // a push-button: grabbing presses it fully (closed) until released
-            subState.put(f.placementIndex(), it.max());
-            ents.get(f.placementIndex()).anim.set(it.channel(), it.max());
-            grabChannel = it.max();
-        } else {
-            grabChannel = subState.getOrDefault(f.placementIndex(), it.min());
-        }
-        if (Float.isNaN(grabProj)) grabValid = false;
+        interaction.beginGrab(f, ray);
     }
 
     /** True if the focused sub-part is a momentary control (springs back on release). */
     public boolean isMomentary(Focus f) {
-        InteractiveBehaviour b = interactiveFor(f);
-        return b != null && b.momentary();
+        return interaction.isMomentary(f);
     }
 
-    private static final float MOMENTARY_RETURN_PER_SEC = 6f; // full travel returns in ~1/6 s
-
-    /**
-     * Eases every momentary control back toward its rest ({@code min}) — the button "pops up" after release —
-     * except the one currently grabbed ({@code grabbedIdx}, or −1). Mirrors the eased value to the render
-     * channel. Returns true if any part crossed its conduct threshold, so the caller re-solves the circuit
-     * (the switch opens as the button clears mid-travel).
-     */
+    /** Eases every momentary control (except the grabbed one) back toward rest; returns true if any crossed its
+     *  conduct threshold so the caller re-solves the circuit. Delegates to {@link BoardInteraction}. */
     public boolean tickMomentary(float dt, int grabbedIdx) {
-        boolean rebuild = false;
-        for (int i = 0; i < placed.size(); i++) {
-            if (i == grabbedIdx) continue;
-            InteractiveBehaviour b = InteractiveBehaviours.of(placed.get(i).modelId());
-            if (b == null || !b.momentary()) continue;
-            float cur = subState.getOrDefault(i, b.min());
-            if (cur <= b.min() + 1e-4f) continue; // already at rest
-            boolean wasClosed = b.conducts(cur);
-            float next = Math.max(b.min(), cur - (b.max() - b.min()) * MOMENTARY_RETURN_PER_SEC * dt);
-            subState.put(i, next);
-            if (i < ents.size()) ents.get(i).anim.set(b.channel(), next);
-            if (wasClosed != b.conducts(next)) rebuild = true;
-        }
-        return rebuild;
+        return interaction.tickMomentary(dt, grabbedIdx);
     }
 
-    /** AIM-drives the grabbed sub-part: the knob FOLLOWS the crosshair (camera keeps turning freely) by the aim's
-     *  DELTA from the grab, so the grabbed point stays under the cursor. Returns true if its state changed. */
+    /** AIM-drives the grabbed sub-part so the grabbed point follows the crosshair; true if its state changed. */
     public boolean aimSubPart(Focus f, com.badlogic.gdx.math.collision.Ray ray) {
-        InteractiveBehaviour it = interactiveFor(f);
-        if (!grabValid || it == null) return false;
-        float now = rawAim(f, ray);
-        if (Float.isNaN(now)) return false;
-        float delta = now - grabProj;
-        if (it.pivotDrag()) { // unwrap across the atan2 ±180° seam → shortest arc, never a jump
-            float deg = Math.abs(loader.model(placed.get(f.placementIndex()).modelId())
-                    .movableParts.get(f.subPart()).binding().degPerUnit());
-            if (deg > 0f) { float rev = 360f / deg; delta -= Math.round(delta / rev) * rev; }
-        }
-        float c = Math.max(it.min(), Math.min(it.max(), grabChannel + delta));
-        float prev = subState.getOrDefault(f.placementIndex(), it.min());
-        if (Math.abs(c - prev) < 1e-4f) return false;
-        subState.put(f.placementIndex(), c);
-        ents.get(f.placementIndex()).anim.set(
-                loader.model(placed.get(f.placementIndex()).modelId()).movableParts.get(f.subPart()).binding().channel(), c);
-        return true;
-    }
-
-    /** The resistance (Ω) of placement {@code i}: a variable-resistor control maps its channel across
-     *  10Ω..1000Ω; otherwise the fixed 100Ω. Read from the {@link InteractiveBehaviour}, not datagen. */
-    private double resistanceOhms(int i, ComponentModel m) {
-        InteractiveBehaviour b = InteractiveBehaviours.of(placed.get(i).modelId());
-        if (b != null && b.resistorControl()) {
-            return b.resistanceOhms(subState.getOrDefault(i, b.min()));
-        }
-        return 100.0;
-    }
-
-    /** A switch/button part's closed state: its {@link InteractiveBehaviour} conducts past mid-travel (default
-     *  OPEN at rest). Non-control conductors (plain wire/tee) always conduct. */
-    private boolean switchClosed(int i, ComponentModel m) {
-        InteractiveBehaviour b = InteractiveBehaviours.of(placed.get(i).modelId());
-        if (b != null && b.conductorControl()) {
-            return b.conducts(subState.getOrDefault(i, b.min()));
-        }
-        return true;
+        return interaction.aimSubPart(f, ray);
     }
 
     /** Sets the eased translucent ghost (real model) for this frame; {@code present=false} hides it. */
