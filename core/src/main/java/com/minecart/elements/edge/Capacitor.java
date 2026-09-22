@@ -44,6 +44,19 @@ public class Capacitor extends CircuitEdge implements ElectricalVariate<Capacito
         get().setCharge(charge);
     }
 
+    /** Capacitor C with {@code ic = Q/C} in series with its internal resistance; its terminals are registered so
+     *  the solver reads the charge (C·V) back after the tick. */
+    @Override
+    public void emitSpice(com.minecart.spice.SpiceContext ctx) {
+        double v0 = info.getCharge() / info.getCapacitance();
+        String mid2 = ctx.mid() + "c";
+        ctx.line("c" + ctx.id() + " " + ctx.start() + " " + mid2 + " "
+                + com.minecart.spice.SpiceContext.num(info.getCapacitance())
+                + " ic=" + com.minecart.spice.SpiceContext.num(v0));
+        ctx.ammeterFrom(ctx.series(mid2, ctx.mid(), info.getInternalResistance()));
+        ctx.capacitorTerminals(ctx.start(), mid2);
+    }
+
     @Override
     public CapacitorInfo get() {
         return info;

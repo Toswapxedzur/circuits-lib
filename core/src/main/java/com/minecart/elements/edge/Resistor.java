@@ -33,6 +33,12 @@ public class Resistor extends CircuitEdge implements ElectricalVariate<ResistorI
         this.info = getDefault();
     }
 
+    /** Ohm's law: a series resistor R then the branch ammeter. */
+    @Override
+    public void emitSpice(com.minecart.spice.SpiceContext ctx) {
+        ctx.ammeterFrom(ctx.series(ctx.start(), ctx.mid(), info.getResistance()));
+    }
+
     @Override
     public ResistorInfo get() {
         return this.info;

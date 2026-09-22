@@ -80,6 +80,18 @@ public class Diode extends CircuitEdge implements ElectricalVariate<DiodeInfo> {
         }
     }
 
+    /** Piecewise resistance: forward for V_start &gt; V_end, reverse otherwise, blended over ~1 mV with tanh, so it
+     *  stays the idealised one-way device the rest of the code expects. */
+    @Override
+    public void emitSpice(com.minecart.spice.SpiceContext ctx) {
+        String s = ctx.start(), mid = ctx.mid(), id = ctx.id();
+        String fwd = com.minecart.spice.SpiceContext.num(info.getForwardResistance());
+        String rev = com.minecart.spice.SpiceContext.num(info.getReverseResistance());
+        ctx.line("r" + id + " " + s + " " + mid + " r='" + fwd + "+(" + rev + "-" + fwd
+                + ")*(1-tanh(v(" + s + "," + mid + ")*1000))/2'");
+        ctx.ammeterFrom(mid);
+    }
+
     @Override
     public DiodeInfo get() {
         return info;
