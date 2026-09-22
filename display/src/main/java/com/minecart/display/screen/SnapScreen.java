@@ -99,11 +99,9 @@ public final class SnapScreen extends ScreenAdapter {
     // The physical free-placement editor's per-frame brain: owns physFocus/grabbed/scriptLmbHeld/outlineSegs +
     // the update/focus-outline logic (created in buildScene). The screen keeps the shared fly-cam capture.
     private SnapEditorController controller;
-    // The 3D deck (poker-hand inventory) HUD + the E-panel catalog picker. The screen owns the input-driven picker
-    // state; DeckHud owns the fan rendering + eased animation (created in buildScene, once physWorld/physEditor exist).
+    // The 3D deck (poker-hand inventory) HUD's fan renderer; DeckHud owns the fan rendering + eased animation
+    // (created in buildScene). The picker STATE (deckPicker/pickerIndex) lives on the controller.
     private DeckHud deckHud;
-    private boolean deckPicker;   // E-panel open: pick a component to add/replace; mouse-look off
-    private int pickerIndex;      // which catalog entry is highlighted in the open picker
     // Scripted-input harness (-Pinputtest=<script>): synthetic events through the SAME handlers + state probes.
     private EditInput editInput;
     private com.minecart.display.snap.InputScript script;
@@ -168,7 +166,8 @@ public final class SnapScreen extends ScreenAdapter {
             physWorld.setBaseBoard(cols, rows, 0f);
             physEditor = new com.minecart.display.snap.PhysicalEditor();
             deckHud = new DeckHud(physWorld, physEditor);
-            controller = new SnapEditorController(physWorld, physEditor, flyCam, camera, this::rebuildPhysCircuit);
+            controller = new SnapEditorController(physWorld, physEditor, flyCam, camera, deckHud,
+                    this::rebuildPhysCircuit, this::setCursorCaught, () -> cursorCaught);
             if (designWorld) {
                 log.info("design world: {}", physWorld.designLayout(
                         com.minecart.display.snap.SnapModelBridge.placeableIds(), DESIGN_PER_ROW));
@@ -437,8 +436,8 @@ public final class SnapScreen extends ScreenAdapter {
             double i = physWorld.batteryCurrent();
             String held = com.minecart.display.snap.SnapModelBridge.labelOf(physEditor.modelId());
             String hud;
-            if (deckPicker) {
-                String pick = com.minecart.display.snap.SnapModelBridge.labelOf(deckHud.currentPick(pickerIndex));
+            if (controller.deckPicker) {
+                String pick = com.minecart.display.snap.SnapModelBridge.labelOf(deckHud.currentPick(controller.pickerIndex));
                 hud = "INVENTORY  |  Pick: " + pick
                         + "   |   ←/→ browse   Enter replace held   [ add-left   ] add-right   Del remove held   E/Esc close";
             } else {
@@ -624,7 +623,7 @@ public final class SnapScreen extends ScreenAdapter {
         if (ready) {
             physWorld.render(camera);
             controller.drawOutline();
-            deckHud.draw(deckPicker, pickerIndex, dt); // 3D poker-hand inventory HUD (+ the E-panel picker when open)
+            deckHud.draw(controller.deckPicker, controller.pickerIndex, dt); // 3D poker-hand inventory HUD (+ the E-panel picker when open)
         }
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
@@ -756,8 +755,8 @@ public final class SnapScreen extends ScreenAdapter {
                 case "fan.raise" -> deckHud.deckAnim.raise;
                 case "net.connected" -> connection != null && connection.isConnected(); // client↔server link alive?
                 case "outline.segs" -> controller.outlineSegs;
-                case "picker.open" -> deckPicker;
-                case "picker.index" -> pickerIndex;
+                case "picker.open" -> controller.deckPicker;
+                case "picker.index" -> controller.pickerIndex;
                 default -> null;
             };
         }
@@ -776,59 +775,27 @@ public final class SnapScreen extends ScreenAdapter {
     /** Handles world clicks (place/remove), hotbar scroll/keys, and the Esc cursor toggle. */
     private final class EditInput extends InputAdapter {
         @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-            if (editor == null && !physical) {
+            if (physical) return controller.onTouchDown(button); // crosshair-based; owns capture + place/interact/remove
+            if (editor == null) {
                 return false;
-            }
-            if (physical && deckPicker) {
-                return true; // panel open: clicks don't re-capture the cursor or place in the world
             }
             if (!cursorCaught) {
                 // Cursor is released for menus; a world click re-captures it (Minecraft "click to resume").
                 setCursorCaught(true);
                 return true;
             }
-            if (button == Buttons.LEFT) {
-                if (physical) {
-                    // On an interactive sub-part, LMB INTERACTS (does not place): grab a draggable one (dragged
-                    // per-frame in renderPhysical while held), or open a click-UI one (stub). Else place.
-                    if (physWorld.isDraggable(controller.physFocus)) {
-                        controller.grabbed = controller.physFocus;
-                        physWorld.beginGrab(controller.physFocus, // record the grabbed point so it stays under the cursor
-                                camera.getPickRay(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f));
-                        if (physWorld.isMomentary(controller.physFocus)) rebuildPhysCircuit(); // button pressed closed on grab
-                    } else if (physWorld.isClickUi(controller.physFocus)) {
-                        log.info("interact: click-UI on sub-part {} of placement {} (panel TODO)",
-                                controller.physFocus.subPart(), controller.physFocus.placementIndex());
-                    } else if (physEditor.place(physWorld)) {
-                        rebuildPhysCircuit();
-                    }
-                } else { placeAction(); }
-                return true;
-            }
-            if (button == Buttons.RIGHT) {
-                if (physical) {
-                    physEditor.update(camera, physWorld);
-                    if (physWorld.removeNear(physEditor.ghostTransform().getTranslation(new Vector3()), 18f)) {
-                        rebuildPhysCircuit();
-                    }
-                } else { removeAction(); }
-                return true;
-            }
+            if (button == Buttons.LEFT) { placeAction(); return true; }
+            if (button == Buttons.RIGHT) { removeAction(); return true; }
             return false;
         }
 
         @Override public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-            if (physical && button == Buttons.LEFT) {
-                controller.grabbed = null; // release a dragged knob → camera-look resumes next frame
-            }
+            if (physical) return controller.onTouchUp(button);
             return false;
         }
 
         @Override public boolean scrolled(float amountX, float amountY) {
-            if (physical) {
-                physEditor.scrollRotate(amountY); // slowed: accumulates before each 90° turn (no spinning)
-                return true;
-            }
+            if (physical) return controller.onScroll(amountY);
             if (editor == null) {
                 return false;
             }
@@ -838,42 +805,10 @@ public final class SnapScreen extends ScreenAdapter {
         }
 
         @Override public boolean keyDown(int keycode) {
+            if (physical) return controller.onKey(keycode);
             if (keycode == Keys.ESCAPE) {
-                if (physical && deckPicker) { deckPicker = false; setCursorCaught(true); return true; } // close panel
                 setCursorCaught(!cursorCaught);
                 return true;
-            }
-            if (physical) {
-                if (deckPicker) { // E-panel open: browse the catalog, then add/replace into the hand
-                    java.util.List<String> cat = deckHud.pickerIds();
-                    if (cat.isEmpty()) { deckPicker = false; return true; }
-                    if (keycode == Keys.LEFT)  { pickerIndex = (pickerIndex - 1 + cat.size()) % cat.size(); return true; }
-                    if (keycode == Keys.RIGHT) { pickerIndex = (pickerIndex + 1) % cat.size(); return true; }
-                    String pick = cat.get(Math.max(0, Math.min(pickerIndex, cat.size() - 1)));
-                    if (keycode == Keys.ENTER) {
-                        physEditor.deckReplace(pick); deckPicker = false; setCursorCaught(true); return true;
-                    }
-                    if (keycode == Keys.LEFT_BRACKET)  { physEditor.deckAddLeft(pick); return true; }
-                    if (keycode == Keys.RIGHT_BRACKET) { physEditor.deckAddRight(pick); return true; }
-                    if (keycode == Keys.FORWARD_DEL || keycode == Keys.DEL) { physEditor.deckRemove(); return true; }
-                    if (keycode == Keys.E) { deckPicker = false; setCursorCaught(true); return true; }
-                    return true; // swallow everything else while the panel is open
-                }
-                if (keycode == Keys.E) { // open the panel — this also ENDS any knob drag (the cursor is being released)
-                    controller.grabbed = null; controller.scriptLmbHeld = false;
-                    deckPicker = true; pickerIndex = 0; deckHud.resetPickerAnim(); setCursorCaught(false); return true;
-                }
-                if (keycode == Keys.R) { physEditor.rotate(90f); return true; } // quick 90° direction turn
-                // ←/→ SELECT the held card (the fan rotates it to center); [ ] pin which terminal follows the cursor.
-                if (keycode == Keys.LEFT)  { physEditor.deckSelect(-1); return true; }
-                if (keycode == Keys.RIGHT) { physEditor.deckSelect(1); return true; }
-                if (keycode == Keys.LEFT_BRACKET)  { physEditor.cycleTerminal(-1); return true; }
-                if (keycode == Keys.RIGHT_BRACKET) { physEditor.cycleTerminal(1); return true; }
-                if (keycode >= Keys.NUM_1 && keycode <= Keys.NUM_9) {
-                    physEditor.deckSetSelected(keycode - Keys.NUM_1);
-                    return true;
-                }
-                return false;
             }
             if (editor == null) {
                 return false;
