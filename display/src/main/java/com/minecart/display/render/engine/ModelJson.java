@@ -69,20 +69,16 @@ final class ModelJson {
         String sprite;
     }
 
-    /** A movable sub-part: which part-type it borrows, where it sits, and its serialised binding. */
+    /** A movable sub-part: which part-type it borrows, where it sits, and its serialised binding. Interaction /
+     *  reactive behaviour is code (the {@code render.engine.behaviour} registries), not datagen. */
     static final class Movable {
         String part;                       // part-type model id (a borrow / dependency)
         float[] at;                        // local translation [x,y,z]
-        String bindingType;                // BindingSpec.type ("translate" | "rotate")
+        String bindingType;                // BindingSpec.type ("translate" | "rotate" | "scale")
         String channel;
         float[] axis;
         float[] pivot;                     // rotate only: pivot point [x,y,z] (null for translate)
         float degPerUnit;                  // rotate only: degrees per channel unit (0 for translate)
-        // Interaction (null/absent = not interactive): how the user drives this sub-part.
-        String interaction;               // "drag_axis" | "drag_pivot" | "click_ui" | null
-        float interMin;                    // driven channel min
-        float interMax;                    // driven channel max
-        String drives;                     // electrical hook: "switch" | "resistance" | null
     }
 
     static int faceId(String key) {
@@ -137,12 +133,6 @@ final class ModelJson {
             mv.axis = m.binding().axis();
             mv.pivot = m.binding().pivot();
             mv.degPerUnit = m.binding().degPerUnit();
-            if (m.interaction() != null) {
-                mv.interaction = m.interaction().type();
-                mv.interMin = m.interaction().min();
-                mv.interMax = m.interaction().max();
-                mv.drives = m.interaction().drives();
-            }
             j.movables.add(mv);
         }
         j.collision = aabb(boxes, quads, true);  // the collision box: the BASE PLATE (top clamped to BASE_TOP)

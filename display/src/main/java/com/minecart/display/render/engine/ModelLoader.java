@@ -36,10 +36,8 @@ final class ModelLoader {
         for (PartMesh.Quad q : quads) b.quad(q);
         if (j.movables != null) {
             for (ModelJson.Movable mv : j.movables) {
-                ComponentModel.Interaction inter = mv.interaction == null ? null
-                        : new ComponentModel.Interaction(mv.interaction, mv.interMin, mv.interMax, mv.drives);
                 b.movable(partType(mv.part), mv.at[0], mv.at[1], mv.at[2],
-                        new BindingSpec(mv.bindingType, mv.channel, mv.axis, mv.pivot, mv.degPerUnit), inter);
+                        new BindingSpec(mv.bindingType, mv.channel, mv.axis, mv.pivot, mv.degPerUnit));
             }
         }
         if (j.connectors != null && !j.connectors.isEmpty()) { // datagen-declared ports, at the REAL studs
