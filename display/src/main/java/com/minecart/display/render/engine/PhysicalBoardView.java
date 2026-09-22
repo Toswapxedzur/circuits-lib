@@ -4,11 +4,7 @@ import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
-import com.minecart.display.render.engine.behaviour.BehaviourContext;
-import com.minecart.display.render.engine.behaviour.ComponentBehaviours;
 import com.minecart.display.render.engine.behaviour.InteractiveBehaviour;
-import com.minecart.display.render.engine.behaviour.InteractiveBehaviours;
-import com.minecart.display.render.engine.behaviour.ReactiveBehaviour;
 import com.minecart.logic.PhysicalCircuitBuilder;
 import com.minecart.logic.PhysicalCircuitBuilder.Kind;
 
@@ -42,6 +38,8 @@ public final class PhysicalBoardView implements Disposable {
     private final java.util.Map<Integer, com.minecart.logic.CircuitEdge> deviceEdge = new java.util.concurrent.ConcurrentHashMap<>();
     // Interactive-controls driver (drag/grab bookkeeping + per-part control state). Shares placed/ents by reference.
     private final BoardInteraction interaction = new BoardInteraction(placed, ents, loader);
+    // Reactive-animation driver (electrical state → per-part spin/glow/swell each frame). Reads placed/ents/deviceEdge.
+    private final BoardReactive reactive = new BoardReactive(placed, ents, deviceEdge);
     private boolean built;
     private boolean hasBase;
 
@@ -237,57 +235,11 @@ public final class PhysicalBoardView implements Disposable {
 
     private long lastFrameNanos; // for per-frame dt
 
-    /**
-     * The single reactive-animation pass: for each placed part, run its composed {@link ReactiveBehaviour}s
-     * (motor spin, glow, …) against its freshly-solved electrical state. Behaviour lives in
-     * {@link ComponentBehaviours} — this only supplies the {@link BehaviourContext} and eases the channels.
-     * Replaces the old per-{@code kind} {@code updateMotors}/{@code updateElectricalGlow} switches.
-     */
-    private void updateReactive(float dt) {
-        for (int i = 0; i < ents.size(); i++) {
-            List<ReactiveBehaviour> behs = ComponentBehaviours.reactive(placed.get(i).modelId());
-            if (behs.isEmpty()) continue; // conductors / IC — nothing reactive (emission stays cleared)
-            EngineRenderer.DynamicEntity e = ents.get(i);
-            com.minecart.logic.CircuitEdge edge = deviceEdge.get(i);
-            float cur = edge == null ? 0f : (float) Math.abs(edge.getCurrent().getValue());
-            float volt = (edge != null && edge.getStart() != null && edge.getEnd() != null)
-                    ? (float) Math.abs(edge.getStart().getVoltage().getValue() - edge.getEnd().getVoltage().getValue())
-                    : 0f;
-            float charge = edge instanceof com.minecart.elements.edge.Capacitor cap
-                    ? (float) cap.get().getCharge() : 0f;
-            BehaviourContext ctx = new BehaviourContext(dt, cur, volt, charge, channelsOf(e), emissionOf(e));
-            for (ReactiveBehaviour b : behs) b.react(ctx);
-            e.anim.update(dt); // ease any targeted (LEVEL) channels; a no-op for immediate set() channels
-        }
-    }
-
-    private BehaviourContext.Channels channelsOf(EngineRenderer.DynamicEntity e) {
-        return new BehaviourContext.Channels() {
-            @Override public float value(String c) { return e.anim.value(c); }
-            @Override public void set(String c, float v) { e.anim.set(c, v); }
-            @Override public void target(String c, float v) { e.anim.target(c, v); }
-        };
-    }
-
-    private BehaviourContext.Emission emissionOf(EngineRenderer.DynamicEntity e) {
-        return new BehaviourContext.Emission() {
-            @Override public void emit(float r, float g, float b, float range) {
-                e.light = new com.badlogic.gdx.graphics.Color(r, g, b, 1f);
-                e.lightRange = range;
-            }
-            @Override public void clear() { e.light = null; e.lightRange = 0f; }
-        };
-    }
-
     /** TEST: motor {@code i}'s current spin channel (0..1 = one turn), or NaN if it's not a motor. */
-    public float debugSpin(int i) {
-        return kind(placed.get(i).modelId()) == 'm' ? ents.get(i).anim.value("spin") : Float.NaN;
-    }
+    public float debugSpin(int i) { return reactive.debugSpin(i); }
 
     /** TEST: capacitor {@code i}'s swell channel (0 = uncharged/identity, grows with charge), or NaN if not a cap. */
-    public float debugSwell(int i) {
-        return kind(placed.get(i).modelId()) == 'c' ? ents.get(i).anim.value("swell") : Float.NaN;
-    }
+    public float debugSwell(int i) { return reactive.debugSwell(i); }
 
     private com.minecart.logic.CircuitEdge lastBattery; // captured to read solved current (a live-circuit proof)
 
@@ -353,7 +305,7 @@ public final class PhysicalBoardView implements Disposable {
         return lastBattery == null ? 0.0 : Math.abs(lastBattery.getCurrent().getValue());
     }
 
-    private static char kind(String modelId) {
+    static char kind(String modelId) {
         return com.minecart.display.snap.SnapModelBridge.kindOf(modelId);
     }
 
@@ -816,7 +768,7 @@ public final class PhysicalBoardView implements Disposable {
         long now = System.nanoTime();
         float dt = lastFrameNanos == 0L ? 0f : Math.min(0.1f, (now - lastFrameNanos) / 1e9f);
         lastFrameNanos = now;
-        updateReactive(dt); // live current/charge → per-part motion + emission (behaviours) before the lighting pass
+        reactive.update(dt); // live current/charge → per-part motion + emission (behaviours) before the lighting pass
         engine.render(cam);
         if (gPresent) {
             if (gValid) {
