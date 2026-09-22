@@ -4,6 +4,7 @@ import com.minecart.elements.component.BJTransistor;
 import com.minecart.elements.edge.Battery;
 import com.minecart.elements.edge.Capacitor;
 import com.minecart.elements.edge.Diode;
+import com.minecart.elements.edge.SolarCell;
 import com.minecart.elements.edge.Wire;
 import com.minecart.elements.node.Junction;
 import com.minecart.elements.edge.Resistor;
@@ -56,6 +57,8 @@ public class AllComponents {
             CircuitElementRegistry.register("capacitor", world -> new Capacitor(world));
     public static final CircuitElementType<Diode> DIODE =
             CircuitElementRegistry.register("diode", world -> new Diode(world));
+    public static final CircuitElementType<SolarCell> SOLAR_CELL =
+            CircuitElementRegistry.register("solar_cell", world -> new SolarCell(world));
     public static final CircuitElementType<BJTransistor> BJ_TRANSISTOR =
             CircuitElementRegistry.register("bj_transistor", world -> {
                 BJTransistor b = new BJTransistor();
