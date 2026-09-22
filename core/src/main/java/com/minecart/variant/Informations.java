@@ -251,4 +251,71 @@ public class Informations {
             this.beta = Math.max(beta, DELTA);
         }
     }
+
+    /**
+     * A solar (photovoltaic) cell — the single-diode model. {@code iscFullSun} is the short-circuit current at
+     * full sun; the live {@code irradiance} (0..1, set each tick from the incident light + shadow) scales the
+     * photocurrent {@code Iph = iscFullSun · irradiance}. {@code saturationCurrent}/{@code ideality} shape the
+     * junction diode (and so the open-circuit voltage / knee); {@code seriesResistance}/{@code shuntResistance}
+     * are the parasitics. Only the fixed parameters serialize — {@code irradiance} is derived each tick.
+     */
+    public static class SolarCellInfo extends ElectricalInfo {
+        private static final String TAG_ISC = "iscFullSun";
+        private static final String TAG_I0 = "saturationCurrent";
+        private static final String TAG_N = "ideality";
+        private static final String TAG_RS = "seriesResistance";
+        private static final String TAG_RSH = "shuntResistance";
+
+        protected double iscFullSun;
+        protected double saturationCurrent;
+        protected double ideality;
+        protected double seriesResistance;
+        protected double shuntResistance;
+        protected double irradiance = 1.0; // live 0..1; NOT serialized (recomputed from the scene each tick)
+
+        public SolarCellInfo(double iscFullSun, double saturationCurrent, double ideality,
+                             double seriesResistance, double shuntResistance) {
+            this.iscFullSun = iscFullSun;
+            this.saturationCurrent = saturationCurrent;
+            this.ideality = ideality;
+            this.seriesResistance = seriesResistance;
+            this.shuntResistance = shuntResistance;
+        }
+
+        @Override
+        public void save(CompoundTag tag) {
+            tag.putDouble(TAG_ISC, iscFullSun);
+            tag.putDouble(TAG_I0, saturationCurrent);
+            tag.putDouble(TAG_N, ideality);
+            tag.putDouble(TAG_RS, seriesResistance);
+            tag.putDouble(TAG_RSH, shuntResistance);
+        }
+
+        @Override
+        public void load(CompoundTag tag) {
+            iscFullSun = tag.getDouble(TAG_ISC);
+            saturationCurrent = tag.getDouble(TAG_I0);
+            ideality = tag.getDouble(TAG_N);
+            seriesResistance = tag.getDouble(TAG_RS);
+            shuntResistance = tag.getDouble(TAG_RSH);
+        }
+
+        /** The light-scaled photocurrent Iph = iscFullSun · irradiance (what the SPICE current source emits). */
+        public double photoCurrent() {
+            return iscFullSun * Math.max(0.0, irradiance);
+        }
+
+        public double getIscFullSun() { return iscFullSun; }
+        public void setIscFullSun(double v) { iscFullSun = v; }
+        public double getSaturationCurrent() { return saturationCurrent; }
+        public void setSaturationCurrent(double v) { saturationCurrent = Math.max(v, DELTA); }
+        public double getIdeality() { return ideality; }
+        public void setIdeality(double v) { ideality = Math.max(v, DELTA); }
+        public double getSeriesResistance() { return seriesResistance; }
+        public void setSeriesResistance(double v) { seriesResistance = v; }
+        public double getShuntResistance() { return shuntResistance; }
+        public void setShuntResistance(double v) { shuntResistance = v; }
+        public double getIrradiance() { return irradiance; }
+        public void setIrradiance(double v) { irradiance = v; }
+    }
 }
