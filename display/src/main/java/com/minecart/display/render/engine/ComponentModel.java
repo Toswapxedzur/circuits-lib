@@ -17,16 +17,10 @@ import java.util.List;
  */
 final class ComponentModel {
 
-    /** A movable sub-part: its part-type, placement within the component, how it moves (binding), and how the user
-     *  INTERACTS with it ({@link Interaction}, null = not interactive). */
-    record MovablePart(PartType type, Matrix4 local, BindingSpec binding, Interaction interaction) {}
-
-    /** How a movable sub-part responds to the cursor (datagen-declared; a code registry supplies the handler):
-     *  {@code type} = {@code "drag_axis"} (slide along the binding axis), {@code "drag_pivot"} (rotate about the
-     *  binding pivot), {@code "click_ui"} (open a panel), or {@code "none"}. {@code min}/{@code max} bound the
-     *  driven {@link AnimationState} channel value; {@code drives} is the electrical hook — {@code "switch"}
-     *  (channel ≥ 0.5 ⇒ closed) or {@code "resistance"} (channel scales Ω) or null. */
-    record Interaction(String type, float min, float max, String drives) {}
+    /** A movable sub-part: its part-type, placement within the component, and how it moves (binding). How the
+     *  user INTERACTS with it — and how solved current/charge drives it — is code, in the behaviour registries
+     *  ({@code render.engine.behaviour}), not datagen. */
+    record MovablePart(PartType type, Matrix4 local, BindingSpec binding) {}
 
     /** The part's single <b>axis-aligned</b> collision box (object space): centre + half-extents, a default
      *  material, and optional per-face overrides. Generated at datagen (see {@link ModelJson.Collision}); the
@@ -130,11 +124,7 @@ final class ComponentModel {
         }
 
         Builder movable(PartType type, float x, float y, float z, BindingSpec binding) {
-            return movable(type, x, y, z, binding, null);
-        }
-
-        Builder movable(PartType type, float x, float y, float z, BindingSpec binding, Interaction interaction) {
-            movables.add(new MovablePart(type, new Matrix4().setToTranslation(x, y, z), binding, interaction));
+            movables.add(new MovablePart(type, new Matrix4().setToTranslation(x, y, z), binding));
             return this;
         }
 
