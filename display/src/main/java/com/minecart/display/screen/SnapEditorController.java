@@ -163,6 +163,7 @@ final class SnapEditorController {
             if (n.startsWith("cap.swell.")) return physWorld.debugSwell(Integer.parseInt(n.substring(10)));
             if (n.startsWith("sub.channel.")) return physWorld.debugChannel(Integer.parseInt(n.substring(12)));
             if (n.startsWith("sub.closed."))  return physWorld.debugSwitchClosed(Integer.parseInt(n.substring(11)));
+            if (n.startsWith("solar.irr."))   return physWorld.debugIrradiance(Integer.parseInt(n.substring(10)));
             return switch (n) {
                 case "ghost.yaw" -> physEditor.yawDeg();
                 case "ghost.x" -> physEditor.ghostTransform().getTranslation(new Vector3()).x;
