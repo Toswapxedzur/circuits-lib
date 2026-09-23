@@ -48,6 +48,7 @@ public final class SnapModelBridge {
         LAMP(Kind.RESISTOR, 50.0),            // low-resistance heating element (warm glow)
         CAPACITOR(Kind.CAPACITOR, 1.0e-3, 1.0), // charges then blocks DC
         BATTERY(Kind.BATTERY, 5.0, 0.01),
+        SOLAR(Kind.SOLAR, 1.0),               // photovoltaic cell; param = irradiance 0..1 (default full sun until S2)
         TRANSISTOR(Kind.TRANSISTOR),          // 3-terminal BJT: base = stem, collector/emitter = the two bar studs
         NONE(Kind.NONE);                      // place-only, no electrical model (the IC, the empty cursor)
 
@@ -89,6 +90,7 @@ public final class SnapModelBridge {
             new Comp("press", "Button", Electrical.SWITCH),
             new Comp("battery", "Battery", Electrical.BATTERY),
             new Comp("battery_cell", "Cell", Electrical.BATTERY),
+            new Comp("solar_panel", "Solar", Electrical.SOLAR),
             new Comp("motor", "Motor", Electrical.MOTOR),
             new Comp("transistor_npn", "NPN", Electrical.TRANSISTOR),
             new Comp("transistor_pnp", "PNP", Electrical.TRANSISTOR),
