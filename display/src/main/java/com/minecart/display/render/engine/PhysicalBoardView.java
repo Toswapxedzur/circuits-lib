@@ -69,8 +69,13 @@ public final class PhysicalBoardView implements Disposable {
         }
     }
 
+    // The skylight direction (TO the light), mirrored from the engine so the solar-cell irradiance pass can ray-cast
+    // toward the sun for shadowing. Default matches EngineRenderer (45° pitch / 45° yaw).
+    private final Vector3 sunDir = new Vector3(0.5f, 0.7071f, 0.5f).nor();
+
     public void setLightDir(float x, float y, float z) {
         engine.setLightDir(x, y, z);
+        sunDir.set(x, y, z).nor();
     }
 
     /** Adds the base board (tiled, top at {@code topY}); it stays static across rebuilds. Builds the scene so the
@@ -268,6 +273,8 @@ public final class PhysicalBoardView implements Disposable {
                 pk = interaction.switchClosed(i) ? Kind.CONDUCTOR : Kind.NONE;
             } else if (el == Electrical.RESISTOR) {
                 params = new double[]{interaction.resistanceOhms(i)};
+            } else if (el == Electrical.SOLAR) {
+                params = new double[]{irradianceAt(i, p)}; // incident light + shadow at the cell's face (0..1)
             }
             plan.add(new PhysicalCircuitBuilder.Part(i, terminalXZ(p), pk, params));
         }
@@ -319,6 +326,45 @@ public final class PhysicalBoardView implements Disposable {
             xz[2 * k + 1] = w.z;
         }
         return xz;
+    }
+
+    /**
+     * The incident-light fraction (0..1) at solar-cell placement {@code i}: samples nine points across the panel's
+     * top face and, for each, casts a ray toward the sun against every OTHER placed part's collision box, returning
+     * the fraction that are NOT shadowed. So a part slid over (up-sun of) the cell drops its output; an open cell
+     * reads 1.0. Reuses the {@link BoardGeometry} ray-occlusion from the P4 refactor and the board's {@link #sunDir}.
+     */
+    private double irradianceAt(int i, Placed p) {
+        List<float[]> occ = new ArrayList<>();
+        for (int j = 0; j < placed.size(); j++) {
+            if (j == i) continue;
+            ComponentModel om = loader.model(placed.get(j).modelId());
+            ComponentModel.Collision c = om.visual != null ? om.visual : om.collision;
+            if (c != null) occ.add(BoardGeometry.collisionWorldAabb(c, placed.get(j).transform()));
+        }
+        if (occ.isEmpty()) return 1.0;
+        Matrix4 tf = p.transform();
+        Vector3 s = new Vector3();
+        int lit = 0, total = 0;
+        for (float sx : new float[]{-9f, 0f, 9f}) {
+            for (float sz : new float[]{-14f, -3f, 8f}) {  // the nine cell centres, on the panel top
+                s.set(sx, 5.2f, sz).mul(tf);
+                total++;
+                boolean shadowed = false;
+                for (float[] box : occ) {
+                    float t = BoardGeometry.rayBoxEntry(s, sunDir, box);
+                    if (t > 0.01f && t < 1e6f) { shadowed = true; break; } // a box up-sun of the sample blocks it
+                }
+                if (!shadowed) lit++;
+            }
+        }
+        return (double) lit / total;
+    }
+
+    /** TEST/probe: solar-cell placement {@code i}'s current irradiance (0..1), or NaN if it isn't a solar cell. */
+    public double debugIrradiance(int i) {
+        Placed p = placed.get(i);
+        return electrical(p.modelId()) == Electrical.SOLAR ? irradianceAt(i, p) : Double.NaN;
     }
 
     /** Every placed part's connectors in world space (for snapping + electrical connectivity). */
