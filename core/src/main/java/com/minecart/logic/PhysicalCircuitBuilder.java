@@ -24,7 +24,7 @@ public final class PhysicalCircuitBuilder {
     /** A placed part's electrical role. Devices ({@code RESISTOR}…{@code BATTERY}) attach an element between
      *  terminals 0 and 1; {@code CONDUCTOR} unions ALL its terminals; {@code TRANSISTOR} is a 3-terminal BJT;
      *  {@code NONE} contributes nothing (e.g. an open switch, or a place-only part). */
-    public enum Kind { NONE, CONDUCTOR, RESISTOR, DIODE, CAPACITOR, BATTERY, TRANSISTOR }
+    public enum Kind { NONE, CONDUCTOR, RESISTOR, DIODE, CAPACITOR, BATTERY, SOLAR, TRANSISTOR }
 
     /**
      * One placed part in the plan. {@code xz} is its terminal world positions as flat (x,z) pairs in
@@ -72,6 +72,7 @@ public final class PhysicalCircuitBuilder {
                 case DIODE -> world.connect(AllComponents.DIODE, a, b, new Informations.DiodeInfo(q[0], q[1]));
                 case CAPACITOR -> world.connect(AllComponents.CAPACITOR, a, b, new Informations.CapacitorInfo(q[0], q[1]));
                 case BATTERY -> world.connect(AllComponents.BATTERY, a, b, new Informations.BatteryInfo(q[0], q[1]));
+                case SOLAR -> world.connect(AllComponents.SOLAR_CELL, a, b, solarInfo(q)); // q[0] = irradiance 0..1
                 default -> null;
             };
             if (e != null) {
@@ -101,7 +102,15 @@ public final class PhysicalCircuitBuilder {
     }
 
     private static boolean isDevice(Kind k) {
-        return k == Kind.RESISTOR || k == Kind.DIODE || k == Kind.CAPACITOR || k == Kind.BATTERY;
+        return k == Kind.RESISTOR || k == Kind.DIODE || k == Kind.CAPACITOR || k == Kind.BATTERY || k == Kind.SOLAR;
+    }
+
+    /** A default photovoltaic cell with its live irradiance (0..1) taken from the plan ({@code q[0]}), 1.0 if
+     *  absent. The display computes irradiance from the incident light + shadow at the cell's face (S2). */
+    private static Informations.SolarCellInfo solarInfo(double[] q) {
+        Informations.SolarCellInfo si = new Informations.SolarCellInfo(0.1, 1e-9, 6.0, 1.0, 1000.0);
+        si.setIrradiance(q != null && q.length > 0 ? q[0] : 1.0);
+        return si;
     }
 
     /** Fuses a component's port node onto the board net at (x,z): {@link ServerWorld#combineNodes} elects the
