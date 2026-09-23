@@ -24,6 +24,7 @@ public final class ComponentBehaviours {
         reactive("motor", new SpinBehaviour("spin", 90f), GlowBehaviour.HEAT);
         reactive("led", GlowBehaviour.LED);
         reactive("lamp", GlowBehaviour.LAMP);
+        reactive("solar_panel", GlowBehaviour.SOLAR); // glows with its delivered current; dims as a shadow cuts it
         // Capacitors also SWELL with stored charge (scale channel "swell"), on top of the heat glow.
         SwellBehaviour swell = new SwellBehaviour("swell", 0.15f, 1e-3f, 0.4f);
         for (String cap : new String[]{"capacitor_small", "capacitor_medium", "capacitor_big"}) {
