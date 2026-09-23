@@ -111,6 +111,7 @@ final class Parts {
     final ComponentModel transistorPnp;                                            // dark-green base, cube top-white/bottom-black
     final ComponentModel batteryCell;                                              // loose battery entity (orange+black cell)
     final ComponentModel battery;                                                  // red 3×2 AA HOLDER (holds 2 cells) — its own part
+    final ComponentModel solarPanel;                                               // red 3×4 base, yellow rim, navy 3×3 PV board
     final ComponentModel slab;                                                     // neutral grey unit slab (scenery, scaled via pose)
     final ComponentModel varresTee;                                                // T-shaped variable resistor (tee + wide switch)
     final ComponentModel varresBar;                                                // resistor-style variable resistor (red base + switch)
@@ -254,6 +255,7 @@ final class Parts {
         ic = buildIc(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red
         batteryCell = buildBatteryCell();
         battery = buildBattery(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red holder
+        solarPanel = buildSolar(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red base
         slab = ComponentModel.of("slab").box(0f, 0f, 0f, 1f, 1f, 1f,
                 new PaletteDither.Paint(PaletteDither.grays(4, 0.32f, 0.48f), Color.WHITE, 1, 0.3f, false, 701L, 0f, 0f, 0f, 1f, 1f)).build();
         Color[] vgreen = PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2]);   // lime/green
@@ -519,6 +521,59 @@ final class Parts {
     }
 
     /**
+     * SOLAR CELL (owner spec 2026-09-23): a <b>3-stud × 4-stud</b> part (33 wide × 45 deep) — a RED plastic base
+     * whose FLAT top (y4..5, "the whole thing is a box") carries a NAVY metallic PV board: a shiny light-yellow
+     * 1×1 metallic FRAME ringing the board, and inside it a <b>3×3 grid</b> of nine LIGHTER cell "boards" divided
+     * by DARKER fringes. Frame, fringes and cells are all COPLANAR (zero depth — a colour pattern on one flat
+     * surface, not stacked), so the grid is built by TILING abutting boxes (no overlap, no z-fight). Two TOP
+     * terminal studs at the +Z end (±12) are the electrical +/−; four underside sockets at the corners (±12, ±18)
+     * mount it (the +Z pair double as terminal+mount, the −Z pair mount-only) → 2 top / 4 bottom. Red / yellow /
+     * blue balance the eye. Electrical model: {@link com.minecart.elements.edge.SolarCell}.
+     */
+    private ComponentModel buildSolar(Color[] pal) {
+        Color[] navyDark = PaletteDither.rampHsv(222f, 0.72f, 0.30f);   // dividing fringes (darker navy)
+        Color[] navyLight = PaletteDither.rampHsv(219f, 0.58f, 0.52f);  // the nine cell boards (a bit lighter)
+        Color[] yellowWhite = PaletteDither.rampHsv(50f, 0.28f, 0.97f); // shiny light-yellow / yellow-white frame
+        // Frame stays smooth metallic (ordered Bayer, shiny). The navy board gets the SAME normal lit plastic
+        // texture as the red base under it (owner 2026-09-23: "a normal texture with some lighting and some pixel
+        // varying, just like the red board") — plastic() = grainMax 2, low zero-weight, lit. All coplanar at y4..5.
+        PaletteDither.Paint frame = new PaletteDither.Paint(yellowWhite, Color.WHITE, 1, 1.6f, true, 730L, 0f, 4.5f, 0f, SHADE_R, 1f);
+        PaletteDither.Paint fringe = plastic(731L, navyDark);
+        PaletteDither.Paint cell = plastic(732L, navyLight);
+
+        // Red base: rim y0..1 / white band y1..3 / red top rim y3..4, over the full 33×45 footprint.
+        ComponentModel.Builder b = ComponentModel.of("solar_panel")
+                .box(0f, 0.5f, 0f, 33f, 1f, 45f, plastic(701L, pal))
+                .box(0f, 2f, 0f, 33f, 2f, 45f, band(703L))
+                .box(0f, 3.5f, 0f, 33f, 1f, 45f, plastic(702L, pal));
+
+        // 2 TOP terminal studs at the +Z end (±12, +18): socket() declares the connector + underside fence.
+        b = socket(b.box(-12f, 4.5f, 18f, 3f, 1f, 3f, stud(404L, -12f, 4.5f, 18f)), -12f, 18f);
+        b = socket(b.box(12f, 4.5f, 18f, 3f, 1f, 3f, stud(404L, 12f, 4.5f, 18f)), 12f, 18f);
+        // 2 MOUNT-ONLY underside sockets at the −Z corners (±12, −18): fence, no electrical connector.
+        b = batterySocket(batterySocket(b, -12f, -18f), 12f, -18f);
+
+        // FLAT top board, all at y4..5 (coplanar). The 3×3 navy grid fills the inner rect x[−13,13] × z[−19,13]
+        // by TILING it into 5 bands each way (cell 8 / fringe 1): a band-cell is LIGHTER only where both its
+        // x-band and z-band are cell bands, else it is the DARKER fringe. Abutting boxes → one flat surface.
+        float[] bxC = {-9f, -4.5f, 0f, 4.5f, 9f}, bxW = {8f, 1f, 8f, 1f, 8f};
+        float[] bzC = {-14f, -8.5f, -3f, 2.5f, 8f}, bzH = {10f, 1f, 10f, 1f, 10f};
+        boolean[] band = {true, false, true, false, true}; // cell band vs fringe band
+        for (int i = 0; i < 5; i++) {
+            for (int j = 0; j < 5; j++) {
+                b = b.box(bxC[i], 4.5f, bzC[j], bxW[i], 1f, bzH[j], band[i] && band[j] ? cell : fringe);
+            }
+        }
+        // Shiny yellow 1×1 frame ringing the navy board (x[−14,14] × z[−20,14]), coplanar at y4..5; side rails
+        // shortened to the inner span so each corner is drawn once.
+        b = b.box(0f, 4.5f, 13.5f, 28f, 1f, 1f, frame)     // +Z rail
+                .box(0f, 4.5f, -19.5f, 28f, 1f, 1f, frame) // −Z rail
+                .box(13.5f, 4.5f, -3f, 1f, 1f, 32f, frame) // +X rail
+                .box(-13.5f, 4.5f, -3f, 1f, 1f, 32f, frame); // −X rail
+        return b.build();
+    }
+
+    /**
      * A loose <b>battery cell</b> — the removable world ENTITY that pops out of a battery holder (the holder is
      * a separate "battery box" part; this cell is what tumbles as a physics entity). Snap-Circuits AA look: an
      * orange wrap over most of the length, a black band at the <b>+</b> end, and a small steel terminal nub.
@@ -769,6 +824,7 @@ final class Parts {
         m.put("transistor_pnp", transistorPnp); // dark-green, cube top-white/bottom-black
         m.put("battery_cell", batteryCell); // loose battery entity (orange+black cell)
         m.put("battery", battery);          // red 2-cell AA HOLDER (the placeable circuit source)
+        m.put("solar_panel", solarPanel);   // solar cell — red 3×4 base, shiny yellow rim, navy 3×3 PV board
         m.put("slab", slab); // neutral grey scenery slab (unit box, scaled via pose)
         m.put("varres_tee", varresTee);     // Type 1 variable resistor — T-shaped + wide switch
         m.put("varres_bar", varresBar);     // Type 2 variable resistor — resistor-style + switch
