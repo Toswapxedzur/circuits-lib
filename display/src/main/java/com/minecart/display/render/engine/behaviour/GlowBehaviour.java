@@ -23,6 +23,9 @@ public final class GlowBehaviour implements ReactiveBehaviour {
     public static final GlowBehaviour LED = new GlowBehaviour(1f, 0.15f, 0.1f, true);
     /** Warm-white lamp (bright, wide light source). */
     public static final GlowBehaviour LAMP = new GlowBehaviour(1f, 0.92f, 0.7f, true);
+    /** Cool white-blue solar "producing" shimmer — the panel glows with its delivered current (bright in sun +
+     *  load, dims as a shadow cuts the current). A light source, but the current is small so it stays gentle. */
+    public static final GlowBehaviour SOLAR = new GlowBehaviour(0.72f, 0.88f, 1f, true);
 
     @Override
     public void react(BehaviourContext ctx) {
