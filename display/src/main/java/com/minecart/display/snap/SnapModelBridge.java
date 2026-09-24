@@ -91,6 +91,7 @@ public final class SnapModelBridge {
             new Comp("battery", "Battery", Electrical.BATTERY),
             new Comp("battery_cell", "Cell", Electrical.BATTERY),
             new Comp("solar_panel", "Solar", Electrical.SOLAR),
+            new Comp("speaker", "Speaker", Electrical.NONE), // place-only (no electrical model yet, like the IC)
             new Comp("motor", "Motor", Electrical.MOTOR),
             new Comp("transistor_npn", "NPN", Electrical.TRANSISTOR),
             new Comp("transistor_pnp", "PNP", Electrical.TRANSISTOR),

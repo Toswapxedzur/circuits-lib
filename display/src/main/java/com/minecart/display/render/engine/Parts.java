@@ -112,6 +112,7 @@ final class Parts {
     final ComponentModel batteryCell;                                              // loose battery entity (orange+black cell)
     final ComponentModel battery;                                                  // red 3×2 AA HOLDER (holds 2 cells) — its own part
     final ComponentModel solarPanel;                                               // red 3×4 base, yellow rim, navy 3×3 PV board
+    final ComponentModel speaker;                                                  // red drum (octagon) + dark grille on a 3-stud base (place-only)
     final ComponentModel slab;                                                     // neutral grey unit slab (scenery, scaled via pose)
     final ComponentModel varresTee;                                                // T-shaped variable resistor (tee + wide switch)
     final ComponentModel varresBar;                                                // resistor-style variable resistor (red base + switch)
@@ -256,6 +257,7 @@ final class Parts {
         batteryCell = buildBatteryCell();
         battery = buildBattery(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red holder
         solarPanel = buildSolar(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red base
+        speaker = buildSpeaker(PaletteDither.rampHsv(PLASTIC_HSV[0][0], PLASTIC_HSV[0][1], PLASTIC_HSV[0][2])); // red drum
         slab = ComponentModel.of("slab").box(0f, 0f, 0f, 1f, 1f, 1f,
                 new PaletteDither.Paint(PaletteDither.grays(4, 0.32f, 0.48f), Color.WHITE, 1, 0.3f, false, 701L, 0f, 0f, 0f, 1f, 1f)).build();
         Color[] vgreen = PaletteDither.rampHsv(PLASTIC_HSV[3][0], PLASTIC_HSV[3][1], PLASTIC_HSV[3][2]);   // lime/green
@@ -573,6 +575,99 @@ final class Parts {
         return b.build();
     }
 
+    // Speaker drum geometry (owner spec): a (2R+1)-square face with an N×N square carved from each corner (a PLUS
+    // silhouette), standing on the base top: columns cx −R..R, rows ky 4..4+2R (a cell = [cx±0.5] × [ky, ky+1]).
+    // Built from whole cells, so every edge lands on the texel grid (pixel rule) for any integer R, N.
+    private static final int SPK_R = 13, SPK_N = 6, SPK_KY0 = 4, SPK_KY1 = SPK_KY0 + 2 * SPK_R;
+
+    /** True if cell (cx, row ky) is on the drum face (inside the square, not in a carved corner). */
+    private static boolean speakerInOct(int cx, int ky) {
+        if (Math.abs(cx) > SPK_R || ky < SPK_KY0 || ky > SPK_KY1) return false;
+        return !(Math.abs(cx) > SPK_R - SPK_N && (ky < SPK_KY0 + SPK_N || ky > SPK_KY1 - SPK_N));
+    }
+
+    /** True unless a cell within Chebyshev distance {@code d} of (cx,ky) is off the face — i.e. the cell is at least
+     *  {@code d} px inside every edge. */
+    private static boolean speakerInset(int cx, int ky, int d) {
+        for (int dx = -d; dx <= d; dx++) {
+            for (int dy = -d; dy <= d; dy++) {
+                if (!speakerInOct(cx + dx, ky + dy)) return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * SPEAKER (owner spec 2026-09-23/24) — <b>place-only</b> (no electrical model yet). A hollow drum: a 27×27 square
+     * with a 6×6 square carved from each corner (a PLUS silhouette), <b>9 deep</b> in Z, standing on the standard 33×9
+     * base plastic board between its studs (±12). The FRONT (z−4.5) and BACK (z+4.5) faces are 0-thick covers in
+     * textured red plastic with a MESH of 1×1 holes one pixel apart, 1px in from the edge; a 0-thick RIM (the
+     * perimeter) joins them. Inside: ONE connected solid black plus, 1px from every wall. All box dims integer +
+     * grid-aligned ([[snap-part-art-style]] pixel rule).
+     */
+    private ComponentModel buildSpeaker(Color[] pal) {
+        final int r = SPK_R, n = SPK_N, k0 = SPK_KY0, k1 = SPK_KY1, w = 2 * r + 1, arm = w - 2 * n;
+        final float yc = k0 + r + 0.5f;                                    // face centre height
+        PaletteDither.Paint red = plastic(755L, pal);
+
+        // The standard base plastic board (33×9, white band, studs at ±12 on the centre line + sockets); the drum's
+        // 9 depth spans exactly its width (front/back covers at z±4.5 = the board's edges).
+        ComponentModel.Builder b = base("speaker", pal);
+
+        // Front (z−4.5) and back (z+4.5) covers, identical: textured red plastic with a MESH of 1×1 holes one pixel
+        // apart, the first hole one pixel in from the edge (phase taken from the −R / bottom edges; with the even 6px
+        // notch that holds on every edge, outer and notch alike — an edge-touching hole is dropped by the inset test).
+        // The texture gen seeds a face sprite from the paint seed only, so the solid part is built from MERGED
+        // rectangles, each with its own seed, to carry real plastic grain like the base board (not flat red).
+        int[][] kind = new int[w][w];                                      // [cx+r][ky-k0]: 0 open/outside, 1 solid
+        for (int cx = -r; cx <= r; cx++) {
+            for (int ky = k0; ky <= k1; ky++) {
+                if (!speakerInOct(cx, ky)) continue;
+                boolean hole = Math.floorMod(cx + r - 1, 2) == 0 && Math.floorMod(ky - k0 - 1, 2) == 0
+                        && speakerInset(cx, ky, 1);
+                kind[cx + r][ky - k0] = hole ? 0 : 1;
+            }
+        }
+        long seed = 7000L;
+        for (float z : new float[]{-4.5f, 4.5f}) {
+            boolean[][] used = new boolean[w][w];
+            for (int j = w - 1; j >= 0; j--) {                             // greedy maximal rectangles, top-down
+                for (int i = 0; i < w; i++) {
+                    if (kind[i][j] == 0 || used[i][j]) continue;
+                    int rw = 1;
+                    while (i + rw < w && kind[i + rw][j] == 1 && !used[i + rw][j]) rw++;
+                    int rh = 1;
+                    grow:
+                    while (j - rh >= 0) {
+                        for (int t = 0; t < rw; t++) if (kind[i + t][j - rh] == 0 || used[i + t][j - rh]) break grow;
+                        rh++;
+                    }
+                    for (int t = 0; t < rw; t++) for (int u = 0; u < rh; u++) used[i + t][j - u] = true;
+                    float cx = (i - r) + (rw - 1) / 2f, cy = (j - rh + 1 + k0) + rh / 2f;   // edges on the texel grid
+                    b = b.box(cx, cy, z, rw, rh, 0f, plastic(seed++, pal));
+                }
+            }
+        }
+        // Rim (0-thick, 9 deep in Z): the perimeter — 4 straight sides + 8 notch edges.
+        float xo = r + 0.5f, xa = r - n + 0.5f;                            // outer / arm side wall x
+        float yb = k0 + n, yt = k1 + 1 - n;                                // band bottom / top wall y
+        b = b.box(xo, yc, 0f, 0f, arm, 9f, red).box(-xo, yc, 0f, 0f, arm, 9f, red)            // right / left
+                .box(0f, k1 + 1, 0f, arm, 0f, 9f, red).box(0f, k0, 0f, arm, 0f, 9f, red);     // top / bottom
+        for (float sx : new float[]{-xa, xa}) {
+            b = b.box(sx, k0 + n / 2f, 0f, 0f, n, 9f, red).box(sx, k1 + 1 - n / 2f, 0f, 0f, n, 9f, red); // notch sides
+        }
+        for (float hx : new float[]{-(r - (n - 1) / 2f), r - (n - 1) / 2f}) {
+            b = b.box(hx, yb, 0f, n, 0f, 9f, red).box(hx, yt, 0f, n, 0f, 9f, red);          // notch tops/bottoms
+        }
+        // Inside: ONE connected SOLID black plus, 1px from every wall incl. the front/back covers — the silhouette
+        // inset by 1 (vertical bar = arm−2 wide, full height−2; wings = n wide, band height−2), 7 deep (z ±3.5).
+        float wingX = r - n / 2f - 0.5f;                                   // wing centre: x (arm/2+1)..(r−1)
+        b = b.box(0f, yc, 0f, arm - 2, w - 2, 7f, knob(790L))                                  // vertical bar
+                .box(-wingX, yc, 0f, n, arm - 2, 7f, knob(791L))                               // left wing
+                .box(wingX, yc, 0f, n, arm - 2, 7f, knob(792L));                               // right wing
+        return b.build();
+    }
+
     /**
      * A loose <b>battery cell</b> — the removable world ENTITY that pops out of a battery holder (the holder is
      * a separate "battery box" part; this cell is what tumbles as a physics entity). Snap-Circuits AA look: an
@@ -825,6 +920,7 @@ final class Parts {
         m.put("battery_cell", batteryCell); // loose battery entity (orange+black cell)
         m.put("battery", battery);          // red 2-cell AA HOLDER (the placeable circuit source)
         m.put("solar_panel", solarPanel);   // solar cell — red 3×4 base, shiny yellow rim, navy 3×3 PV board
+        m.put("speaker", speaker);          // speaker — red plus-shaped drum, 2×2 checker grille (place-only)
         m.put("slab", slab); // neutral grey scenery slab (unit box, scaled via pose)
         m.put("varres_tee", varresTee);     // Type 1 variable resistor — T-shaped + wide switch
         m.put("varres_bar", varresBar);     // Type 2 variable resistor — resistor-style + switch
