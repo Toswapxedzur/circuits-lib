@@ -346,8 +346,8 @@ public final class PhysicalBoardView implements Disposable {
         Matrix4 tf = p.transform();
         Vector3 s = new Vector3();
         int lit = 0, total = 0;
-        for (float sx : new float[]{-9f, 0f, 9f}) {
-            for (float sz : new float[]{-14f, -3f, 8f}) {  // the nine cell centres, on the panel top
+        for (float sx : new float[]{-8.5f, 0f, 8.5f}) {
+            for (float sz : new float[]{-13.5f, -3f, 7.5f}) {  // the nine cell centres (Parts.buildSolar), panel top
                 s.set(sx, 5.2f, sz).mul(tf);
                 total++;
                 boolean shadowed = false;
