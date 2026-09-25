@@ -537,638 +537,638 @@
     },
     {
       "from": [
-        -13.0,
+        -12.5,
         4.0,
-        -19.0
+        -18.5
       ],
       "to": [
-        -5.0,
+        -4.5,
         5.0,
-        -9.0
+        -8.5
       ],
       "faces": {
-        "east": "sp30bf1d433a33e1_1x10",
-        "west": "sp33cf770e246bd4e2_1x10",
-        "up": "sp6d1687c431fa01a3_8x10",
-        "down": "sp2650054684d20024_8x10",
-        "south": "sp5f9317a140d7f3e5_8x1",
-        "north": "sp1e76a9aca8cbc9e6_8x1"
+        "east": "sp8b1cd00a154561_1x10",
+        "west": "sp3429d4c0eb46e662_1x10",
+        "up": "sp6d70e576f8d51323_8x10",
+        "down": "sp26aa62f94bad11a4_8x10",
+        "south": "sp5fed755407b30565_8x1",
+        "north": "sp1ed1075f6fa6db66_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -13.0,
+        -12.5,
         4.0,
-        -9.0
+        -8.5
       ],
       "to": [
-        -5.0,
+        -4.5,
         5.0,
-        -8.0
+        -7.5
       ],
       "faces": {
-        "east": "sp5724e3043f13b902_1x1",
-        "west": "spac1ea1a3af36a03_1x1",
-        "up": "sp4408fad0488196c4_8x1",
-        "down": "sp7d44292d80ab8545_8x1",
-        "south": "sp36858aad57575a46_8x1",
-        "north": "sp756acd93a4ad7dc7_8x1"
+        "east": "sp577f40b705eeca82_1x1",
+        "west": "spb1c47cd01ce7b83_1x1",
+        "up": "sp446358830f5ca844_8x1",
+        "down": "sp7d9e86e0478696c5_8x1",
+        "south": "sp36dfe8601e326bc6_8x1",
+        "north": "sp75c52b466b888f47_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -13.0,
+        -12.5,
         4.0,
-        -8.0
+        -7.5
       ],
       "to": [
-        -5.0,
+        -4.5,
         5.0,
-        2.0
+        1.5
       ],
       "faces": {
-        "east": "sp32d028cd5d0461_1x10",
-        "west": "sp33d18819ae8ea562_1x10",
-        "up": "sp6d1898cfbc1cd223_8x10",
-        "down": "sp265216520ef4d0a4_8x10",
-        "south": "sp5f9528accafac465_8x1",
-        "north": "sp1e78bab832ee9a66_8x1"
+        "east": "sp8d2ddb94372d21_1x9",
+        "west": "sp342bb5b4230a5e22_1x9",
+        "up": "sp6d72c66a30988ae3_8x9",
+        "down": "sp26ac7404d5cef964_8x9",
+        "south": "sp5fef56473f759465_8x1",
+        "north": "sp1ed3186af9c9abe6_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -13.0,
+        -12.5,
         4.0,
-        2.0
+        1.5
       ],
       "to": [
-        -5.0,
+        -4.5,
         5.0,
-        3.0
+        2.5
       ],
       "faces": {
-        "east": "sp5726f40fc9368982_1x1",
-        "west": "spac3fb25c5163a83_1x1",
-        "up": "sp440b0bdbd2a46744_8x1",
-        "down": "sp7d463a390ace55c5_8x1",
-        "south": "sp36879bb8e17a2ac6_8x1",
-        "north": "sp756cde9f2ed04e47_8x1"
+        "east": "sp578121aa3db15982_1x1",
+        "west": "spb1e28c039910a83_1x1",
+        "up": "sp44653976471f3744_8x1",
+        "down": "sp7da067d37f4925c5_8x1",
+        "south": "sp36e1c95355f4fac6_8x1",
+        "north": "sp75c70c39a34b1e47_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -13.0,
+        -12.5,
         4.0,
-        3.0
+        2.5
       ],
       "to": [
-        -5.0,
+        -4.5,
         5.0,
-        13.0
+        12.5
       ],
       "faces": {
-        "east": "sp34e134577fd4e1_1x10",
-        "west": "sp33d3992538b175e2_1x10",
-        "up": "sp6d1aa9db463fa2a3_8x10",
-        "down": "sp2654275d9917a124_8x10",
-        "south": "sp5f9739b8551d94e5_8x1",
-        "north": "sp1e7acbc3bd116ae6_8x1"
+        "east": "sp8f0ececbfaa4e1_1x10",
+        "west": "sp342dc6bfad2c45e2_1x10",
+        "up": "sp6d74d775baba72a3_8x10",
+        "down": "sp26ae54f80d927124_8x10",
+        "south": "sp5ff16752c99864e5_8x1",
+        "north": "sp1ed4f95e318c3ae6_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -5.0,
+        -4.5,
         4.0,
-        -19.0
+        -18.5
       ],
       "to": [
-        -4.0,
+        -3.5,
         5.0,
-        -9.0
+        -8.5
       ],
       "faces": {
-        "east": "sp57d78d5e42af3a42_1x10",
-        "west": "sp1066146bc33a05c3_1x10",
-        "up": "sp49ad1a459d2647c4_1x10",
-        "down": "sp2e697c7effe4645_1x10",
-        "south": "sp3c29aa22ac043a06_1x1",
-        "north": "sp761d82c9dbe2bb07_1x1"
+        "east": "sp5831eb11098a4bc2_1x10",
+        "west": "sp10c0721e8a151743_1x10",
+        "up": "sp4a0777f864015944_1x10",
+        "down": "sp340f57ab6d957c5_1x10",
+        "south": "sp3c8407d572df4b86_1x1",
+        "north": "sp7677e07ca2bdcc87_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -5.0,
+        -4.5,
         4.0,
-        -9.0
+        -8.5
       ],
       "to": [
-        -4.0,
+        -3.5,
         5.0,
-        -8.0
+        -7.5
       ],
       "faces": {
-        "east": "sp57d96e517a699a82_1x1",
-        "west": "sp1066448415a27603_1x1",
-        "up": "sp49ad4a5def8eb804_1x1",
-        "down": "sp2e878bb27b8a685_1x1",
-        "south": "sp3c29da3afe647b86_1x1",
-        "north": "sp761f63bd13a54a07_1x1"
+        "east": "sp5833cc044144ac02_1x1",
+        "west": "sp10c0a236dc7d8783_1x1",
+        "up": "sp4a07a810b669c984_1x1",
+        "down": "sp342d66dee93b805_1x1",
+        "south": "sp3c8437edc53f8d06_1x1",
+        "north": "sp7679c16fda805b87_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -5.0,
+        -4.5,
         4.0,
-        -8.0
+        -7.5
       ],
       "to": [
-        -4.0,
+        -3.5,
         5.0,
-        2.0
+        1.5
       ],
       "faces": {
-        "east": "sp57d99e69ccd20ac2_1x10",
-        "west": "sp106825774d5cd643_1x10",
-        "up": "sp49af2b5127491844_1x10",
-        "down": "sp2e8a8d37a2116c5_1x10",
-        "south": "sp3c2bbb2e36270a86_1x1",
-        "north": "sp761f93d566058b87_1x1"
+        "east": "sp5833fc1c93ac3382_1x9",
+        "west": "sp10c25311c1d88f03_1x9",
+        "up": "sp4a0958eb9bc4d104_1x9",
+        "down": "sp343068640fb3f85_1x9",
+        "south": "sp3c85e8c8aaa1da86_1x1",
+        "north": "sp7679f1882ce09d07_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -5.0,
+        -4.5,
         4.0,
-        2.0
+        1.5
       ],
       "to": [
-        -4.0,
+        -3.5,
         5.0,
-        3.0
+        2.5
       ],
       "faces": {
-        "east": "sp57db7f5d048c6b02_1x1",
-        "west": "sp1068558f9fc54683_1x1",
-        "up": "sp49af5b6979b18884_1x1",
-        "down": "sp2ea89c6b1db7705_1x1",
-        "south": "sp3c2beb4688874c06_1x1",
-        "north": "sp762174c89dc81a87_1x1"
+        "east": "sp5835acf779073b02_1x1",
+        "west": "sp10c2832a14401683_1x1",
+        "up": "sp4a098903ee2c5884_1x1",
+        "down": "sp344b76126564705_1x1",
+        "south": "sp3c8618e0fd021c06_1x1",
+        "north": "sp767ba2631242ea87_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -5.0,
+        -4.5,
         4.0,
-        3.0
+        2.5
       ],
       "to": [
-        -4.0,
+        -3.5,
         5.0,
-        13.0
+        12.5
       ],
       "faces": {
-        "east": "sp57dbaf7556f4db42_1x10",
-        "west": "sp106a3682d77fa6c3_1x10",
-        "up": "sp49b13c5cb16be8c4_1x10",
-        "down": "sp2eab9df0443e745_1x10",
-        "south": "sp3c2dcc39c049db06_1x1",
-        "north": "sp7621a4e0f0285c07_1x1"
+        "east": "sp5835dd0fcb6fab42_1x10",
+        "west": "sp10c4641d4bfa76c3_1x10",
+        "up": "sp4a0b69f725e6b8c4_1x10",
+        "down": "sp344e77978beb745_1x10",
+        "south": "sp3c87f9d434c4ab06_1x1",
+        "north": "sp767bd27b64a32c07_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -4.0,
+        -3.5,
         4.0,
-        -19.0
+        -18.5
       ],
       "to": [
-        4.0,
+        3.5,
         5.0,
-        -9.0
+        -8.5
       ],
       "faces": {
-        "east": "sp689a4d4593f2161_1x10",
-        "west": "sp3a285cc53a70c262_1x10",
-        "up": "sp736f6d7b47feef23_8x10",
-        "down": "sp2ca8eafd9ad6eda4_8x10",
-        "south": "sp65ebfd5856dce165_8x1",
-        "north": "sp24cf8f63bed0b766_8x1"
+        "east": "sp62f7739e4c45161_1x10",
+        "west": "sp3a82ba78014bd3e2_1x10",
+        "up": "sp73c9c9a0e2e77163_7x10",
+        "down": "sp2d03472335bf6fe4_7x10",
+        "south": "sp6646597df1c563a5_7x1",
+        "north": "sp24756356764876a6_7x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -4.0,
+        -3.5,
         4.0,
-        -9.0
+        -8.5
       ],
       "to": [
-        4.0,
+        3.5,
         5.0,
-        -8.0
+        -7.5
       ],
       "faces": {
-        "east": "sp5d7dc8bb5518a682_1x1",
-        "west": "sp111acfd150f85783_1x1",
-        "up": "sp4a61e0875e868444_8x1",
-        "down": "sp39d0ee496b072c5_8x1",
-        "south": "sp3cde70646d5c47c6_8x1",
-        "north": "sp7bc3b34abab26b47_8x1"
+        "east": "sp5d239b20e09dd682_1x1",
+        "west": "sp11752d8417d36903_1x1",
+        "up": "sp4abc3cacf96f0684_7x1",
+        "down": "sp3f76b0a3198f505_7x1",
+        "south": "sp3d38cc8a0844ca06_7x1",
+        "north": "sp7b69873d722a2a87_7x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -4.0,
+        -3.5,
         4.0,
-        -8.0
+        -7.5
       ],
       "to": [
-        4.0,
+        3.5,
         5.0,
-        2.0
+        1.5
       ],
       "faces": {
-        "east": "sp68bb5dfe361f1e1_1x10",
-        "west": "sp3a2a6dd0c49392e2_1x10",
-        "up": "sp73717e86d221bfa3_8x10",
-        "down": "sp2caafc0924f9be24_8x10",
-        "south": "sp65ee0e63e0ffb1e5_8x1",
-        "north": "sp24d1a06f48f387e6_8x1"
+        "east": "sp63188456ee63921_1x9",
+        "west": "sp3a849b6b390f4ba2_1x9",
+        "up": "sp73cbaa941aaae923_7x9",
+        "down": "sp2d05582ebfe157a4_7x9",
+        "south": "sp66483a712987f2a5_7x1",
+        "north": "sp24777462006b4726_7x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -4.0,
+        -3.5,
         4.0,
-        2.0
+        1.5
       ],
       "to": [
-        4.0,
+        3.5,
         5.0,
-        3.0
+        2.5
       ],
       "faces": {
-        "east": "sp5d7fd9c6df3b7702_1x1",
-        "west": "sp111ce0dcdb1b2803_1x1",
-        "up": "sp4a63f192e8a954c4_8x1",
-        "down": "sp39f1ff020d34345_8x1",
-        "south": "sp3ce0816ff77f1846_8x1",
-        "north": "sp7bc5c45644d53bc7_8x1"
+        "east": "sp5d257c1418606582_1x1",
+        "west": "sp11770e774f95f803_1x1",
+        "up": "sp4abe1da031319584_7x1",
+        "down": "sp3f94bfd695b8405_7x1",
+        "south": "sp3d3aad7d40075906_7x1",
+        "north": "sp7b6b6830a9ecb987_7x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -4.0,
+        -3.5,
         4.0,
-        3.0
+        2.5
       ],
       "to": [
-        4.0,
+        3.5,
         5.0,
-        13.0
+        12.5
       ],
       "faces": {
-        "east": "sp68dc6eb6d84c261_1x10",
-        "west": "sp3a2c7edc4eb66362_1x10",
-        "up": "sp73738f925c449023_8x10",
-        "down": "sp2cad0d14af1c8ea4_8x10",
-        "south": "sp65f01f6f6b228265_8x1",
-        "north": "sp24d3b17ad3165866_8x1"
+        "east": "sp6336938a6a9b0e1_1x10",
+        "west": "sp3a86ac76c3313362_1x10",
+        "up": "sp73cdbb9fa4ccd0e3_7x10",
+        "down": "sp2d073921f7a4cf64_7x10",
+        "south": "sp664a4b7cb3aac325_7x1",
+        "north": "sp24795555382dd626_7x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
+        3.5,
         4.0,
-        4.0,
-        -19.0
+        -18.5
       ],
       "to": [
+        4.5,
         5.0,
-        5.0,
-        -9.0
+        -8.5
       ],
       "faces": {
-        "east": "sp5e30731558b427c2_1x10",
-        "west": "sp16befa22d93ef343_1x10",
-        "up": "sp5005fffcb32b3544_1x10",
-        "down": "sp93f7d7f060333c5_1x10",
-        "south": "sp42828fd9c2092786_1x1",
-        "north": "sp7c766880f1e7a887_1x1"
+        "east": "sp5dd6457ae43957c2_1x10",
+        "west": "sp1664cc8864c42343_1x10",
+        "up": "sp4fabd2623eb06544_1x10",
+        "down": "sp8e54fe4918863c5_1x10",
+        "south": "sp4228623f4d8e5786_1x1",
+        "north": "sp7c1c3ae67d6cd887_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
+        3.5,
         4.0,
-        4.0,
-        -9.0
+        -8.5
       ],
       "to": [
+        4.5,
         5.0,
-        5.0,
-        -8.0
+        -7.5
       ],
       "faces": {
-        "east": "sp5e325408906e8802_1x1",
-        "west": "sp16bf2a3b2ba76383_1x1",
-        "up": "sp500630150593a584_1x1",
-        "down": "sp9415e723dbd9405_1x1",
-        "south": "sp4282bff214696906_1x1",
-        "north": "sp7c78497429aa3787_1x1"
+        "east": "sp5dd8266e1bf3b802_1x1",
+        "west": "sp1664fca0b72c9383_1x1",
+        "up": "sp4fac027a9118d584_1x1",
+        "down": "sp8e730d7c942c405_1x1",
+        "south": "sp422892579fee9906_1x1",
+        "north": "sp7c1e1bd9b52f6787_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
+        3.5,
         4.0,
-        4.0,
-        -8.0
+        -7.5
       ],
       "to": [
+        4.5,
         5.0,
-        5.0,
-        2.0
+        1.5
       ],
       "faces": {
-        "east": "sp5e328420e2d6f842_1x10",
-        "west": "sp16c10b2e6361c3c3_1x10",
-        "up": "sp500811083d4e05c4_1x10",
-        "down": "sp9418e8a90260445_1x10",
-        "south": "sp4284a0e54c2bf806_1x1",
-        "north": "sp7c78798c7c0a7907_1x1"
+        "east": "sp5dd856866e5b3f82_1x9",
+        "west": "sp1666ad7b9c879b03_1x9",
+        "up": "sp4fadb3557673dd04_1x9",
+        "down": "sp8e760f01baa4b85_1x9",
+        "south": "sp422a43328550e686_1x1",
+        "north": "sp7c1e4bf2078fa907_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
+        3.5,
         4.0,
-        4.0,
-        2.0
+        1.5
       ],
       "to": [
+        4.5,
         5.0,
-        5.0,
-        3.0
+        2.5
       ],
       "faces": {
-        "east": "sp5e3465141a915882_1x1",
-        "west": "sp16c13b46b5ca3403_1x1",
-        "up": "sp500841208fb67604_1x1",
-        "down": "sp9436f7dc7e06485_1x1",
-        "south": "sp4284d0fd9e8c3986_1x1",
-        "north": "sp7c7a5a7fb3cd0807_1x1"
+        "east": "sp5dda076153b64702_1x1",
+        "west": "sp1666dd93eeef2283_1x1",
+        "up": "sp4fade36dc8db6484_1x1",
+        "down": "sp8e911cb01055305_1x1",
+        "south": "sp422a734ad7b12806_1x1",
+        "north": "sp7c1ffcccecf1f687_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
+        3.5,
         4.0,
-        4.0,
-        3.0
+        2.5
       ],
       "to": [
+        4.5,
         5.0,
-        5.0,
-        13.0
+        12.5
       ],
       "faces": {
-        "east": "sp5e34952c6cf9c8c2_1x10",
-        "west": "sp16c31c39ed849443_1x10",
-        "up": "sp500a2213c770d644_1x10",
-        "down": "sp9439f961a48d4c5_1x10",
-        "south": "sp4286b1f0d64ec886_1x1",
-        "north": "sp7c7a8a98062d4987_1x1"
+        "east": "sp5dda3779a61eb742_1x10",
+        "west": "sp1668be8726a982c3_1x10",
+        "up": "sp4fafc4610095c4c4_1x10",
+        "down": "sp8e941e3536dc345_1x10",
+        "south": "sp422c543e0f73b706_1x1",
+        "north": "sp7c202ce53f523807_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        5.0,
+        4.5,
         4.0,
-        -19.0
+        -18.5
       ],
       "to": [
-        13.0,
+        12.5,
         5.0,
-        -9.0
+        -8.5
       ],
       "faces": {
-        "east": "spce28a8b6f440ee1_1x10",
-        "west": "sp4081427c5075afe2_1x10",
-        "up": "sp79c853325e03dca3_8x10",
-        "down": "sp3301d0b4b0dbdb24_8x10",
-        "south": "sp6c44e30f6ce1cee5_8x1",
-        "north": "sp2b28751ad4d5a4e6_8x1"
+        "east": "spc885cf0fac93ee1_1x10",
+        "west": "sp402714e1dbfadfe2_1x10",
+        "up": "sp796e2597e9890ca3_8x10",
+        "down": "sp32a7a31a3c610b24_8x10",
+        "south": "sp6beab574f866fee5_8x1",
+        "north": "sp2ace4780605ad4e6_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        5.0,
+        4.5,
         4.0,
-        -9.0
+        -8.5
       ],
       "to": [
-        13.0,
+        12.5,
         5.0,
-        -8.0
+        -7.5
       ],
       "faces": {
-        "east": "sp63d6ae726b1d9402_1x1",
-        "west": "sp1773b58866fd4503_1x1",
-        "up": "sp50bac63e748b71c4_8x1",
-        "down": "sp9f5f49bacb56045_8x1",
-        "south": "sp4337561b83613546_8x1",
-        "north": "sp21c9901d0b758c7_8x1"
+        "east": "sp637c80d7f6a2c402_1x1",
+        "west": "sp171987edf2827503_1x1",
+        "up": "sp506098a40010a1c4_8x1",
+        "down": "sp99bc701383a9045_8x1",
+        "south": "sp42dd28810ee66546_8x1",
+        "north": "sp1c26b675c3c88c7_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        5.0,
+        4.5,
         4.0,
-        -8.0
+        -7.5
       ],
       "to": [
-        13.0,
+        12.5,
         5.0,
-        2.0
+        1.5
       ],
       "faces": {
-        "east": "spce49b96f966df61_1x10",
-        "west": "sp40835387da988062_1x10",
-        "up": "sp79ca643de826ad23_8x10",
-        "down": "sp3303e1c03afeaba4_8x10",
-        "south": "sp6c46f41af7049f65_8x1",
-        "north": "sp2b2a86265ef87566_8x1"
+        "east": "spc8a6dfc84eb26a1_1x9",
+        "west": "sp4028f5d513be57a2_1x9",
+        "up": "sp7970068b214c8463_8x9",
+        "down": "sp32a9b425c682f2e4_8x9",
+        "south": "sp6bec966830298de5_8x1",
+        "north": "sp2ad0588bea7da566_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        5.0,
+        4.5,
         4.0,
-        2.0
+        1.5
       ],
       "to": [
-        13.0,
+        12.5,
         5.0,
-        3.0
+        2.5
       ],
       "faces": {
-        "east": "sp63d8bf7df5406482_1x1",
-        "west": "sp1775c693f1201583_1x1",
-        "up": "sp50bcd749feae4244_8x1",
-        "down": "sp9f805a736d830c5_8x1",
-        "south": "sp433967270d8405c6_8x1",
-        "north": "sp21eaa0d5ada2947_8x1"
+        "east": "sp637e61cb2e655302_1x1",
+        "west": "sp171b68e12a450403_1x1",
+        "up": "sp5062799737d330c4_8x1",
+        "down": "sp99da7f46ffd1f45_8x1",
+        "south": "sp42df097446a8f446_8x1",
+        "north": "sp1c44c5a93ff17c7_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        5.0,
+        4.5,
         4.0,
-        3.0
+        2.5
       ],
       "to": [
-        13.0,
+        12.5,
         5.0,
-        13.0
+        12.5
       ],
       "faces": {
-        "east": "spce6aca28389afe1_1x10",
-        "west": "sp4085649364bb50e2_1x10",
-        "up": "sp79cc754972497da3_8x10",
-        "down": "sp3305f2cbc5217c24_8x10",
-        "south": "sp6c49052681276fe5_8x1",
-        "north": "sp2b2c9731e91b45e6_8x1"
+        "east": "spc8c4eefbcae9e61_1x10",
+        "west": "sp402b06e09de03f62_1x10",
+        "up": "sp79721796ab6e6c23_8x10",
+        "down": "sp32ab9518fe466aa4_8x10",
+        "south": "sp6beea773ba4c5e65_8x1",
+        "north": "sp2ad2397f22403466_8x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -14.0,
+        -13.5,
         4.0,
-        13.0
+        12.5
       ],
       "to": [
-        14.0,
+        13.5,
         5.0,
-        14.0
+        13.5
       ],
       "faces": {
-        "east": "sp4cb951437a5365d6_1x1",
-        "west": "sp723b7650d37d78d7_1x1",
-        "up": "sp2b82a60e4ffed698_28x1",
-        "down": "sp64bdd46b8828c519_28x1",
-        "south": "sp1dff35eb5ed49a1a_28x1",
-        "north": "sp6aff1ccb70f9f99b_28x1"
+        "east": "sp4c5ef390b3785456_1x1",
+        "west": "sp7295a3eb47f848d7_1x1",
+        "up": "sp2bdcd21b98871758_27x1",
+        "down": "sp65180078d0b105d9_27x1",
+        "south": "sp1e5961f8a75cdada_27x1",
+        "north": "sp6aa4c0a5d611775b_27x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -14.0,
+        -13.5,
         4.0,
-        -20.0
+        -19.5
       ],
       "to": [
-        14.0,
+        13.5,
         5.0,
-        -19.0
+        -18.5
       ],
       "faces": {
-        "east": "sp4cb31e20dbeaf456_1x1",
-        "west": "sp7235432e35150757_1x1",
-        "up": "sp2b7c72ebb1966518_28x1",
-        "down": "sp64b7a148e9c05399_28x1",
-        "south": "sp1df902c8c06c289a_28x1",
-        "north": "sp6af8e9a8d291881b_28x1"
+        "east": "sp4c58f08667702456_1x1",
+        "west": "sp728fa0e0fbf018d7_1x1",
+        "up": "sp2bd6cf114c7ee758_27x1",
+        "down": "sp6511fd6e84a8d5d9_27x1",
+        "south": "sp1e535eee5b54aada_27x1",
+        "north": "sp6a9ebd9b8a09475b_27x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        13.0,
+        12.5,
         4.0,
-        -19.0
+        -18.5
       ],
       "to": [
-        14.0,
+        13.5,
         5.0,
-        13.0
+        12.5
       ],
       "faces": {
-        "east": "sp4cb34e392e676516_1x32",
-        "west": "sp545f75dc30fd097_1x32",
-        "up": "sp3e8cfd379cfc1298_1x32",
-        "down": "sp77c258a2dbb67119_1x32",
-        "south": "sp31098d14abee055a_1x1",
-        "north": "sp6af943a4c786e55b_1x1"
+        "east": "sp4c59209eb9ebac56_1x31",
+        "west": "sp4eb99aafc35a7d7_1x31",
+        "up": "sp3e329f84d621e9d8_1x31",
+        "down": "sp77682b08673ab859_1x31",
+        "south": "sp30af2f61e512f3da_1x1",
+        "north": "sp6a9f160a530c155b_1x1"
       },
       "tint": false,
       "translucent": false
     },
     {
       "from": [
-        -14.0,
+        -13.5,
         4.0,
-        -19.0
+        -18.5
       ],
       "to": [
-        -13.0,
+        -12.5,
         5.0,
-        13.0
+        12.5
       ],
       "faces": {
-        "east": "sp39a89d13ec589c96_1x32",
-        "west": "sp723b463881010817_1x32",
-        "up": "sp2b824c125aed4a18_1x32",
-        "down": "sp64b7a77d99a7a899_1x32",
-        "south": "sp1dfedbef69df3cda_1x1",
-        "north": "sp57ee927f85781cdb_1x1"
+        "east": "sp3a02fac6b332c556_1x31",
+        "west": "sp729573d2f57cc0d7_1x31",
+        "up": "sp2bdc79accf6902d8_1x31",
+        "down": "sp651205306081d159_1x31",
+        "south": "sp1e590989de5a0cda_1x1",
+        "north": "sp5848f0324c532e5b_1x1"
       },
       "tint": false,
       "translucent": false

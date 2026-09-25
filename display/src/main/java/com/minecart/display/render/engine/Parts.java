@@ -555,23 +555,26 @@ final class Parts {
         // 2 MOUNT-ONLY underside sockets at the −Z corners (±12, −18): fence, no electrical connector.
         b = batterySocket(batterySocket(b, -12f, -18f), 12f, -18f);
 
-        // FLAT top board, all at y4..5 (coplanar). The 3×3 navy grid fills the inner rect x[−13,13] × z[−19,13]
-        // by TILING it into 5 bands each way (cell 8 / fringe 1): a band-cell is LIGHTER only where both its
-        // x-band and z-band are cell bands, else it is the DARKER fringe. Abutting boxes → one flat surface.
-        float[] bxC = {-9f, -4.5f, 0f, 4.5f, 9f}, bxW = {8f, 1f, 8f, 1f, 8f};
-        float[] bzC = {-14f, -8.5f, -3f, 2.5f, 8f}, bzH = {10f, 1f, 10f, 1f, 10f};
+        // FLAT top board, all at y4..5 (coplanar). Owner spec: the panel is inset 3 from the part edges →
+        // x[−13.5,13.5] × z[−19.5,13.5]; its outer 1px is the yellow frame, so the 3×3 navy grid fills the inner
+        // rect x[−12.5,12.5] (25) × z[−18.5,12.5] (31), every edge on the base's half-integer texel grid. TILED
+        // into 5 bands each way with 1px fringes; 25/31 don't split into equal thirds, so the cells are 8/7/8
+        // (x) and 10/9/10 (z). A band-cell is LIGHTER only where both its x- and z-band are cell bands, else it is
+        // the DARKER fringe. Abutting boxes → one flat surface.
+        float[] bxC = {-8.5f, -4f, 0f, 4f, 8.5f}, bxW = {8f, 1f, 7f, 1f, 8f};
+        float[] bzC = {-13.5f, -8f, -3f, 2f, 7.5f}, bzH = {10f, 1f, 9f, 1f, 10f};
         boolean[] band = {true, false, true, false, true}; // cell band vs fringe band
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
                 b = b.box(bxC[i], 4.5f, bzC[j], bxW[i], 1f, bzH[j], band[i] && band[j] ? cell : fringe);
             }
         }
-        // Shiny yellow 1×1 frame ringing the navy board (x[−14,14] × z[−20,14]), coplanar at y4..5; side rails
-        // shortened to the inner span so each corner is drawn once.
-        b = b.box(0f, 4.5f, 13.5f, 28f, 1f, 1f, frame)     // +Z rail
-                .box(0f, 4.5f, -19.5f, 28f, 1f, 1f, frame) // −Z rail
-                .box(13.5f, 4.5f, -3f, 1f, 1f, 32f, frame) // +X rail
-                .box(-13.5f, 4.5f, -3f, 1f, 1f, 32f, frame); // −X rail
+        // Shiny yellow 1×1 frame ringing the navy board (x[−13.5,13.5] × z[−19.5,13.5]), coplanar at y4..5; side
+        // rails shortened to the inner span so each corner is drawn once.
+        b = b.box(0f, 4.5f, 13f, 27f, 1f, 1f, frame)      // +Z rail
+                .box(0f, 4.5f, -19f, 27f, 1f, 1f, frame)  // −Z rail
+                .box(13f, 4.5f, -3f, 1f, 1f, 31f, frame)  // +X rail
+                .box(-13f, 4.5f, -3f, 1f, 1f, 31f, frame); // −X rail
         return b.build();
     }
 
