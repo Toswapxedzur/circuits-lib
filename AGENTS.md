@@ -1,12 +1,3 @@
-# AGENTS.md — CircuitsLib (Codex / any agent)
+# CircuitsLib agent entry
 
-⛔ **MANDATORY — READ BEFORE YOU EDIT CODE, CHOOSE A DESIGN, OR ANSWER:**
-1. `~/Desktop/AGENTS.md` — the master rulebook. TOP RULE: record the owner's corrections to memory
-   the moment they're given (Why + How-to-apply), before your next edit.
-2. `/Users/fengyue.john.zhu/.claude/projects/-Users-fengyue-john-zhu-Desktop-programme-java-CircuitsLib/memory/MEMORY.md`
-   — the project memory index, then the linked memory files relevant to the task.
-
-The memory holds the owner's stated values, prior corrections, exact part specs (Snap-Circuits form:
-plastic base + white band + snap studs at ±12 (33-wide body over 3 posts); capacitor/switch/press-switch geometry; pixel-align parity),
-and the **screenshot-verify** method (never ship a look blind). Skipping any of this repeats mistakes
-already paid for, wastes the owner's tokens and time, and is a serious failure. **Not optional — every task.**
+Read `~/Desktop/agentic/AGENTS.md`, then `~/Desktop/agentic/project-memory/CircuitsLib/INDEX.md` and the relevant project pages. Both Claude and Codex use this same library. Preserve owner part geometry and visual verification decisions; update durable current facts without appending a running log.

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"/Users/fengyue.john.zhu/Desktop/agentic/tooling/hooks/context.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
